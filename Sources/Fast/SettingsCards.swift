@@ -13,6 +13,7 @@ import SwiftUI
 @MainActor
 final class SettingsCards {
     static let shared = SettingsCards()
+    nonisolated(unsafe) private static weak var embeddedWindow: NSWindow?
 
     /// Where the card stands in the panel: Settings' middle, from the
     /// panel's, and how tall the panel is.
@@ -25,6 +26,7 @@ final class SettingsCards {
     private var panel: SettingsCardPanel?
     private weak var parent: NSWindow?
     private var watch: AnyCancellable?
+    private var placementWatch: AnyCancellable?
     private var shown = false
 
     /// A card or a question of Settings' own is up.
@@ -32,6 +34,7 @@ final class SettingsCards {
 
     /// Settings on screen, where a question of its own can be seen.
     var showing: Bool { parent?.isVisible == true }
+    var inTab: Bool { Self.embeddedWindow != nil }
 
     /// Takes down the card up, a click outside it or the veil's: never a
     /// question, which waits for its answer.
@@ -71,7 +74,11 @@ final class SettingsCards {
 
     /// Made with the Settings window, as its child.
     func attach(to window: NSWindow, browser: Browser) {
+        parentClosed()
+        panel?.close()
+        watch = nil
         parent = window
+        Self.embeddedWindow = window is SettingsFrame ? nil : window
         let panel = SettingsCardPanel(
             contentRect: window.frame,
             styleMask: [.borderless],
@@ -89,6 +96,10 @@ final class SettingsCards {
         host.sizingOptions = []
         panel.contentView = host
         self.panel = panel
+        placementWatch = Publishers.MergeMany([
+            NSWindow.didMoveNotification, NSWindow.didResizeNotification, NSWindow.didChangeScreenNotification
+        ].map { NotificationCenter.default.publisher(for: $0, object: window) })
+            .sink { [weak self] _ in self?.place() }
         // After the change is published, once the stores hold the new state.
         watch = changes.receive(on: DispatchQueue.main).sink { [weak self] in self?.update() }
     }
@@ -128,6 +139,7 @@ final class SettingsCards {
     /// Settings going away takes its card with it, and answers its
     /// question no. A card kept is shown again with Settings (refresh).
     func parentClosed() {
+        Self.embeddedWindow = nil
         guard let panel else { return }
         shown = false
         parent?.removeChildWindow(panel)
@@ -135,8 +147,18 @@ final class SettingsCards {
         Questions.shared.settingsClosed()
     }
 
+    /// A tab put away must stop presenting cards over its still-visible browser.
+    func detach() {
+        parentClosed()
+        watch = nil
+        placementWatch = nil
+        panel?.close()
+        panel = nil
+        parent = nil
+    }
+
     /// The panel or Settings itself: both answer Settings' questions.
-    nonisolated static func owns(_ window: NSWindow?) -> Bool { window is SettingsFrame || window is SettingsCardPanel }
+    nonisolated static func owns(_ window: NSWindow?) -> Bool { window is SettingsFrame || window is SettingsCardPanel || (window != nil && window === embeddedWindow) }
 }
 
 /// Takes the keyboard for its fields and Escape, without a title bar.
@@ -146,8 +168,8 @@ final class SettingsCardPanel: NSPanel {
 
     /// ⌘W closes Settings, as it does with no card up.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if Keymap.shared.matches(event, .closeTab), let parent {
-            parent.performClose(nil)
+        if Keymap.shared.matches(event, .closeTab), parent != nil {
+            SettingsWindow.shared.hide()
             return true
         }
         return super.performKeyEquivalent(with: event)
@@ -166,7 +188,7 @@ private struct SettingsCardStack: View {
         let room = max(0, (spot.height - tall) / 2 - 12)
         let offset = min(max(spot.offset, -room), room)
         ZStack {
-            Color.black.opacity(0.001)
+            Color.black.opacity(SettingsCards.shared.inTab && SettingsCards.shared.closer != nil ? 0.12 : 0.001)
                 .contentShape(Rectangle())
                 .onTapGesture { SettingsCards.shared.closer?() }
             ZStack {

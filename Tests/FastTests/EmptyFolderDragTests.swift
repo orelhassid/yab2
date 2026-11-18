@@ -242,12 +242,12 @@ struct EmptyFolderDragTests {
     }
 
     /// evals/space-switching/drags.py's into-folder take, without the
-    /// window server: a loose row of today's carried onto a shut folder of
+    /// window server: a loose row of today's carried onto a folder of
     /// yours' own row, held there or not, then let go: it goes in.
-    @Test(arguments: [false, true])
-    func aLooseTabLetGoOverAShutFolderRowGoesIn(_ hold: Bool) async throws {
+    @Test(arguments: [false, true], [false, true])
+    func aLooseTabLetGoOverAFolderRowGoesIn(_ hold: Bool, _ open: Bool) async throws {
         try await world(.comfortable) { f in
-            let box = Nest(name: "Box", open: false)
+            let box = Nest(name: "Box", open: open)
             let a = f.tab("A", kept: true, nest: box), b = f.tab("B", kept: true, nest: box)
             let loose = f.tab("Loose", kept: false)
             try f.render([box])

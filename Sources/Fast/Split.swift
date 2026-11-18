@@ -1573,8 +1573,7 @@ struct LeaveMark: View {
 }
 
 extension Browser {
-    /// The tab whose color the window and its chrome wear: the one in
-    /// front, or none while two share the screen, so the window keeps its
-    /// own look rather than turning with every click from half to half.
-    var dresser: Tab? { stagePair == nil ? active : nil }
+    /// A Space owns its window chrome, including while a shared library or
+    /// pinned app is in front. Outside Spaces, a single page can tint it.
+    var dresser: Tab? { spacesShown || stagePair != nil ? nil : active }
 }

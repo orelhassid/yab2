@@ -1215,15 +1215,15 @@ final class Folders: ObservableObject {
         let keepable = !shut && (held.keepable || (task && held.bench && held.pin == nil && !held.shy && !held.isBlank))
             && !(task && Agents.shared.sealed(held))
 
-        // Over one of your folders, shut, as the rows are drawn now: into
+        // Over the header of one of your folders, as the rows are drawn now: into
         // it, and nothing moves, so the folder stays under the hand.
-        if keepable, folders.contains(where: { folder in folder.nest.map { (!$0.open || folder.members.isEmpty) && $0 !== held.nest } ?? false }) {
+        if keepable, folders.contains(where: { folder in folder.nest.map { $0 !== held.nest } ?? false }) {
             let shown = current ?? Landing(index: from, slot: now, kept: held.kept, nest: held.nest?.id)
             var order = rest
             order.insert(held, at: min(max(0, shown.index), order.count))
             let heads = slots(order, out: shown.out ? held.id : nil, joined: joined, held: held.id, as: shown.guise).folders
             for folder in folders {
-                guard let nest = folder.nest, !nest.open || folder.members.isEmpty, nest !== held.nest, let head = heads[folder.id] else { continue }
+                guard let nest = folder.nest, nest !== held.nest, let head = heads[folder.id] else { continue }
                 // Anywhere over its row: the rows around it would otherwise
                 // make way at its middle, and it would step away from under
                 // the hand before the hand was in. Once in, a little more
@@ -1969,7 +1969,7 @@ final class Folders: ObservableObject {
 
     /// ⌥ with it: the folders in it open or shut with it, as Finder's
     /// outline does.
-    func tap(_ nest: Nest) {
+    func tap(_ nest: Nest, immediately: Bool = false) {
         // The press's own time, as Browser.tapTab reads it: the first
         // click's open or shut can hold the main thread past the
         // double-click interval in a long session, and the second click
@@ -1980,7 +1980,7 @@ final class Folders: ObservableObject {
             ? event!.timestamp : ProcessInfo.processInfo.systemUptime
         let second = lastNestTap.map { $0.id == nest.id && now - $0.at < NSEvent.doubleClickInterval } == true
         lastNestTap = second ? nil : (nest.id, now)
-        toggle(nest.key, deep: NSApp.currentEvent?.modifierFlags.contains(.option) == true)
+        toggle(nest.key, deep: NSApp.currentEvent?.modifierFlags.contains(.option) == true, knownNest: nest, immediately: immediately)
         if second { naming = nest.id }
     }
 
@@ -2004,11 +2004,11 @@ final class Folders: ObservableObject {
         }
     }
 
-    func toggle(_ id: String, deep: Bool = false, alongside: (() -> Void)? = nil) {
+    func toggle(_ id: String, deep: Bool = false, knownNest: Nest? = nil, immediately: Bool = false, alongside: (() -> Void)? = nil) {
         // A sealed folder stays shut, whoever asks: a click, its menu, the
         // bench.
         guard !sealed(id) else { return }
-        let nest = folder(id)?.nest
+        let nest = knownNest ?? folder(id)?.nest
         // Opened or shut by hand, or once: no longer open just for being new.
         nest?.opened = false
         let opening = !(nest?.open ?? open.contains(id))
@@ -2051,7 +2051,7 @@ final class Folders: ObservableObject {
                 work()
             }
         }
-        if opening {
+        if opening && !immediately {
             work()
             DispatchQueue.main.async(execute: change)
         } else {
@@ -2372,6 +2372,7 @@ private struct FolderSiteMark: View {
 /// opens or shuts it and never changes the page; a sealed one's shows its
 /// chat, and resting on it says its step, never its pages.
 struct FolderRow: View {
+    @Environment(\.sidebarSpaceActions) private var scope
     @ObservedObject var browser: Browser
     let folder: Folders.Folder
     let open: Bool
@@ -2418,7 +2419,7 @@ struct FolderRow: View {
                     FolderEnd(folder: folder, face: face, tint: color)
                 }
                 if closing {
-                    FolderCross { browser.glance.drop(); Folders.close(folder, in: browser) }
+                    FolderCross { scope.perform { browser.glance.drop(); Folders.close(folder, in: browser) } }
                         .transition(.opacity)
                 }
             }
@@ -2442,7 +2443,7 @@ struct FolderRow: View {
             guard among == nil, !hosted else { return }
             browser.glance.folderFrames[folder.id] = frame
         }
-        .onTapGesture { Folders.tapped(folder, in: browser) }
+        .onTapGesture { scope.perform { Folders.tapped(folder, in: browser) } }
         // Rested on, shut, its preview comes out beside the column; a
         // sealed one's pages are nobody's to see.
         .onHover { on in

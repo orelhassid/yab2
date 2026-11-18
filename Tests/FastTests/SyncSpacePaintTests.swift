@@ -216,6 +216,21 @@ struct SyncSpacePaintTests {
         #expect(wornStep(first) == 4 && wornStep(second) == 1)
     }
 
+    @Test func openingSharedLibrariesPreservesTheSpaceAppearance() throws {
+        let world = try World(); defer { world.close() }
+        let browser = world.browser(Space.firstID)
+        let card = LookCard.shared
+        browser.prefs.lookShift = true
+        browser.lay([])
+        card.counted(browser)
+        for page in [LibraryPage.downloads, .bookmarks] {
+            browser.showLibrary(page)
+            card.counted(browser)
+            #expect(browser.active?.libraryPage == page)
+            #expect(browser.dresser == nil && browser.lookStep == 0)
+        }
+    }
+
     @Test func switchingSpacesNeverWritesWindowSettings() throws {
         let journal = try Journal(path: nil, device: "paint-sender")
         let windowKey = "window.\(UUID().uuidString).space"

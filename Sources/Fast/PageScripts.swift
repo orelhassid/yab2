@@ -55,7 +55,7 @@ enum PageScripts {
             // A page leaving for another site isn't taken back by a reload
             // of itself nobody asked for, OpenAI's sign-in (navigation-hold.js).
             navigationHold,
-            scroll, drawn, picker,
+            scroll, pageScrollbar, drawn, picker,
             // The link a shift-click or a Force Click was on, for a peek to grow out of.
             peekOrigin(force: tab.forcePeeks?() ?? false),
             linkCards,
@@ -242,6 +242,9 @@ enum PageScripts {
 
     private static let pip = script(DocumentPiPScript.source, .atDocumentStart, mainOnly: true, in: .page)
     private static let navigationHold = script(PageScript.load("navigation-hold"), .atDocumentStart, mainOnly: false, in: .page)
+    private static let pageScrollbar = script(
+        "document.documentElement?.style.setProperty('scrollbar-width', 'thin', 'important')",
+        .atDocumentEnd, mainOnly: true)
     private static let scroll = script(ScrollRelay.script, .atDocumentEnd, mainOnly: true)
     private static let drawn = script(ScrollRelay.drawn, .atDocumentStart, mainOnly: true)
     private static let picker = script(Veiling.picker, .atDocumentStart, mainOnly: true)
@@ -376,7 +379,7 @@ extension PageScripts {
         // call: Meet's, Zoom's and Slack's own switches, read from the DOM.
         // linkCards and the peek origin: scripts the hover card and the peek
         // ask through PageHandle.run, with no message handler of their own.
-        var selected = [TopDragRelay.script, fonts(PageFonts.read()), navigationHold, scroll, drawn, picker, peekOrigin(force: tab.forcePeeks?() ?? false), linkCards,
+        var selected = [TopDragRelay.script, fonts(PageFonts.read()), navigationHold, scroll, pageScrollbar, drawn, picker, peekOrigin(force: tab.forcePeeks?() ?? false), linkCards,
                         icons, forms, formFrames, call, wallet, walletSoon, agentFrames,
                         swipe, images, sent, watched, badge, badgeBridge, windowBridge, share, shareBridge, pushBridge, withoutPasskeys, passkeyBridge, isolate, dev, devBridge, eyeDropper, eyeDropperBridge,
                         json(JSONShow.current, keeps: !tab.shy)]

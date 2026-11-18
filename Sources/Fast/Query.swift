@@ -198,13 +198,14 @@ final class Query: ObservableObject {
 /// The things the app can do, found by name in the field, so "private",
 /// "history" or "settings" is a place to go like any other.
 enum Command: String, CaseIterable {
-    case newWindow, newTab, privateTab, reopen
+    case newWindow, newTab, openCommandField, privateTab, reopen
     /// A window whose tabs are its own, in no space (BlankWindow.swift).
     case blankWindow
-    case history, downloads, bookmarks, passwords, autofill, settings
+    case tabOverview, history, downloads, bookmarks, passwords, autofill, settings, manageProfiles
     /// Autofill's Bring In, from the field, for cards and addresses kept
     /// in another browser.
     case bringCards
+    case pinTrailApp, unpinTrailApp
     case importYabPasswords
     case bookmarkPage, reader, find, print, capture, duplicate, copyAddress, copyMarkdownLink, pasteAndMatchStyle, floatVideo, hide, closeTab
     /// The site in front kept light, or dark again (DarkPages.swift).
@@ -260,7 +261,7 @@ enum Command: String, CaseIterable {
     case moveToWindow, copyTabToWindow, keepTab, releaseTab, sleepTabs, keepSiteAwake, allowSiteSleep
     case muteTab, unmuteTab, muteSite, unmuteSite, resetPinnedTab, replacePinnedURL, editPinnedURL
     case clearToday, tidyTabs, newSpace, manageSpaces, switchSpace, nextSpace, previousSpace
-    case moveToSpace, renameSpace, changeSpaceIcon, deleteSpace, moveToFolder, moveOutOfFolder, openFolder
+    case moveToSpace, changeSpaceIcon, deleteSpace, moveToFolder, moveOutOfFolder, openFolder
     case closeFolder, renameFolder, customizeFolder, newFolderInside, moveFolder, ungroupFolder, newLiveFolder
     case keepSearchAsFolder, followSiteInFolder, updateLiveFolder, stopLiveFolder, translatePage, fillForm, copyPageMarkdown
     case savePageMarkdown, captureFullPage, capturePortrait, keepPeek, splitPeek, closePeek, smallWindow
@@ -285,12 +286,14 @@ enum Command: String, CaseIterable {
         case .reopen: return "Reopen Closed Tab"
         case .history: return "History"
         case .downloads: return "Downloads"
+        case .tabOverview: return "Tab Overview"
         case .bookmarks: return "Bookmarks"
         case .passwords: return "Passwords"
         case .importYabPasswords: return "Import Yab Passwords…"
         case .autofill: return "Cards and Addresses"
         case .bringCards: return "Bring In Cards and Addresses"
         case .settings: return "Settings"
+        case .manageProfiles: return "Manage Profiles"
         case .manual: return "Yab Manual"
         case .bookmarkPage: return "Bookmark This Page"
         case .reader: return "Reading Mode"
@@ -311,7 +314,9 @@ enum Command: String, CaseIterable {
         case .zoomIn: return "Zoom In"
         case .zoomOut: return "Zoom Out"
         case .actualSize: return "Actual Size"
-        case .pinTab: return "Pin Tab"
+        case .pinTrailApp: return "Pin Across Spaces"
+        case .unpinTrailApp: return "Unpin Across Spaces"
+        case .pinTab: return "Pin in This Space"
         case .unpinTab: return "Unpin Tab"
         case .newFolder: return "New Folder"
         case .folderWithTabs: return "New Folder with Tabs"
@@ -507,6 +512,8 @@ enum Command: String, CaseIterable {
         case .reopen: return "undo closed restore back"
         case .history: return "visited recent past pages"
         case .downloads: return "files saved"
+        case .tabOverview: return "tabs board spaces open pages"
+        case .manageProfiles: return "browser profiles"
         case .bookmarks: return "saved"
         case .passwords: return "logins sign-ins passkeys"
         case .autofill: return "credit debit payment shipping billing"
@@ -532,7 +539,9 @@ enum Command: String, CaseIterable {
         case .zoomIn: return "bigger larger text size magnify"
         case .zoomOut: return "smaller text size"
         case .actualSize: return "zoom normal size 100"
-        case .pinTab: return "keep stick"
+        case .pinTrailApp: return "pin to left trail app tabs favorites global pin across all spaces"
+        case .unpinTrailApp: return "unpin from left trail remove app tab favorites global"
+        case .pinTab: return "pin tab keep stick pinned tabs current space"
         case .unpinTab: return "loose"
         case .newFolder: return "group tabs kept"
         case .folderWithTabs: return "group selected picked tabs selection kept"
@@ -606,6 +615,7 @@ enum Command: String, CaseIterable {
         case .reopen: return "yab.tab.undo"
         case .history: return "yab.clock"
         case .downloads: return "yab.download"
+        case .tabOverview: return LibraryPage.tabs.icon
         case .bookmarks: return "bookmark"
         case .bookmarkPage: return "yab.bookmark.plus"
         case .passwords: return "key"
@@ -613,6 +623,7 @@ enum Command: String, CaseIterable {
         case .autofill: return "yab.card"
         case .bringCards: return "yab.card.dl"
         case .settings: return "yab.gear"
+        case .manageProfiles: return "person.crop.circle"
         case .manual: return "yab.book"
         case .reader: return "yab.bookopen"
         case .darkPage: return "moon"
@@ -633,6 +644,8 @@ enum Command: String, CaseIterable {
         case .zoomIn: return "yab.zoomin"
         case .zoomOut: return "yab.zoomout"
         case .actualSize: return "magnifyingglass"
+        case .pinTrailApp: return "pin"
+        case .unpinTrailApp: return "pin.slash"
         case .pinTab: return "pin"
         case .unpinTab: return "pin.slash"
         case .newFolder: return "yab.folder.plus"
@@ -711,6 +724,7 @@ enum Command: String, CaseIterable {
         case .reopen: return "⇧⌘T"
         case .history: return "⌘Y"
         case .downloads: return "⇧⌘J"
+        case .tabOverview: return ""
         case .bookmarks: return "⌥⌘B"
         case .passwords: return "⌥⌘L"
         case .settings: return "⌘,"
@@ -738,6 +752,7 @@ enum Command: String, CaseIterable {
         case .console: return "⌥⌘J"
         case .boostStore, .newBoost, .arcBoosts: return ""
         case .extensions: return "⌘E"
+        case .pinTrailApp, .unpinTrailApp: return ""
         case .pinTab, .unpinTab: return ""
         case .closeOthers: return "⌥⌘W"
         case .folderWithTabs: return "⌃⌘N"
@@ -766,7 +781,7 @@ enum Command: String, CaseIterable {
     /// and Return should never print it, or close it, or copy from it.
     var opens: Bool {
         switch self {
-        case .customizeSite, .boostStore, .newBoost, .arcBoosts, .newWindow, .newTab, .privateTab, .blankWindow, .reopen, .history, .downloads, .bookmarks, .passwords, .autofill, .bringCards, .settings, .manual, .feedback, .invite, .wrapped, .splitView, .mail, .jsonSetting:
+        case .customizeSite, .boostStore, .newBoost, .arcBoosts, .newWindow, .newTab, .privateTab, .blankWindow, .reopen, .tabOverview, .history, .downloads, .bookmarks, .passwords, .autofill, .bringCards, .settings, .manageProfiles, .manual, .feedback, .invite, .wrapped, .splitView, .mail, .jsonSetting:
             return true
         // Only its picking starts: nothing is taken until a click, and esc
         // leaves it.
@@ -798,6 +813,7 @@ enum Command: String, CaseIterable {
         switch self {
         case .pasteAndMatchStyle: return browser.query.pasteStyleTarget.canPaste(restoring: true)
         case .importYabPasswords: return browser.passwordImportRoute.available
+        case .manageProfiles: return browser.canManageProfiles
         case .customizeSite: return browser.fieldGuest == nil && browser.active.map { !$0.shy && BoostEditorLook.host($0.address) != nil } == true
         case .customizationOn, .customizationOff:
             guard browser.fieldGuest == nil, let tab = browser.active, !tab.shy, let host = BoostEditorLook.host(tab.address) else { return false }
@@ -815,9 +831,14 @@ enum Command: String, CaseIterable {
         case .darkPage: return browser.darkPageReady() != nil
         case .mail: return browser.prefs.usesMail && (MailCenter.shared.connected || browser.inMail)
         case .pinTab:
+            if browser.prefs.sidebar { return page && browser.active?.keepable == true && browser.active?.kept == false }
             if let pair = browser.pair(of: browser.activeID) { return browser.canPinPair(pair) }
             return page && browser.active?.pin == nil
-        case .unpinTab: return browser.active?.pin != nil
+        case .pinTrailApp, .unpinTrailApp:
+            guard browser.windowPurpose == .normal, !browser.blank, !browser.privateBrowsing, browser.fieldGuest == nil,
+                  let url = TrailApps.shared.address(for: browser.active) else { return false }
+            return TrailApps.shared.contains(url) == (self == .unpinTrailApp)
+        case .unpinTab: return browser.active.map { ($0.pin != nil || $0.kept) && TrailApps.shared.application(for: $0) == nil } == true
         case .folderWithTabs: return browser.chosen.contains(where: \.keepable)
         case .newTabInFolder: return browser.folderHere != nil
         case .closeOthers: return browser.tabs.count > 1
@@ -898,6 +919,7 @@ enum Command: String, CaseIterable {
         // The box's own places, gone into where the command was typed.
         case .history: browser.openPlace(.history)
         case .downloads: browser.openPlace(.downloads)
+        case .tabOverview: browser.showLibrary(.tabs)
         case .bookmarks: browser.showBookmarks()
         case .passwords: browser.openPlace(.passwords)
         case .importYabPasswords: browser.passwordImportRoute.run()
@@ -910,6 +932,7 @@ enum Command: String, CaseIterable {
                 browser.bringMore()
             }
         case .settings: browser.tuning = true
+        case .manageProfiles: browser.openSettings(row: "manage-profiles")
         case .manual: browser.open(Guide.manualURL, foreground: true)
         case .bookmarkPage: browser.bookmarkCurrent()
         case .reader: browser.toggleReader()
@@ -932,6 +955,10 @@ enum Command: String, CaseIterable {
         case .zoomIn: browser.zoom(by: 1.1)
         case .zoomOut: browser.zoom(by: 1 / 1.1)
         case .actualSize: browser.resetZoom()
+        case .pinTrailApp:
+            if let tab = browser.active { TrailApps.shared.pin(tab) }
+        case .unpinTrailApp:
+            if let url = TrailApps.shared.address(for: browser.active) { TrailApps.shared.remove(url, in: browser) }
         case .pinTab: browser.pinActive()
         case .unpinTab: browser.unpinActive()
         case .newFolder: browser.newEmptyFolder()
@@ -1007,7 +1034,7 @@ enum Command: String, CaseIterable {
         case .devModeOff: aliases += ["developer mode", "dev mode", "turn off dev mode", "disable developer mode"]
         case .reload: aliases += ["refresh"]
         case .hardReload: aliases += ["hard refresh", "force refresh"]
-        case .newTab: aliases += ["newtab"]
+        case .newTab: aliases += ["newtab", "open home", "home dashboard"]
         case .closeTab: aliases += ["archive tab", "closetab"]
         case .reader: aliases += ["reader"]
         case .floatVideo: aliases += ["picture in picture", "pip"]
@@ -1018,6 +1045,11 @@ enum Command: String, CaseIterable {
         case .makeDefault: aliases += ["make yab default browser"]
         case .downloads: aliases += ["search downloads"]
         case .history: aliases += ["search history"]
+        case .tabOverview: aliases += ["all tabs", "show tabs", "tabs board"]
+        case .manageProfiles: aliases += ["profile manager", "profile settings"]
+        case .pinTrailApp: aliases += ["pin to left trail", "add app tab", "pin across all spaces"]
+        case .unpinTrailApp: aliases += ["unpin from left trail", "remove app tab"]
+        case .pinTab: aliases += ["pin tab", "keep tab"]
         case .bookmarks: aliases += ["show bookmarks"]
         case .newYork: aliases += ["show tabs in sidebar"]
         case .pullRequestsFolder: aliases += ["new github pull requests folder", "github pull requests", "github pull requests folder", "new pull requests folder"]
@@ -1052,7 +1084,7 @@ enum Command: String, CaseIterable {
     /// Exact names and the fuller wording: the half everyone has, and the
     /// whole catalog once the experiment is on.
     @MainActor private func expanded(in browser: Browser) -> Bool {
-        browser.prefs.menuCommands || MenuCommands.everyone.contains(self) || ChatProjectCommands.commands.contains(self)
+        self == .manageProfiles || browser.prefs.menuCommands || MenuCommands.everyone.contains(self) || ChatProjectCommands.commands.contains(self)
     }
 
     private static let exactNames: [Command: Set<String>] = Dictionary(uniqueKeysWithValues:

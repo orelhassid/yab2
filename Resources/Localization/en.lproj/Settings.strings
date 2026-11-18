@@ -399,3 +399,37 @@
 "When battery is at 20% or lower" = "When battery is at 20% or lower";
 "When unplugged" = "When unplugged";
 "Saves battery by limiting background activity and visual effects, such as smooth scrolling and video frame rates." = "Saves battery by limiting background activity and visual effects, such as smooth scrolling and video frame rates.";
+
+"Profile" = "Profile";
+
+"Personal" = "Personal";
+
+"Workspace" = "Workspace";
+
+"Tools" = "Tools";
+
+"Other" = "Other";
+
+"Browser behavior" = "Browser behavior";
+
+"Tabs & folders" = "Tabs & folders";
+
+"Extensions & Boosts" = "Extensions & Boosts";
+
+"Shortcuts & Snippets" = "Shortcuts & Snippets";
+
+"Privacy & websites" = "Privacy & websites";
+
+"Developer tools" = "Developer tools";
+
+"Help & updates" = "Help & updates";
+
+"Current profile" = "Current profile";
+
+"Current Space" = "Current Space";
+
+"Profile data" = "Profile data";
+
+"Startup & quitting" = "Startup & quitting";
+
+"Updates" = "Updates";

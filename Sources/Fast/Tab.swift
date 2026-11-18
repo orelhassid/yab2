@@ -189,6 +189,7 @@ enum Web {
         MainActor.assumeIsolated { SiteNotices.install() }
         let config = WKWebViewConfiguration()
         MainActor.assumeIsolated { AppleWritingTools.configure(config) }
+        config.userInterfaceDirectionPolicy = .system
         config.processPool = pool
         // ⌫ is no Back on a page, whatever else is cut (Web.backspaceNavigation, #262).
         Web.backspaceNavigation(config.preferences, on: Web.backspaceGoesBack)
@@ -281,6 +282,15 @@ final class Tab: ObservableObject, Identifiable, Relaying {
     /// willchange), many times over in every pass (feedback #120).
     nonisolated let objectWillChange = ObservableObjectPublisher()
     let id: UUID
+    @ObservationIgnored private var libraryControls: [LibraryPage: LibraryControls] = [:]
+
+    func controls(for library: LibraryPage) -> LibraryControls {
+        if let existing = libraryControls[library] { return existing }
+        let controls = LibraryControls()
+        libraryControls[library] = controls
+        return controls
+    }
+
     /// Browser-specific observers are replaced when this live tab moves to
     /// another window and end with the tab when it closes.
     @ObservationIgnored var browserWatches: Set<AnyCancellable> = []
@@ -771,6 +781,13 @@ final class Tab: ObservableObject, Identifiable, Relaying {
     private(set) var canGoForward = false {
         willSet { relay.send(\.canGoForward, newValue) }
     }
+    /// Native Settings uses the shell's existing Back and Forward controls.
+    func updateSettingsHistory(back: Bool, forward: Bool) {
+        guard libraryPage == .settings else { return }
+        hasBackHistory = back
+        canGoForward = forward
+    }
+
     /// What this tab's pages were asked about reaching on this Mac or the
     /// network, by page and kind: one card a page (LocalNetwork.swift).
     @ObservationIgnored var localAsked: Set<String> = []
@@ -1117,6 +1134,7 @@ final class Tab: ObservableObject, Identifiable, Relaying {
     /// for a site, which wears its kept icon.
     static func ownIcon(_ url: URL?) -> NSImage? {
         // What Yab keeps about you: a notebook.
+        if let page = LibraryPage(url: url) { return Glyphs.image(page.icon, side: 16) }
         if KnowPage.isKnow(url) { return Glyphs.image("notes", side: 16) }
         // The mail page wears its own mark, as a pin and as a tab: the
         // envelope emoji, black on a light ground (MailPage.mark).
@@ -4422,6 +4440,7 @@ final class Tab: ObservableObject, Identifiable, Relaying {
     /// By a key the page just appears: coming in
     /// from the side (`arrive`) answers the swipe and the buttons.
     func back(byKey: Bool = false) {
+        if libraryPage == .settings { SettingsWindow.shared.travelInTab(self, step: -1); return }
         if !hasBackHistory, builtPage?.canGoBack != true, onBackAtStart?(self) == true { return }
         if engineKind != .webKit { page.navigateBack(); return }
         if deaf != nil, let to = webKitOnly("WebKit native page state", build: false)?.backForwardList.backItem?.url { return goFresh(to: to) }
@@ -4431,6 +4450,7 @@ final class Tab: ObservableObject, Identifiable, Relaying {
         keyed = byKey ? going?.pageNavigation : nil
     }
     func forward(byKey: Bool = false) {
+        if libraryPage == .settings { SettingsWindow.shared.travelInTab(self, step: 1); return }
         if engineKind != .webKit { page.navigateForward(); return }
         if deaf != nil, let to = webKitOnly("WebKit native page state", build: false)?.backForwardList.forwardItem?.url { return goFresh(to: to) }
         guard let web = webKitOnly("Native WebKit history") else { page.navigateForward(); return }

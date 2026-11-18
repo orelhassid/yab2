@@ -7,6 +7,7 @@ import SwiftUI
 @MainActor
 struct ShortcutsPage: View {
     @ObservedObject var selection: ShortcutFilter.Selection
+    @Environment(\.settingsInLibrary) private var inLibrary
     @StateObject private var changes = ShortcutFilter.Changes()
     @AppStorage(MailExperiment.key, store: Store.settings) private var mailExperiment = false
     @ObservedObject private var snippets = MailSnippets.shared
@@ -50,8 +51,8 @@ struct ShortcutsPage: View {
                     view(of: line)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
+            .padding(.horizontal, inLibrary ? 0 : 20)
+            .padding(.top, inLibrary ? 0 : 20)
             .padding(.bottom, 20)
         }
         .onChange(of: ShortcutFilter.categories(entries), initial: true) { _, categories in selection.categories = categories }
@@ -148,6 +149,7 @@ struct ShortcutsPage: View {
 /// A row of a group, the way a grouped Form draws one: the group is its
 /// rows' backgrounds laid edge to edge, so it can be built a row at a time.
 private struct ShortcutCardRow<Content: View>: View {
+    @Environment(\.settingsInLibrary) private var inLibrary
     /// The Form's own measures on each design.
     static var radius: CGFloat { if #available(macOS 26.0, *) { 12 } else { 10 } }
     static var pad: CGFloat { if #available(macOS 26.0, *) { 10.5 } else { 8 } }
@@ -167,7 +169,7 @@ private struct ShortcutCardRow<Content: View>: View {
             .background {
                 UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: foot, bottomTrailingRadius: foot,
                                        topTrailingRadius: top, style: .continuous)
-                    .fill(Color(nsColor: .quaternarySystemFill))
+                    .fill(inLibrary ? Palette.ground : Color(nsColor: .quaternarySystemFill))
             }
             .overlay(alignment: .bottom) {
                 if !last {

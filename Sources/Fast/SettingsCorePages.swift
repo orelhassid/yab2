@@ -18,12 +18,68 @@ struct GeneralPage: View {
     /// those and not the whole page.
     let bringing: Bringing
     @Binding var isDefault: Bool
+    @AppStorage(SettingsPresentation.key, store: Store.settings) private var presentation = SettingsPresentation.tab
+    var body: some View {
+        Section("Settings") {
+            SettingsRow("Open Settings in") {
+                GlassTrack(title: "Open Settings in", options: [("Tab", SettingsPresentation.tab), ("Window", .window)],
+                           room: 12, selection: $presentation)
+                    .fixedSize()
+            }
+            .settingsAnchor("settings-presentation")
+        }
+        Section("Keyboard") {
+            EngineGeneralRows(model: model)
+            ShortcutActionRow(does: SettingsWords.text("Show Yab"), action: .showYab,
+                              slot: Keymap.shared.slot(.showYab), pill: true)
+                .settingsAnchor("show-yab")
+        }
+        Section("Startup & quitting") {
+            OpenAtLoginRow()
+                .settingsAnchor("open-at-login")
+            ReachableRow()
+                .settingsAnchor("reachable")
+            SettingsRow("Warn Before Quitting") {
+                Toggle(SettingsWords.text("Warn Before Quitting"), isOn: $prefs.warnsOnQuit)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+            .settingsAnchor("warn-quit")
+        }
+        Section("Downloads") {
+            SettingsRow("Save downloads to", detail: prefs.downloads.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")) {
+                Button(SettingsWords.text("Change…")) { chooseFolder() }.settingsButton()
+            }
+            .settingsAnchor("save-to")
+            SettingsSwitch("Ask where to save each file", isOn: $prefs.asksWhereToSave).settingsAnchor("ask-where")
+            SettingsSwitch("Choose files to upload in Finder", isOn: $prefs.uploadsInFinder).settingsAnchor("upload-finder")
+        }
+        GeneralSteps(browser: browser, bringing: bringing, model: model, isDefault: isDefault, makeDefault: makeDefault)
+    }
+
+    private func makeDefault() {
+        Links.becomeDefault { worked in
+            isDefault = worked || Links.isDefault
+            // The step leaves the page when it worked; only a refusal needs saying.
+            if !worked { browser.announce("macOS kept your old browser", mark: "safari", on: SettingsWindow.shared.toaster) }
+        }
+    }
+
+    private func chooseFolder() {
+        DownloadFolder.chooseFolder(starting: prefs.downloads) { [prefs] url in prefs.downloads = url }
+    }
+
+}
+
+struct UpdateSettingsSection: View {
+    let browser: Browser
     @ObservedObject private var updater = Updater.shared
     @AppStorage(Updater.nightlyKey, store: Store.settings) private var nightly = false
     @AppStorage(Updater.Away.automaticKey, store: Store.settings) private var automatic = true
 
     var body: some View {
-        Section {
+        Section("Updates") {
             HStack(spacing: 12) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
@@ -59,47 +115,6 @@ struct GeneralPage: View {
             }
             .settingsAnchor("update-automatically")
         }
-        Section {
-            EngineGeneralRows(model: model)
-            ShortcutActionRow(does: SettingsWords.text("Show Yab"), action: .showYab,
-                              slot: Keymap.shared.slot(.showYab), pill: true)
-                .settingsAnchor("show-yab")
-        }
-        Section {
-            OpenAtLoginRow()
-                .settingsAnchor("open-at-login")
-            ReachableRow()
-                .settingsAnchor("reachable")
-            SettingsRow("Warn Before Quitting") {
-                Toggle(SettingsWords.text("Warn Before Quitting"), isOn: $prefs.warnsOnQuit)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-            }
-            .settingsAnchor("warn-quit")
-        }
-        Section {
-            SettingsRow("Save downloads to", detail: prefs.downloads.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")) {
-                Button(SettingsWords.text("Change…")) { chooseFolder() }.settingsButton()
-            }
-            .settingsAnchor("save-to")
-            SettingsSwitch("Ask where to save each file", isOn: $prefs.asksWhereToSave).settingsAnchor("ask-where")
-            SettingsSwitch("Choose files to upload in Finder", isOn: $prefs.uploadsInFinder).settingsAnchor("upload-finder")
-        }
-        GeneralSteps(browser: browser, bringing: bringing, model: model, isDefault: isDefault, makeDefault: makeDefault)
-        BringInFoot(bringing: bringing, model: model)
-    }
-
-    private func makeDefault() {
-        Links.becomeDefault { worked in
-            isDefault = worked || Links.isDefault
-            // The step leaves the page when it worked; only a refusal needs saying.
-            if !worked { browser.announce("macOS kept your old browser", mark: "safari", on: SettingsWindow.shared.toaster) }
-        }
-    }
-
-    private func chooseFolder() {
-        DownloadFolder.chooseFolder(starting: prefs.downloads) { [prefs] url in prefs.downloads = url }
     }
 
     /// Nightly builds turned off on a build newer than Stable: nothing would
@@ -258,6 +273,7 @@ struct AppearancePage: View {
             FieldMenu(prefs: prefs)
                 .settingsAnchor("field-size")
             lookRow
+            SpacePageSettings(space: browser.spaceID)
             AppIconRow(model: model)
                 .settingsAnchor("app-icon")
         }
@@ -286,6 +302,10 @@ struct AppearancePage: View {
                 )
             )
             .settingsAnchor("sidebar")
+            SettingsSwitch("Show Left Trail", isOn: $prefs.showLeftTrail)
+                .settingsAnchor("left-trail")
+            MenuRow("Space transition", options: SpaceTransition.allCases.map { ($0.title, $0) }, selection: $prefs.spaceTransition)
+                .settingsAnchor("space-transition")
             SettingsSwitch("Show sidebar button", isOn: $prefs.sidebarButton)
                 .settingsAnchor("sidebar-button")
             MenuRow("Tab icons", options: [("Letters", Glyph.letters), ("Site icons", Glyph.icons)], selection: $prefs.glyph)
@@ -1142,20 +1162,4 @@ struct CreditsPage: View {
 /// has its yes, ⌘Return or the red button.
 @MainActor private func confirm(_ question: Question, then run: @escaping () -> Void) {
     Task { if await Questions.shared.ask(question) { run() } }
-}
-
-/// At the foot of General once the step at the top is gone, never both,
-/// and not while the browsers are still being found for it.
-private struct BringInFoot: View {
-    @ObservedObject var bringing: Bringing
-    @ObservedObject var model: SettingsModel
-
-    var body: some View {
-        if !GeneralSteps.offersBring(bringing), bringing.loaded || Bringing.everBrought {
-            Section {
-                FeatureRow(.bringIn, title: "Bring in from another browser", detail: "Tabs, passwords, cards, bookmarks, history and extensions.", model: model)
-                    .settingsAnchor("bring-in")
-            }
-        }
-    }
 }

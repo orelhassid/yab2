@@ -78,7 +78,7 @@ struct SidebarResizeTests {
             handle.mouseDragged(with: try event(.leftMouseDragged, x: 200, in: handle))
             lay(page, browser)
             #expect(slides(in: page).isEmpty, "a resize must not spring pins through their old positions")
-            #expect(browser.prefs.sideWidth == 200)
+            #expect(browser.prefs.sideWidth == Metrics.sideMin)
             handle.mouseUp(with: try event(.leftMouseUp, x: 200, in: handle))
             try await Task.sleep(for: .milliseconds(20))
             #expect(!browser.trackingSize)

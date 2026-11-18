@@ -795,8 +795,8 @@ struct SpaceDigitShortcutTests {
     }
 
     @Test func tabNumbersOnlyForDigitsThatReachTabs() {
-        #expect(KeyNumbers.numbers(among: [0, 1, 2, 3], count: 4, digits: [4, 5, 9]) == [3: 4])
-        #expect(KeyNumbers.numbers(among: [0, 1, 2, 3], count: 4, digits: [2, 9]) == [1: 2, 3: 9])
-        #expect(KeyNumbers.numbers(among: [0, 1, 2, 3], count: 4, digits: []).isEmpty)
+        #expect(KeyNumbers.numbers(among: [0, 1, 2, 3], digits: [4, 5, 9]) == [3: 4])
+        #expect(KeyNumbers.numbers(among: [0, 1, 2, 3], digits: [2, 9]) == [1: 2, 3: 9])
+        #expect(KeyNumbers.numbers(among: [0, 1, 2, 3], digits: []).isEmpty)
     }
 }

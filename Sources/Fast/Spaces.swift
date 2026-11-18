@@ -95,7 +95,8 @@ struct Space: Codable, Identifiable, Equatable {
     var profileID: UUID { ownSignIns ? signInWith ?? id : Self.firstID }
 
     static func ownProfile(for space: Space, among spaces: [Space], fresh: UUID = UUID()) -> UUID {
-        spaces.contains { $0.id != space.id && $0.profileID == space.profileID } ? fresh : space.profileID
+        space.profileID == firstID || spaces.contains { $0.id != space.id && $0.profileID == space.profileID }
+            ? fresh : space.profileID
     }
 }
 
@@ -410,14 +411,20 @@ enum Spaces {
 
     private static var glazed = false
 
-    static func write(_ spaces: [Space]) {
-        guard SpaceRecovery.preserveInvalid(at: file) else { return }
-        guard let data = try? JSONEncoder().encode(spaces) else { return }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? data.write(to: file, options: .atomic)
+    @discardableResult
+    static func write(_ spaces: [Space]) -> Bool {
+        guard SpaceRecovery.preserveInvalid(at: file),
+              let data = try? JSONEncoder().encode(spaces) else { return false }
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: file, options: .atomic)
+        } catch {
+            return false
+        }
         routes = routing(spaces)
         sharing = Set(spaces.filter { !$0.ownSignIns }.map(\.id))
         NotificationCenter.default.post(name: changed, object: nil)
+        return true
     }
 
     /// Pages counted from the files of spaces not opened since launch
@@ -549,6 +556,7 @@ enum Spaces {
     /// once WebKit lets go of it, at the latest at the next launch.
     static func erase(_ id: UUID) {
         guard id != Space.firstID, id != Space.mailID, id != Space.pinsID else { return }
+        BrowserProfileIdentities.shared.remove(id)
         ChromiumPersistentProfiles.retireAssociation(id)
         WebPush.shared.drop(store: id)
         CertificateExceptions.forget(profile: id)
@@ -768,7 +776,7 @@ extension Browser {
         settleNow()
         // Across the top, the strip as it is now, pictured for its turn
         // (StripView); and how far two fingers had taken it.
-        let strip = prefs.sidebar || id == Space.mailID || spaceID == Space.mailID ? nil : StripView.of(self)
+        let strip = prefs.spaceTransition != .slide || prefs.sidebar || id == Space.mailID || spaceID == Space.mailID ? nil : StripView.of(self)
         let stripBefore = strip?.prepare()
         let spaceBefore = space
         let turnStart = SpaceShown.shared.handoff
@@ -878,7 +886,7 @@ extension Browser {
                 wash.turning = true
                 quietly { paint.wear(prefs) }
                 // On the row's own spring when the column slides.
-                if !washed, !washedEarly, !SpaceTurn.still, let old {
+                if !washed, !washedEarly, animatesSpaceChanges, let old {
                     // Across the top, on the turn's spring, with the capsule (StripTurn).
                     if !prefs.sidebar, !paging {
                         spaceWash.clearOnStrip(old, from: washFrom, base: SpaceWash.grounded(in: self))
@@ -951,7 +959,7 @@ extension Browser {
     /// the two are crossed from the first frame of the slide.
     private func setOff(to id: UUID) -> Bool {
         var crossed = false
-        if !SpaceTurn.still, let paint = (id == Space.mailID ? Space.mail : spaces.first(where: { $0.id == id }))?.paint,
+        if animatesSpaceChanges, let paint = (id == Space.mailID ? Space.mail : spaces.first(where: { $0.id == id }))?.paint,
            let old = SpaceWash.grounded(in: self), let new = SpaceWash.grounded(paint, in: self) {
             spaceWash.backdrop?.wear(new)
             spaceWash.clear(old, from: 1, spring: true, base: new)
@@ -1069,16 +1077,22 @@ extension Browser {
 
     /// A tab of a parked row, closed there and written out of it.
     func closeParked(_ tab: Tab, in space: UUID) {
-        guard var row = parked[space], let at = row.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        guard detachParked(tab, from: space) else { return }
+        tab.close()
+        if underTab === tab { settleUnder() }
+        // The extensions are told the window's tabs, its other spaces' too.
+        if #available(macOS 15.4, *) { Extensions.all.forEach { $0.rowChanged() } }
+    }
+
+    /// Remove a tab from a parked session without closing the live page.
+    func detachParked(_ tab: Tab, from space: UUID) -> Bool {
+        guard var row = parked[space], let at = row.tabs.firstIndex(where: { $0.id == tab.id }) else { return false }
         row.tabs.remove(at: at)
         if row.active == tab.id { row.active = nil }
         row.pairs.removeAll { $0.first == tab.id || $0.second == tab.id }
         parked[space] = row
         writeRow(row.tabs, active: row.active, space: space, pairs: row.pairs, now: true)
-        tab.close()
-        if underTab === tab { settleUnder() }
-        // The extensions are told the window's tabs, its other spaces' too.
-        if #available(macOS 15.4, *) { Extensions.all.forEach { $0.rowChanged() } }
+        return true
     }
 
     func renameSpace(_ id: UUID, to name: String) {
@@ -1131,7 +1145,8 @@ extension Browser {
     /// again in the other store, asleep but the one in front, as a row
     /// comes back from its file. A previous profile stays on disk.
     func setSpaceSignIns(_ id: UUID, own: Bool) {
-        setSpaceProfile(id, with: own ? nil : Space.firstID)
+        if own { setSpaceProfile(id, with: nil) }
+        else { applySpaceProfile(id, store: Space.firstID) }
     }
 
     /// Membership is a logical store identity, never a chain of Space links.
@@ -1163,8 +1178,8 @@ extension Browser {
         // Written out in the store they are in now, and closed there. The
         // shared pins are no space's own: they stay, or are put aside once
         // the space has sign-ins of its own (SharedPins.swift).
-        if id == spaceID { settleShared(tabs, in: id) }
-        let wasShowing = previouslyShared.map { $0 && prefs.pinsEverySpace } ?? showsShared(id)
+        let wasShowing = previouslyShared.map { $0 && pinsShared } ?? showsShared(id)
+        if id == spaceID, wasShowing { settleShared(tabs, in: id, showing: wasShowing) }
         let pinOrder = sharedPins?.map(\.id)
         var row: Parked?
         if id == spaceID {
@@ -1182,13 +1197,13 @@ extension Browser {
             writeRow(kept.tabs, active: kept.active, space: id, pairs: kept.pairs, now: true)
             kept.tabs.forEach { $0.close() }
         }
-        spaces[at].ownSignIns = own
-        // Given a store of its own or the shared one, it is out of the
-        // profile it came in as; another space may go on using its store.
-        spaces[at].signInWith = own && store != id ? store : nil
-        spaces[at].signedInAs = nil
-        if own { Spaces.sharing.remove(id) } else { Spaces.sharing.insert(id) }
-        if !reload { Spaces.write(spaces) }
+        if !reload {
+            spaces[at].ownSignIns = own
+            // Another Space may still use the store this one is leaving.
+            spaces[at].signInWith = own && store != id ? store : nil
+            spaces[at].signedInAs = nil
+            Spaces.write(spaces)
+        }
         // Membership changes must not erase the former profile's signed-in
         // session, which another Space may still need.
         // Its buttons are its sign-in's extensions now (ExtensionSignIns).
@@ -1375,7 +1390,7 @@ extension Browser {
     @discardableResult
     /// `top`: today's tabs at the top of the other's today's, as a folder
     /// of today's lands in Arc.
-    func moveTabs(_ picked: [Tab], to target: UUID, say: Bool = true, step own: Bool = true, top: Bool = false) -> SpaceMove? {
+    func moveTabs(_ picked: [Tab], to target: UUID, say: Bool = true, step own: Bool = true, top: Bool = false, before anchor: Tab.ID? = nil) -> SpaceMove? {
         // Out of a Blank Window into the space, in a window of yours.
         if blank { moveOutOfBlank(picked, to: target, say: say); return nil }
         guard prefs.usesSpaces, target != spaceID, let to = spaces.first(where: { $0.id == target }) else { return nil }
@@ -1432,7 +1447,7 @@ extension Browser {
         }
         // Sent, a tab's space is where it went.
         for tab in moving { tab.homeSpace = nil }
-        let arrived = send(moving, pairs: going, from: from, to: target, top: top)
+        let arrived = send(moving, pairs: going, from: from, to: target, top: top, before: anchor)
 
         // Out of this row: the neighbor where the first of them stood is
         // in front, as after ⌘W, or the field if nothing is left.
@@ -1578,7 +1593,7 @@ extension Browser {
     static let folderLeavesAfter: TimeInterval = 0.2
 
     /// The tabs into `target`'s row, parked; the tabs as they are there.
-    private func send(_ moving: [Tab], pairs going: [Pair], from: UUID, to target: UUID, top: Bool = false) -> [Tab] {
+    private func send(_ moving: [Tab], pairs going: [Pair], from: UUID, to target: UUID, top: Bool = false, before anchor: Tab.ID? = nil) -> [Tab] {
         var row = parked[target] ?? loadRow(target)
         let same = Spaces.store(for: from) === Spaces.store(for: target)
         var map: [Tab.ID: Tab.ID] = [:]
@@ -1587,7 +1602,7 @@ extension Browser {
             // there, page and all: the agent holds it by its id, mid-task,
             // and its cookies stay those it was signed in with. A call
             // too: opened afresh, it would drop.
-            guard !same, !tab.bench, !Browser.hosts(tab), !tab.onCall, let url = tab.pending ?? tab.address else { map[tab.id] = tab.id; return tab }
+            guard !same, !tab.shy, !tab.bench, !Browser.hosts(tab), !tab.onCall, let url = tab.pending ?? tab.address else { map[tab.id] = tab.id; return tab }
             let fresh = carry(tab, url: url, into: target)
             map[tab.id] = fresh.id
             tab.close()
@@ -1597,18 +1612,20 @@ extension Browser {
         let blanks = row.tabs.filter { $0.isBlank && !$0.bench }
         row.tabs.removeAll { tab in blanks.contains { $0 === tab } }
         blanks.forEach { $0.close() }
-        // Pins after its pins, the kept after its kept, the rest at its end.
-        let after = row.tabs.lastIndex { $0.pin != nil }.map { $0 + 1 } ?? 0
-        row.tabs.insert(contentsOf: arrived.filter { $0.pin != nil }, at: after)
-        let kept = row.tabs.lastIndex { $0.pin != nil || $0.kept }.map { $0 + 1 } ?? 0
-        row.tabs.insert(contentsOf: arrived.filter(\.kept), at: kept)
-        let today = arrived.filter { $0.pin == nil && !$0.kept }
-        if top {
-            let head = row.tabs.lastIndex { $0.pin != nil || $0.kept }.map { $0 + 1 } ?? 0
-            row.tabs.insert(contentsOf: today, at: head)
-        } else {
-            row.tabs.append(contentsOf: today)
+        // In the overview the hand can choose a slot within the same section.
+        // Other callers retain the Sidebar's normal landing for each section.
+        func insert(_ group: [Tab], from start: Int, to end: Int, normally index: Int) {
+            guard !group.isEmpty else { return }
+            let at = anchor.flatMap { id in row.tabs.firstIndex { $0.id == id } } ?? index
+            row.tabs.insert(contentsOf: group, at: min(max(at, start), end))
         }
+        let afterPins = row.tabs.lastIndex { $0.pin != nil }.map { $0 + 1 } ?? 0
+        insert(arrived.filter { $0.pin != nil }, from: 0, to: afterPins, normally: afterPins)
+        let pins = row.tabs.prefix { $0.pin != nil }.count
+        let kept = row.tabs.lastIndex { $0.pin != nil || $0.kept }.map { $0 + 1 } ?? 0
+        insert(arrived.filter { $0.pin == nil && $0.kept }, from: pins, to: kept, normally: kept)
+        let head = row.tabs.lastIndex { $0.pin != nil || $0.kept }.map { $0 + 1 } ?? 0
+        insert(arrived.filter { $0.pin == nil && !$0.kept }, from: head, to: row.tabs.count, normally: top ? head : row.tabs.count)
         row.pairs += going.compactMap { pair in
             guard let a = map[pair.first], let b = map[pair.second] else { return nil }
             return Pair(first: a, second: b, share: pair.share)

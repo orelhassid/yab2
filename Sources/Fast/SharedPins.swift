@@ -367,9 +367,9 @@ extension Browser {
     /// pinned in the row on screen of a space that shows them, it is one.
     /// A pin a call or an agent brought along from a space of its own stays
     /// that space's.
-    func settleShared(_ row: [Tab], in space: UUID) {
+    func settleShared(_ row: [Tab], in space: UUID, showing: Bool? = nil) {
         for tab in row where tab.everywhere != nil && tab.pin == nil { tab.everywhere = nil }
-        guard space == spaceID, showsShared(space), row.count == tabs.count, row.elementsEqual(tabs, by: { $0 === $1 }) else { return }
+        guard space == spaceID, showing ?? showsShared(space), row.count == tabs.count, row.elementsEqual(tabs, by: { $0 === $1 }) else { return }
         for tab in row where tab.pin != nil && tab.everywhere == nil && Browser.sharable(tab) && !travels(tab) { tab.everywhere = tab.id }
     }
 

@@ -48,6 +48,100 @@ struct MenuCommandCatalogTests {
         try body(browser, tab)
     }
 
+    @Test func commandFieldLeadsOffersAndOpensWithoutHome() {
+        withPage { browser, tab in
+            browser.prefs.menuCommands = false
+            browser.newTab()
+            #expect(browser.showsHomeField)
+            browser.replaceTyped("Open Command Field")
+            #expect(browser.offers.first?.kind == .command(.openCommandField))
+            Command.openCommandField.run(in: browser)
+            #expect(browser.fieldShowing && !browser.showsHomeField)
+            #expect(browser.tabs.map(\.id) == [tab.id])
+            browser.pressNewTab()
+            #expect(browser.showsHomeField)
+        }
+    }
+
+    @Test func manageProfilesLeadsComposedOffers() {
+        withPage { browser, _ in
+            browser.prefs.menuCommands = false
+            let url = URL(string: "https://profiles.example/")!
+            browser.history = History([Visit(url: url.absoluteString, key: url.absoluteString, title: "Manage Profiles", count: 5, last: Date(), typed: 5)])
+            for name in ["Manage Profiles", "Profile Manager"] {
+                browser.replaceTyped(name)
+                #expect(browser.offers.first?.kind == .command(.manageProfiles))
+            }
+        }
+    }
+
+    @Test func libraryPagesDoNotTakeNumberedTabSlots() {
+        withPage { browser, tab in
+            let downloads = Tab(bench: true)
+            downloads.restore(url: LibraryPage.downloads.url, title: "Downloads")
+            browser.lay([downloads, tab])
+            #expect(browser.numberable() == [1])
+            #expect(Browser.tabIndex(for: 1, among: browser.numberable()) == 1)
+            #expect(Browser.tabIndex(for: 2, among: browser.numberable()) == nil)
+            #expect(Browser.tabIndex(for: 9, among: browser.numberable()) == 1)
+        }
+    }
+
+    @Test func spaceArrowActionsLeadOffersWithoutTheExpandedCatalog() {
+        withPage { browser, _ in
+            let enabled = browser.prefs.usesSpaces
+            let expanded = browser.prefs.menuCommands
+            defer { browser.prefs.usesSpaces = enabled; browser.prefs.menuCommands = expanded }
+            browser.prefs.usesSpaces = true
+            browser.prefs.menuCommands = false
+            browser.spaces = [Space(id: Space.firstID, name: "First", icon: "1", ownSignIns: false),
+                              Space(id: UUID(), name: "Second", icon: "2", ownSignIns: false)]
+            browser.spaceID = Space.firstID
+            for command: Command in [.previousSpace, .nextSpace] {
+                #expect(command.available(in: browser))
+                browser.replaceTyped(command.title)
+                #expect(browser.offers.first?.kind == .command(command))
+            }
+        }
+    }
+
+    @Test func appAndSpacePinActionsLeadTheComposedOffersWithEitherLayout() throws {
+        try withPage { browser, _ in
+            let sidebar = browser.prefs.sidebar
+            let trail = browser.prefs.showLeftTrail
+            defer { browser.prefs.sidebar = sidebar; browser.prefs.showLeftTrail = trail }
+            browser.prefs.sidebar = true
+            let tab = Tab(configuration: browser.configuration(for: URL(string: "https://pin-commands.example/")!))
+            browser.prepare(tab)
+            tab.restore(url: URL(string: "https://pin-commands.example/")!, title: "Pin commands")
+            browser.lay([tab])
+            browser.activeID = tab.id
+            defer {
+                if let app = TrailApps.shared.application(for: tab) { TrailApps.shared.remove(app.id, in: browser) }
+            }
+            for enabled in [true, false] {
+                browser.prefs.showLeftTrail = enabled
+                for name in ["Pin Across Spaces", "Pin to Left Trail"] {
+                    browser.replaceTyped(name)
+                    #expect(browser.offers.first?.kind == .command(.pinTrailApp))
+                }
+                browser.replaceTyped("Pin in This Space")
+                #expect(browser.offers.first?.kind == .command(.pinTab))
+            }
+            Command.pinTab.run(in: browser)
+            #expect(tab.kept && tab.pin == nil)
+            browser.replaceTyped("Unpin Tab")
+            #expect(browser.offers.first?.kind == .command(.unpinTab))
+            Command.unpinTab.run(in: browser)
+            Command.pinTrailApp.run(in: browser)
+            #expect(TrailApps.shared.application(for: tab) != nil)
+            browser.replaceTyped("Unpin Across Spaces")
+            #expect(browser.offers.first?.kind == .command(.unpinTrailApp))
+            Command.unpinTrailApp.run(in: browser)
+            #expect(!tab.kept && TrailApps.shared.application(for: tab) == nil)
+        }
+    }
+
     @Test func experimentalSwitchRestoresLegacySearchAndDisablesSavedNewActions() throws {
         try withPage { browser, tab in
             let full = browser.prefs.fullURL
@@ -90,6 +184,20 @@ struct MenuCommandCatalogTests {
             #expect(Command.showFullURL.available(in: browser))
             browser.replaceTyped("developer mode")
             #expect(browser.offers.first?.kind == .command(.devModeOn))
+        }
+    }
+
+    @Test func customizeSpaceAndItsPreviousNameLeadOffers() {
+        withPage { browser, _ in
+            let enabled = browser.prefs.usesSpaces
+            defer { browser.prefs.usesSpaces = enabled }
+            browser.prefs.usesSpaces = true
+            for words in ["Edit Space", "Rename Space", "Customize Space", "Change Space Icon"] {
+                browser.history = History([Visit(url: "https://example.test/", key: "example.test", title: words,
+                                                 count: 200, last: Date(), typed: 100)])
+                browser.replaceTyped(words)
+                #expect(browser.offers.first?.kind == .command(.changeSpaceIcon))
+            }
         }
     }
 
@@ -413,7 +521,7 @@ struct MenuCommandCatalogTests {
                                           .updateLiveFolder, .stopLiveFolder]
             #expect(!MenuCommands.targets(in: browser).contains { personal.contains($0.operation) })
             #expect(!Command.newSpace.available(in: browser))
-            #expect(!Command.renameSpace.available(in: browser))
+            #expect(!Command.changeSpaceIcon.available(in: browser))
             #expect(!Command.savePageMarkdown.available(in: browser))
         }
     }

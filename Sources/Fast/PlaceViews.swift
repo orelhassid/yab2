@@ -310,6 +310,7 @@ extension PlaceTileView {
 /// the bookmarks' row does, put on as it arrives.
 struct PlacePageMark: View {
     let url: URL
+    var side: CGFloat = Omnibox.tile - 4
     /// The icon that arrived while it was shown, and for which address: a
     /// bookmark edited to another doesn't keep the old one's.
     @State private var arrived: (url: URL, icon: NSImage?)?
@@ -318,8 +319,8 @@ struct PlacePageMark: View {
         let host = url.host()?.lowercased() ?? ""
         let bare = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
         let icon = arrived?.url == url ? arrived?.icon : nil
-        Mark(icon: icon ?? Self.known(url), letter: bare.first.map { String($0).uppercased() } ?? "", size: Omnibox.tile - 4)
-            .frame(width: Omnibox.tile, height: Omnibox.tile)
+        Mark(icon: icon ?? Self.known(url), letter: bare.first.map { String($0).uppercased() } ?? "", size: side)
+            .frame(width: side + 4, height: side + 4)
             .onReceive(Favicons.shared.changes) { site in
                 if site == Favicons.site(url) { arrived = (url, Self.known(url)) }
             }

@@ -334,6 +334,9 @@ extension Browser {
         // A Blank Window keeps nothing: its tabs are today's alone, as
         // Arc's has no Pin Tab nor New Folder.
         guard !blank else { return }
+        for tab in group {
+            if let app = TrailApps.shared.application(for: tab) { TrailApps.shared.remove(app.id, in: self) }
+        }
         var going = group.filter(\.keepable)
         for tab in going { if let other = partner(of: tab), other.keepable, !going.contains(where: { $0 === other }) { going.append(other) } }
         guard !going.isEmpty else { return }
@@ -358,6 +361,9 @@ extension Browser {
     /// order they stood.
     func releaseTabs(_ group: [Tab]) {
         if startsArranging { return arranging { releaseTabs(group) } }
+        for tab in group {
+            if let app = TrailApps.shared.application(for: tab) { TrailApps.shared.remove(app.id, in: self) }
+        }
         var going = group.filter(\.kept)
         for tab in going { if let other = partner(of: tab), other.kept, !going.contains(where: { $0 === other }) { going.append(other) } }
         guard !going.isEmpty else { return }

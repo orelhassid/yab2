@@ -126,7 +126,15 @@ struct SideFoot: View {
     @ObservedObject var hoard: Hoard
 
     var body: some View {
-        tabsFoot
+        if browser.spaceRailWidth > 0 {
+            UpdateOrCapsule(browser: browser, calls: browser.calls) { EmptyView() }
+        } else if browser.windowPurpose == .normal && !browser.blank {
+            TrailLibraryControls(browser: browser, vertical: false)
+                .padding(.horizontal, SideBar.margin)
+                .padding(.bottom, SideBar.margin)
+        } else {
+            tabsFoot
+        }
     }
 
     /// The column on the window's right: the foot mirrored, the plus
@@ -156,7 +164,7 @@ struct SideFoot: View {
     /// The spaces, Mail's among them in its place (turnOrder), in Mail's
     /// foot too: the way back out is one of them (footShowsSpaces).
     @ViewBuilder private var middle: some View {
-        if browser.footShowsSpaces {
+        if browser.footShowsSpaces && browser.spaceRailWidth == 0 {
             SpaceRow(browser: browser)
                 .padding(.horizontal, 2)
         } else {
@@ -179,6 +187,181 @@ struct SideFoot: View {
         UpdateOrCapsule(browser: browser, calls: browser.calls) {
             FootPlus(browser: browser)
         }
+    }
+}
+
+extension Browser {
+    var spaceRailWidth: CGFloat {
+        prefs.showLeftTrail && prefs.sidebar && spacesShown && !blank ? SideBar.row + 2 * SideBar.margin : 0
+    }
+
+    var railInsideColumn: CGFloat { flank == .left ? spaceRailWidth : 0 }
+    /// A hover preview allows a full default column of tabs beside the trail.
+    /// Keep the saved docked width available when the preview closes.
+    var presentedSidebarWidth: CGFloat {
+        guard prefs.sideShut, spaceRailWidth > 0 else { return prefs.sideWidth }
+        return hoverResizeWidth ?? max(prefs.sideWidth, Metrics.side + railInsideColumn)
+    }
+
+    var sidebarContentWidth: CGFloat { presentedSidebarWidth - railInsideColumn }
+
+    /// The left rail always owns its strip of the window, including while
+    /// the tab column is hidden or floating over the page.
+    var leadingSidebarRoom: CGFloat {
+        max(spaceRailWidth, flank == .left ? sideShown : 0)
+    }
+}
+
+/// Shared hit target, glyph sizing and selection treatment for rail controls.
+struct RailButton<Mark: View>: View {
+    let title: String
+    var selected = false
+    var highlighted = false
+    var grid = false
+    let action: () -> Void
+    @ViewBuilder let mark: () -> Mark
+    @Environment(\.tone) private var tone
+    @State private var hovering = false
+
+    init(_ title: String, selected: Bool = false, highlighted: Bool = false, grid: Bool = false,
+         action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
+        self.title = title
+        self.selected = selected
+        self.highlighted = highlighted
+        self.grid = grid
+        self.action = action
+        self.mark = mark
+    }
+
+    static func glyph(_ icon: String) -> Symbol {
+        let header = Door.Size.header
+        // Use the same artwork box as a Space mark, including the glyph’s intrinsic inset.
+        return Symbol(header.drawing(for: icon), size: SideBar.mark, side: SideBar.mark, stroke: header.stroke)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            mark()
+                .foregroundStyle(hovering || selected ? Palette.ink : Palette.muted(on: tone))
+                .frame(width: grid ? nil : SideBar.row, height: grid ? SideBar.square : SideBar.row)
+                .frame(maxWidth: grid ? .infinity : nil)
+                .background {
+                    if selected {
+                        SelectionPlate(corner: SideBar.radius, state: .selected)
+                    } else if hovering || highlighted || grid {
+                        SelectionPlate(corner: SideBar.radius, state: .hover)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .onHover { hovering = $0 }
+        .accessibilityLabel(title)
+    }
+}
+
+extension RailButton where Mark == Symbol {
+    init(_ title: String, icon: String, selected: Bool = false, action: @escaping () -> Void) {
+        self.init(title, selected: selected, action: action) { Self.glyph(icon) }
+    }
+}
+
+/// One set of library and profile controls, placed in the trail or the footer.
+struct TrailLibraryControls: View {
+    @ObservedObject var browser: Browser
+    let vertical: Bool
+    @State private var preview = TrailPreviewState()
+    @State private var showingProfile = false
+    @ObservedObject private var profiles = BrowserProfileIdentities.shared
+
+    var body: some View {
+        let layout = vertical ? AnyLayout(VStackLayout(spacing: SideBar.gap)) : AnyLayout(HStackLayout(spacing: SideBar.gap))
+        layout {
+            HoardButton(hoard: browser.hoard, place: .side, inRail: true, preview: { preview.pin(.downloads) })
+                .modifier(TrailLibraryPopover(page: .downloads, browser: browser, state: preview, vertical: vertical))
+                .background(ClickZone(away: browser.fieldAway))
+            ForEach([LibraryPage.bookmarks, .history, .extensions], id: \.self) { page in
+                RailButton(page.title, icon: page.icon, selected: preview.page == page || browser.active?.libraryPage == page) {
+                    preview.pin(page)
+                }
+                .modifier(TrailLibraryPopover(page: page, browser: browser, state: preview, vertical: vertical))
+                .background(ClickZone(away: browser.fieldAway))
+            }
+            if !vertical {
+                Spacer(minLength: SideBar.gap)
+            }
+            RailButton("Profile", selected: showingProfile, action: { showingProfile.toggle() }) {
+                ProfilePicture(profile: browser.currentProfileSpace.profileID, size: SideBar.mark + 3)
+            }
+            .accessibilityValue(browser.activeProfileName)
+            .popover(isPresented: $showingProfile, arrowEdge: vertical ? (browser.flank == .right ? .leading : .trailing) : .bottom) {
+                ProfileSwitcher(browser: browser) { showingProfile = false }
+            }
+        }
+
+        .frame(maxWidth: vertical ? nil : .infinity)
+    }
+}
+
+struct SpaceRail: View {
+    @ObservedObject private var drop = SpaceDrop.shared
+    @ObservedObject private var pinned = TrailApps.shared
+    @ObservedObject var browser: Browser
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if browser.prefs.sideShut {
+                RailButton(browser.columnTitle, icon: ColumnDoor.mark(browser.flank)) { browser.toggleColumn() }
+                    .keyTip(browser.columnTitle, shortcut: browser.columnTitle)
+                    .accessibilityHint("Keeps the sidebar open beside the page")
+                    .benchSpot("column door")
+                    .frame(height: Metrics.strip)
+            } else {
+                Color.clear.frame(height: Metrics.strip).allowsHitTesting(false)
+            }
+            FootPlus(browser: browser, inRail: true)
+                .padding(.bottom, SideBar.margin)
+            ScrollViewReader { reader in
+                ThreadScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: SideBar.margin) {
+                        if !pinned.apps.isEmpty || drop.trailOwner == ObjectIdentifier(browser) {
+                            RailGroup {
+                                ForEach(pinned.apps) { app in TrailAppButton(app: app, browser: browser) }
+                                if drop.trailOwner == ObjectIdentifier(browser) {
+                                    RailButton<Symbol>.glyph("pin")
+                                        .frame(width: SideBar.row, height: SideBar.row)
+                                        .background {
+                                            if drop.overTrail { SelectionPlate(corner: SideBar.radius, state: .selected) }
+                                        }
+                                        .overlay { RoundedRectangle(cornerRadius: SideBar.radius)
+                                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 3])) }
+                                        .foregroundStyle(Palette.ink)
+                                        .accessibilityLabel("Pin Across Spaces")
+                                }
+                            }
+                            .background(SpaceAnchor(kind: .trailPins))
+                            .accessibilityElement(children: .contain)
+                            .accessibilityLabel("App Tabs")
+                            Divider().padding(.horizontal, SideBar.margin)
+                        }
+                        SpaceRow(browser: browser, vertical: true)
+                    }.frame(maxWidth: .infinity)
+                }
+                .onChange(of: browser.spaceID) { _, id in reader.scrollTo(id) }
+            }
+            TrailLibraryControls(browser: browser, vertical: true)
+            .padding(.bottom, SideBar.margin)
+        }
+        .frame(width: browser.spaceRailWidth)
+        .background(SpaceAnchor(kind: .trail))
+        .overlay(alignment: .trailing) {
+            HStack(spacing: 0) { Divider() }
+                .padding(.top, browser.prefs.sideShut ? 0 : Metrics.strip)
+                .allowsHitTesting(false)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Spaces, pinned apps and shortcuts")
     }
 }
 
@@ -232,49 +415,92 @@ struct SpaceRowPlan: Equatable {
 /// pointer a space shows its emoji in color, a dot too, and its tip names
 /// it with its key. Dragged along the row, a space takes another place, as
 /// in Arc; a right click has its menu.
+enum TrailSpaceLimit {
+    static let key = "spaces.trailLimit"
+    static let initial = 3
+    static let range = 1...20
+}
+
 struct SpaceRow: View {
     @ObservedObject var browser: Browser
+    @AppStorage(TrailSpaceLimit.key, store: Store.settings) private var limit = TrailSpaceLimit.initial
+    @State private var more = false
+    var vertical = false
     @ObservedObject private var news = UpdateNews.shared
     /// The space in the hand, and how far it has come.
     @State private var lifted: UUID?
     @State private var lift: CGFloat = 0
 
     var body: some View {
-        GeometryReader { room in
-            let order = browser.turnOrder
-            let plan = SpaceRowPlan(room: room.size.width, count: order.count, dots: browser.prefs.spaceDots,
-                                    lent: news.sideButton > 0 ? max(0, news.sideButton - Door.side) : 0)
-            ScrollViewReader { reader in
-                ThreadScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {
-                        ForEach(Array(order.enumerated()), id: \.element.id) { index, space in
-                            SpaceSlot(browser: browser, space: space, index: index, on: space.id == browser.spaceID, plan: plan)
-                                .id(space.id)
-                                .offset(x: shift(index, order, plan))
-                                .zIndex(lifted == space.id ? 1 : 0)
-                                .animation(lifted == nil || lifted == space.id ? nil : Motion.settle, value: shift(index, order, plan))
-                                .highPriorityGesture(drag(space, order: order, plan: plan))
-                        }
+        let order = browser.turnOrder
+        if vertical {
+            let plan = SpaceRowPlan(room: SideBar.row * CGFloat(order.count), count: order.count, dots: browser.prefs.spaceDots)
+            let visible = Array(order.prefix(max(1, limit)))
+            let hidden = order.dropFirst(visible.count)
+            RailGroup {
+                slots(visible, plan)
+                if !hidden.isEmpty {
+                    RailButton("More Spaces", icon: "ellipsis", selected: more || hidden.contains { $0.id == browser.spaceID }) {
+                        more.toggle()
                     }
-                    // Fewer than fill it: in the middle of the room.
-                    .frame(minWidth: room.size.width, minHeight: Door.side)
+                    .popover(isPresented: $more, arrowEdge: browser.flank == .right ? .leading : .trailing) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("More Spaces").font(.headline).padding(CardFrame.inset)
+                            Divider()
+                            ThreadScrollView {
+                                VStack(spacing: 0) {
+                                    ForEach(hidden) { space in
+                                        TrailMenuRow(title: space.name, selected: space.id == browser.spaceID, action: {
+                                            more = false
+                                            browser.switchSpace(to: space.id)
+                                        }) { SpaceMark(icon: space.icon, size: SideBar.mark) }
+                                    }
+                                }
+                            }.frame(height: CGFloat(min(8, hidden.count)) * SideBar.row)
+                            Divider()
+                            TrailMenuRow(title: "Manage Spaces…", action: {
+                                more = false
+                                SettingsWindow.shared.show(.spaces, for: browser)
+                            }) { Symbol("slider.horizontal.3", size: SideBar.mark) }
+                        }.padding(6).frame(width: 240)
+                    }
                 }
-                .scrollDisabled(!plan.scrolls)
-                .onAppear { if plan.scrolls { reader.scrollTo(browser.spaceID, anchor: .center) } }
-                // Only while it scrolls: asked, the scroll view lays the
-                // window out there and then, in every switch's pass.
-                .onChange(of: browser.spaceID) { _, id in if plan.scrolls { reader.scrollTo(id, anchor: .center) } }
-                .onChange(of: plan.scrolls) { _, scrolls in if scrolls { reader.scrollTo(browser.spaceID, anchor: .center) } }
             }
+        } else {
+            GeometryReader { room in
+                let plan = SpaceRowPlan(room: room.size.width, count: order.count, dots: browser.prefs.spaceDots,
+                                        lent: news.sideButton > 0 ? max(0, news.sideButton - Door.side) : 0)
+                ScrollViewReader { reader in
+                    ThreadScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 0) { slots(order, plan) }
+                            .frame(minWidth: room.size.width, minHeight: Door.side)
+                    }
+                    .scrollDisabled(!plan.scrolls)
+                    .onAppear { if plan.scrolls { reader.scrollTo(browser.spaceID, anchor: .center) } }
+                    .onChange(of: browser.spaceID) { _, id in if plan.scrolls { reader.scrollTo(id, anchor: .center) } }
+                    .onChange(of: plan.scrolls) { _, scrolls in if scrolls { reader.scrollTo(browser.spaceID, anchor: .center) } }
+                }
+            }.frame(height: Door.side)
         }
-        .frame(height: Door.side)
+    }
+
+    private func slots(_ order: [Space], _ plan: SpaceRowPlan) -> some View {
+        ForEach(Array(order.enumerated()), id: \.element.id) { index, space in
+            let offset = shift(index, order, plan)
+            SpaceSlot(browser: browser, space: space, index: index, on: space.id == browser.spaceID, plan: plan, inRail: vertical)
+                .id(space.id)
+                .offset(x: vertical ? 0 : offset, y: vertical ? offset : 0)
+                .zIndex(lifted == space.id ? 1 : 0)
+                .animation(lifted == nil || lifted == space.id ? nil : Motion.settle, value: shift(index, order, plan))
+                .highPriorityGesture(drag(space, order: order, plan: plan))
+        }
     }
 
     /// Where the space in the hand would land: anywhere, Mail too.
     private func landing(_ from: Int, _ order: [Space], _ plan: SpaceRowPlan) -> Int {
         var edge: CGFloat = 0
         let centers = order.map { space in
-            let width = plan.width(on: space.id == browser.spaceID)
+            let width = vertical ? SideBar.row + SideBar.gap : plan.width(on: space.id == browser.spaceID)
             defer { edge += width }
             return edge + width / 2
         }
@@ -287,7 +513,7 @@ struct SpaceRow: View {
         guard let lifted, let from = order.firstIndex(where: { $0.id == lifted }) else { return 0 }
         if index == from { return lift }
         let to = landing(from, order, plan)
-        let width = plan.width(on: order[from].id == browser.spaceID)
+        let width = vertical ? SideBar.row + SideBar.gap : plan.width(on: order[from].id == browser.spaceID)
         if from < to, index > from, index <= to { return -width }
         if from > to, index < from, index >= to { return width }
         return 0
@@ -297,7 +523,7 @@ struct SpaceRow: View {
         DragGesture(minimumDistance: 4)
             .onChanged { drag in
                 lifted = space.id
-                lift = drag.translation.width
+                lift = vertical ? drag.translation.height : drag.translation.width
             }
             .onEnded { _ in
                 guard lifted == space.id, let from = order.firstIndex(where: { $0.id == space.id }) else { return }
@@ -326,6 +552,7 @@ struct SpaceSlot: View {
     let index: Int
     let on: Bool
     let plan: SpaceRowPlan
+    var inRail = false
 
     @State private var hovering = false
     /// A tab or a folder held over it (SpaceDrop): let go, it goes here.
@@ -333,53 +560,74 @@ struct SpaceSlot: View {
     @Environment(\.tone) private var tone
     @Environment(\.colorScheme) private var scheme
 
-    var body: some View {
-        let held = drop.slot == space.id
-        Button { browser.switchSpace(to: space.id) } label: {
-            ZStack {
-                if plan.icons || held {
-                    // The foot's doors' corner, a row's (FootPlus); held
-                    // over, the ring a picked color wears, as the capsule's.
+    @ViewBuilder private func mark(held: Bool, size markSize: CGFloat) -> some View {
+        if hovering || held || (plan.activeIcon && on) {
+            SpaceMark(icon: space.icon, size: markSize).fixedSize()
+                .foregroundStyle(Palette.ink)
+        } else if plan.icons, !Spaces.isEmoji(space.icon) {
+            // A symbol dims as Arc's do: the ink at Arc's strength,
+            // not the muted words' gray, which on Glass is the ink
+            // itself and left the space on screen like the rest
+            // (register #427).
+            SpaceMark(icon: space.icon, size: markSize).fixedSize()
+                .foregroundStyle(Palette.ink.opacity(SpaceSlot.dim))
+        } else if plan.icons {
+            // Gray as Arc's; the space on screen and the one under
+            // the pointer in their own colors.
+            Image(nsImage: GrayMark.image(space.icon, size: markSize, dark: (tone?.scheme ?? scheme) == .dark))
+                .opacity(0.5)
+        } else {
+            Circle()
+                .fill(on ? Palette.strong(on: tone) : Palette.ink.opacity(SpaceSlot.dim))
+                .frame(width: on ? 7 : 4, height: on ? 7 : 4)
+                // The old one shrinks to gray as the new one grows,
+                // nothing travels (picked 2026-10-19, artifact
+                // VptJwGPe, variant A).
+                .animation(.easeOut(duration: 0.14), value: on)
+        }
+    }
+
+    @ViewBuilder private func button(held: Bool) -> some View {
+        if inRail {
+            RailButton(space.name, selected: on, highlighted: held, action: { browser.switchSpace(to: space.id) }) {
+                mark(held: held, size: SideBar.mark)
+            }
+            .overlay {
+                if held {
                     RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
-                        .fill(hovering || held ? Palette.hover(on: tone) : .clear)
-                        .frame(width: min(plan.pitch - 2, Door.side))
-                        .overlay {
-                            if held {
-                                RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
-                                    .strokeBorder(Color.accentColor, lineWidth: 2)
-                            }
-                        }
-                }
-                if hovering || held || (plan.activeIcon && on) {
-                    SpaceMark(icon: space.icon, size: 12).fixedSize()
-                        .foregroundStyle(Palette.ink)
-                } else if plan.icons, !Spaces.isEmoji(space.icon) {
-                    // A symbol dims as Arc's do: the ink at Arc's strength,
-                    // not the muted words' gray, which on Glass is the ink
-                    // itself and left the space on screen like the rest
-                    // (register #427).
-                    SpaceMark(icon: space.icon, size: 12).fixedSize()
-                        .foregroundStyle(Palette.ink.opacity(SpaceSlot.dim))
-                } else if plan.icons {
-                    // Gray as Arc's; the space on screen and the one under
-                    // the pointer in their own colors.
-                    Image(nsImage: GrayMark.image(space.icon, size: 12, dark: (tone?.scheme ?? scheme) == .dark))
-                        .opacity(0.5)
-                } else {
-                    Circle()
-                        .fill(on ? Palette.strong(on: tone) : Palette.ink.opacity(SpaceSlot.dim))
-                        .frame(width: on ? 7 : 4, height: on ? 7 : 4)
-                        // The old one shrinks to gray as the new one grows,
-                        // nothing travels (picked 2026-10-19, artifact
-                        // VptJwGPe, variant A).
-                        .animation(.easeOut(duration: 0.14), value: on)
+                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                        .allowsHitTesting(false)
                 }
             }
-            .frame(width: plan.width(on: on), height: Door.side)
-            .contentShape(Rectangle())
+        } else {
+            Button { browser.switchSpace(to: space.id) } label: {
+                ZStack {
+                    if plan.icons || held {
+                        // The foot's doors' corner, a row's (FootPlus); held
+                        // over, the ring a picked color wears, as the capsule's.
+                        RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
+                            .fill(hovering || held ? Palette.hover(on: tone) : .clear)
+                            .frame(width: min(plan.pitch - 2, Door.side))
+                            .overlay {
+                                if held {
+                                    RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
+                                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                                }
+                            }
+                    }
+                    mark(held: held, size: 12)
+                }
+                .frame(width: plan.width(on: on), height: Door.side)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
         }
-        .buttonStyle(.plain)
-        .focusable(false)
+    }
+
+    var body: some View {
+        let held = drop.slot == space.id
+        button(held: held)
         .background(SpaceAnchor(kind: .slot(space.id)))
         .animation(Motion.quick, value: held)
         // Where it stands, for the bench to carry a tab to (rowframes).
@@ -391,7 +639,7 @@ struct SpaceSlot: View {
             if inside, !on { DispatchQueue.main.async { [browser, id = space.id] in SpacePager.shared.prepare(browser, only: id) } }
         }
         .animation(Motion.quick, value: hovering)
-        .keyTip(space.name, keys: keys, side: .above)
+        .keyTip(space.name, keys: keys, side: inRail ? .right : .above, wait: inRail ? 0 : KeyTip.dwell, bubble: inRail)
         // The space's menu, the same as from its name in the column
         // (SpaceMenu); then the whole row as dots or not (`prefs.spaceDots`).
         .steadyMenu(actions: true) {
@@ -495,6 +743,7 @@ enum GrayMark {
 /// take it to another space.
 struct FootPlus: View {
     let browser: Browser
+    var inRail = false
 
     @State private var open = false
     @State private var hovering = false
@@ -508,22 +757,34 @@ struct FootPlus: View {
 
     // Its corner is a row's: 8 in from the window's 18 corner, and the
     // rows over it round so too.
-    var body: some View {
-        Button { show() } label: {
-            Symbol("plus", size: 11, weight: .medium)
-                // Arc's: a cross in 0.1 s, once the menu is up.
-                .rotationEffect(.degrees(open ? 45 : 0))
-                .animation(still ? nil : .easeOut(duration: 0.1), value: open)
-                .foregroundStyle(open || hovering ? Palette.ink : Palette.muted(on: tone))
-                .frame(width: Door.side, height: Door.side)
-                .contentShape(RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous))
+    @ViewBuilder private var button: some View {
+        if inRail {
+            RailButton("New", selected: open, highlighted: drop.hot, action: show) {
+                RailButton<Symbol>.glyph("plus")
+                    .rotationEffect(.degrees(open ? 45 : 0))
+                    .animation(still ? nil : Motion.quick, value: open)
+            }
+        } else {
+            Button { show() } label: {
+                Symbol("plus", size: 11, weight: .medium)
+                    // Arc's: a cross in 0.1 s, once the menu is up.
+                    .rotationEffect(.degrees(open ? 45 : 0))
+                    .animation(still ? nil : .easeOut(duration: 0.1), value: open)
+                    .foregroundStyle(open || hovering ? Palette.ink : Palette.muted(on: tone))
+                    .frame(width: Door.side, height: Door.side)
+                    .contentShape(RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous))
+            }
+            .buttonStyle(Door.Give())
+            .focusable(false)
+            .background(
+                RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
+                    .fill(open ? Palette.wash(on: tone) : (hovering || drop.hot ? Palette.hover(on: tone) : .clear))
+            )
         }
-        .buttonStyle(Door.Give())
-        .focusable(false)
-        .background(
-            RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
-                .fill(open ? Palette.wash(on: tone) : (hovering || drop.hot ? Palette.hover(on: tone) : .clear))
-        )
+    }
+
+    var body: some View {
+        button
         // A tab held over it: the ring a picked color wears.
         .overlay {
             if drop.hot {
@@ -554,11 +815,10 @@ struct FootPlus: View {
         open = true
         let menu = FootPlusMenu.make(browser)
         guard let window = view.window else { open = false; return }
-        // The searchable panel (ActionMenu.swift) over the plus, rising from
-        // its top-left, its search at its foot nearest the plus.
         let frame = window.convertToScreen(view.convert(view.bounds, to: nil))
         FootPlusMenu.shown = menu
-        ActionMenu.show(menu, in: window, at: NSPoint(x: frame.minX, y: frame.maxY + 4), up: true) {
+        let anchor = NSPoint(x: frame.minX, y: inRail ? frame.minY - 4 : frame.maxY + 4)
+        ActionMenu.show(menu, in: window, at: anchor, up: !inRail) {
             FootPlusMenu.shown = nil
             open = false
             pressClosed = NSEvent.pressedMouseButtons & 1 != 0 ? Date() : nil
@@ -600,6 +860,9 @@ enum FootPlusMenu {
         if browser.spacesShown {
             line("New Space…", "square.2.layers.3d") { SpaceTray.open(browser) }
         }
+        if Command.pinTrailApp.available(in: browser) {
+            line(Command.pinTrailApp.title, "pin") { Command.pinTrailApp.run(in: browser) }
+        }
         line("New Folder", "yab.folder.plus") {
             browser.folderBook.unfoldSpace()
             browser.newEmptyFolder()
@@ -639,7 +902,7 @@ final class SpaceShown: ObservableObject {
         let arrives = !pulled
         pulled = false
         // The strip's rows and capsule turn in this pass (StripTurns).
-        if id != next, !now, let id { StripTurns.shared.begin(from: id, start: handoff) }
+        if id != next, !now, SpaceTransition.current == .slide, let id { StripTurns.shared.begin(from: id, start: handoff) }
         handoff = 0
         let move = { [self] in
             if id != next {
@@ -722,7 +985,7 @@ struct SpaceCapsule: View {
     /// Across the top: a plate of its own, the name with no chevron, and the
     /// strip's turn (StripTurn).
     private var strip: Bool { !up }
-    private var still: Bool { reduceMotion || SpaceTurn.still }
+    private var still: Bool { reduceMotion || SpaceTurn.still || SpaceTransition.current != .slide }
 
     var body: some View {
         // Across the top, the space on screen, in the switch's own pass: the
@@ -910,12 +1173,12 @@ struct SpaceCapsule: View {
                 ZStack(alignment: .leading) {
                     label(space)
                         .id(space.id)
-                        .transition(SpaceTurn.still || reduceMotion || pull.quiet ? .identity : .asymmetric(
+                        .transition(SpaceTurn.still || reduceMotion || SpaceTransition.current != .slide || pull.quiet ? .identity : .asymmetric(
                             insertion: .opacity.combined(with: .offset(x: 8 * step)).animation(Self.into),
                             removal: .opacity.combined(with: .offset(x: -8 * step)).animation(Self.out)
                         ))
                 }
-                .animation(SpaceTurn.still || reduceMotion || pull.quiet ? nil : SpaceTurn.pace, value: space.id)
+                .animation(SpaceTurn.still || reduceMotion || SpaceTransition.current != .slide || pull.quiet ? nil : SpaceTurn.pace, value: space.id)
             }
         }
         .padding(.leading, CapsulePlan.inset)
@@ -1109,7 +1372,7 @@ enum StripTurn {
     /// disablesAnimations drops an `.animation(_:value:)`, and the plate
     /// and the tabs after it jumped to the new space's place in one frame.
     static func carry(_ t: inout Transaction, on: Bool) {
-        t.animation = on ? animation : nil
+        t.animation = on && SpaceTransition.current == .slide ? animation : nil
     }
     static var spring: Spring { Spring(response: response, dampingRatio: 1) }
 
@@ -1138,7 +1401,7 @@ enum StripTurn {
     /// "layers" in `cut` plays it in SwiftUI as before, for the bench.
     @MainActor static var layered: Bool { hosted && !cut.contains("layers") }
     /// One part of the turn played by SwiftUI: unless left out, or layered.
-    @MainActor static func swiftUI(_ part: String) -> Bool { !layered && !cut.contains(part) }
+    @MainActor static func swiftUI(_ part: String) -> Bool { SpaceTransition.current == .slide && !layered && !cut.contains(part) }
 
     /// The new tabs' arrival, 0 to 1, `t` seconds in.
     static func arrived(_ t: TimeInterval) -> CGFloat {
@@ -1429,6 +1692,7 @@ struct StripPull: ViewModifier {
 struct SpaceTurn: ViewModifier {
     let id: UUID
     let step: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var pull: SpacePull = .shared
     /// The rows come in once the space is drawn (SpaceShown), a frame after
     /// the switch laid them out: started on that frame, the curve spent its
@@ -1455,21 +1719,24 @@ struct SpaceTurn: ViewModifier {
 
     func body(content: Content) -> some View {
         let held = holds(pull)
+        let transition = SpaceTransition.current.resolved(reduceMotion: reduceMotion)
+        let animated = !SpaceTurn.still && transition != .none
+        let slides = animated && transition == .slide
         // Not after two fingers: the rows they brought are in place already.
         // Not while the row of spaces slides over the column (SpacePager):
         // what is under it is masked, and moved it moved every row of every
         // space kept there, each telling where it stands (DrawnRow, KeySky),
         // twice a switch, half the main thread's hold.
-        let waiting = !held && !SpaceTurn.still && shown.id != nil && shown.id != id && !pull.landing && !SpacePager.shared.active
+        let waiting = !held && animated && shown.id != nil && shown.id != id && !pull.landing && !SpacePager.shared.active
         content
-            .offset(x: held ? 0 : pull.x)
-            .modifier(StripCross(progress: pull.progress, coming: false, on: !held))
-            .offset(x: waiting ? Self.reach * CGFloat(step) : 0)
+            .offset(x: held || !slides ? 0 : pull.x)
+            .modifier(StripCross(progress: pull.progress, coming: false, on: animated && !held))
+            .offset(x: waiting && slides ? Self.reach * CGFloat(step) : 0)
             .opacity(waiting ? 0.35 : 1)
             // Held, the arrival plays on nothing: a trigger that came and
             // went with it would start one when it went.
-            .keyframeAnimator(initialValue: Arrival(), trigger: SpaceTurn.still ? nil : shown.arrivals) { view, arrival in
-                view.offset(x: held ? 0 : arrival.x).opacity(held ? 1 : arrival.opacity)
+            .keyframeAnimator(initialValue: Arrival(), trigger: animated ? shown.arrivals : nil) { view, arrival in
+                view.offset(x: held || !slides ? 0 : arrival.x).opacity(held || !animated ? 1 : arrival.opacity)
             } keyframes: { _ in
                 let curve = UnitCurve.bezier(startControlPoint: UnitPoint(x: 0.2, y: 0.8), endControlPoint: UnitPoint(x: 0.2, y: 1))
                 KeyframeTrack(\.x) {

@@ -176,10 +176,10 @@ enum ColumnLayout {
     /// kept, the line heading today's.
     static func cells(_ browser: Browser, folders given: Folders? = nil) -> [Cell] {
         let folders = given ?? browser.folderBook
-        let loose = browser.tabs.filter { $0.pin == nil }
+        let loose = browser.sidebarLooseTabs
         let joined = !browser.pairs.isEmpty
         var cells: [Cell] = loose.compactMap { tab in
-            if joined, browser.pair(of: tab.id)?.second == tab.id { return nil }
+            if joined, browser.pair(of: tab.id)?.second == tab.id, browser.partner(of: tab)?.libraryPage == nil { return nil }
             if let place = folders.place(of: tab), !place.shown, !place.listed, !place.head { return nil }
             return .tab(tab)
         }
@@ -270,7 +270,7 @@ enum ColumnLayout {
 
     static func live(_ browser: Browser, folders given: Folders? = nil, shape: Shape = Shape()) -> [ColumnItem] {
         let folders = given ?? browser.folderBook
-        let loose = browser.tabs.filter { $0.pin == nil }
+        let loose = browser.sidebarLooseTabs
         let joined = !browser.pairs.isEmpty
         var cells = Self.cells(browser, folders: folders)
         if !shape.out.isEmpty { cells.removeAll { tab($0).map { shape.out.contains($0.id) } ?? false } }
@@ -319,7 +319,7 @@ enum ColumnLayout {
                 if (place?.shown ?? true), !dusted.contains(tab.id) {
                     let indent = place == nil ? 0 : CGFloat(place?.depth ?? 0) * Folders.indent
                     let folded = shape.folded.contains(tab.id)
-                    if joined, let other = browser.partner(of: tab), browser.pair(of: tab.id)?.first == tab.id {
+                    if joined, let other = browser.partner(of: tab), other.libraryPage == nil, browser.pair(of: tab.id)?.first == tab.id {
                         add(tab.id.uuidString, .pair(tab, other), indent: indent, folded: folded)
                     } else {
                         add(tab.id.uuidString, .tab(tab), indent: indent, folded: folded)
@@ -377,22 +377,27 @@ enum ColumnLayout {
                        y: top + CGFloat(index / grid.cols) * (grid.height + SideBar.pinGap) + grid.height / 2)
     }
 
-    /// Where the pins start: under the lights, or the plate.
-    static func pinsTop(_ browser: Browser) -> CGFloat {
+    /// Where the header begins below the window controls and address bar.
+    private static func headTop(_ browser: Browser) -> CGFloat {
         browser.inMail ? Metrics.strip : SideBar.pinsTop(plated: browser.sidePlated, extensions: SidePlate.pinsHeight(in: browser))
+    }
+
+    static func pinsTop(_ browser: Browser) -> CGFloat {
+        let named = (browser.namesSpaces || browser.windowPurpose == .privateOnly) && !browser.inMail
+        return headTop(browser) + (named ? SideBar.row + SideBar.gap : 0)
     }
 
     /// The pins and the space's name over the rows, where SideBar draws
     /// them: the grid's cells, gaps at `gaps` for what is carried in (each
     /// `count` cells), a pin's home typed in over its row of the grid, the
-    /// name under it all. Each item's `y` is from the column's top.
+    /// name above the grid. Each item's `y` is from the column's top.
     static func head(_ browser: Browser, gaps: (at: Int, count: Int)? = nil) -> [ColumnItem] {
-        let width = browser.prefs.sideWidth
+        let width = browser.sidebarContentWidth
         // A pinned pair is one cell (PinPairs.swift).
-        let pins = browser.gridPins
+        let pins = browser.sidebarGridPins
         var cells: [Tab?] = pins
         if let gaps, gaps.count > 0 { cells.insert(contentsOf: Array(repeating: nil, count: gaps.count), at: min(gaps.at, cells.count)) }
-        let top = pinsTop(browser)
+        let top = pinsTop(browser) + browser.sidebarAppsHeight
         let grid = grid(count: cells.count, width: width)
         var items: [ColumnItem] = []
         var gap = 0
@@ -416,11 +421,11 @@ enum ColumnLayout {
                                     x: 0, width: width - 2 * SideBar.margin))
         }
         if browser.windowPurpose == .privateOnly {
-            let y = top + pinBlock(count: cells.count, width: width)
+            let y = headTop(browser)
             items.append(ColumnItem(id: "private name", kind: .privateName, indent: 0, y: y,
                                     height: SideBar.row, x: 0, width: width - 2 * SideBar.margin))
         } else if browser.namesSpaces, !browser.inMail {
-            let y = top + pinBlock(count: cells.count, width: width)
+            let y = headTop(browser)
             items.append(ColumnItem(id: "name " + browser.spaceID.uuidString, kind: .name(browser.space), indent: 0, y: y,
                                     height: SideBar.row, x: 0, width: width - 2 * SideBar.margin))
         }
@@ -434,14 +439,16 @@ enum ColumnLayout {
     /// the one on screen while the row of spaces slides.
     static func parked(_ browser: Browser, row: Parked, travelling: [Tab], space: Space) -> (items: [ColumnItem], head: [ColumnItem]) {
         let folders = browser.folderBook
-        let all = row.tabs + travelling
+        let all = browser.sidebarTabs(row.tabs + travelling)
         // A pinned pair is one cell (PinPairs.swift).
-        let tucked = Set(row.pairs.filter { pair in all.contains { $0.id == pair.first && $0.pin != nil } && all.contains { $0.id == pair.second && $0.pin != nil } }.map(\.second))
+        let visibleIDs = Set(all.map(\.id))
+        let pairs = row.pairs.filter { visibleIDs.contains($0.first) && visibleIDs.contains($0.second) }
+        let tucked = Set(pairs.filter { pair in all.contains { $0.id == pair.first && $0.pin != nil } && all.contains { $0.id == pair.second && $0.pin != nil } }.map(\.second))
         let pins = all.filter { $0.pin != nil && !tucked.contains($0.id) }
         let loose = all.filter { $0.pin == nil }
         let empty = folders.empties(in: space.id)
         let shut = folders.isShut(space.id, in: browser)
-        let partner = { (id: Tab.ID) in row.pairs.first { $0.first == id }?.second ?? row.pairs.first { $0.second == id }?.first }
+        let partner = { (id: Tab.ID) in pairs.first { $0.first == id }?.second ?? pairs.first { $0.second == id }?.first }
         let coming = PagedSpace.Coming.items(loose, active: row.active, open: folders.open, whole: folders.whole, empty: empty, shut: shut, partner: partner)
         var items: [ColumnItem] = []
         var y: CGFloat = 0
@@ -453,9 +460,9 @@ enum ColumnLayout {
         for item in coming {
             switch item {
             case .tab(let tab, let depth):
-                if let pair = row.pairs.first(where: { $0.first == tab.id }), let other = row.tabs.first(where: { $0.id == pair.second }) {
+                if let pair = pairs.first(where: { $0.first == tab.id }), let other = row.tabs.first(where: { $0.id == pair.second }) {
                     add(tab.id.uuidString, .pair(tab, other), indent: CGFloat(depth) * Folders.indent)
-                } else if !row.pairs.contains(where: { $0.second == tab.id }) {
+                } else if !pairs.contains(where: { $0.second == tab.id }) {
                     add(tab.id.uuidString, .tab(tab), indent: CGFloat(depth) * Folders.indent)
                 }
             case .line:
@@ -474,9 +481,10 @@ enum ColumnLayout {
                 add("more " + folder, .more(folder, count), indent: Folders.indent)
             }
         }
-        let width = browser.prefs.sideWidth
+        let width = browser.sidebarContentWidth
         let plated = browser.sidePlated(row)
-        let top = SideBar.pinsTop(plated: plated, extensions: SidePlate.pinsHeight(in: browser, space: space.id, tab: all.first { $0.id == row.active }))
+        let headingY = SideBar.pinsTop(plated: plated, extensions: SidePlate.pinsHeight(in: browser, space: space.id, tab: all.first { $0.id == row.active }))
+        let top = headingY + (browser.namesSpaces ? SideBar.row + SideBar.gap : 0)
         let grid = grid(count: pins.count, width: width)
         var head: [ColumnItem] = pins.enumerated().map { index, tab in
             ColumnItem(id: "pin " + tab.id.uuidString, kind: .pin(tab), indent: 0,
@@ -484,7 +492,7 @@ enum ColumnLayout {
                        x: CGFloat(index % grid.cols) * (grid.width + SideBar.pinGap), width: grid.width)
         }
         if browser.namesSpaces {
-            head.append(ColumnItem(id: "name " + space.id.uuidString, kind: .name(space), indent: 0, y: top + pinBlock(count: pins.count, width: width),
+            head.append(ColumnItem(id: "name " + space.id.uuidString, kind: .name(space), indent: 0, y: headingY,
                                    height: SideBar.row, x: 0, width: width - 2 * SideBar.margin))
         }
         return (items, head)
@@ -501,8 +509,8 @@ enum ColumnLayout {
             let tab = (row.tabs + travelling).first { $0.id == row.active }
             top = SideBar.pinsTop(plated: plated, extensions: SidePlate.pinsHeight(in: browser, space: space.id, tab: tab))
         } else {
-            top = pinsTop(browser)
+            top = headTop(browser)
         }
-        return top + pinBlock(count: pins, width: browser.prefs.sideWidth) + nameBlock
+        return top + browser.sidebarAppsHeight + pinBlock(count: pins, width: browser.sidebarContentWidth) + nameBlock
     }
 }

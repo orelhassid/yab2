@@ -175,17 +175,16 @@ struct KeyNumbersTests {
 
     @Test func digitsLandWhereTheKeysDo() {
         // Ten tabs you can be on: ⌘1 to ⌘8 the first eight, ⌘9 the last.
-        let ten = KeyNumbers.numbers(among: Array(0..<10), count: 10)
+        let ten = KeyNumbers.numbers(among: Array(0..<10))
         #expect(ten == [0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6, 6: 7, 7: 8, 9: 9])
         // Three: ⌘3 and ⌘9 both reach the last, which wears the 3.
-        #expect(KeyNumbers.numbers(among: [0, 1, 2], count: 3) == [0: 1, 1: 2, 2: 3])
+        #expect(KeyNumbers.numbers(among: [0, 1, 2]) == [0: 1, 1: 2, 2: 3])
         // A shut folder's two rows (2 and 3) are passed over, as ⌘ and a
         // digit pass them.
-        let shut = KeyNumbers.numbers(among: [0, 1, 4, 5], count: 6)
+        let shut = KeyNumbers.numbers(among: [0, 1, 4, 5])
         #expect(shut == [0: 1, 1: 2, 4: 3, 5: 4])
         for (at, number) in shut {
-            let index = number == 9 ? 5 : number - 1
-            #expect(Browser.numbered(index, among: [0, 1, 4, 5], count: 6) == at)
+            #expect(Browser.tabIndex(for: number, among: [0, 1, 4, 5]) == at)
         }
     }
 
@@ -207,7 +206,7 @@ struct KeyNumbersTests {
         #expect(tabs.map { KeyNumbers.number(of: $0, in: browser) } == [1, 2, 3, 4])
         // Each number opens the tab that wears it.
         for (n, tab) in tabs.enumerated() {
-            browser.select(index: n)
+            browser.select(number: n + 1)
             #expect(browser.activeID == tab.id)
         }
     }

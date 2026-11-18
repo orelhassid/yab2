@@ -145,7 +145,7 @@ private struct BoostEditorSurface: View {
 
     private var browserSide: CGFloat {
         guard let browser = editor.browser else { return 12 }
-        return browser.prefs.sidebar ? browser.prefs.sideWidth + width : width + 12
+        return browser.prefs.sidebar ? browser.presentedSidebarWidth + width : width + 12
     }
 }
 

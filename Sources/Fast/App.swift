@@ -96,6 +96,8 @@ private struct FileItems: View {
         Divider()
         Button("New Tab") { selected.pressNewTab() }
             .shortcut(.newTab)
+        Button("Open Command Field") { selected.openCommandField() }
+            .shortcut(.openCommandField)
         Button("New Tab in Folder") { selected.newTab(in: selected.folderHere) }
             .shortcut(.newTabInFolder)
             .disabled(selected.folderHere == nil)
@@ -268,9 +270,9 @@ private struct TabsItems: View {
         if selected.several {
             let chosen = selected.chosen
             let n = chosen.count
-            let loose = chosen.filter { $0.pin == nil && !$0.isBlank }.count
+            let loose = chosen.filter { $0.pin == nil && !$0.isBlank && (!selected.prefs.sidebar || !$0.kept) }.count
             if loose > 0 {
-                Button("Pin \(loose) Tabs") { selected.pin(chosen) }
+                Button("Pin \(loose) Tabs in This Space") { selected.pin(chosen) }
                     .shortcut(.pin)
             } else {
                 Button("Unpin \(n) Tabs") { selected.unpin(chosen) }
@@ -284,8 +286,8 @@ private struct TabsItems: View {
                 .shortcut(.copyMarkdownLink)
         } else {
             if let tab = selected.active {
-                if tab.pin == nil {
-                    Button("Pin Tab") { selected.pin(tab) }
+                if tab.pin == nil && (!selected.prefs.sidebar || !tab.kept) {
+                    Button(Command.pinTab.title) { selected.pin(tab) }
                         .shortcut(.pin)
                         .disabled(selected.menuBlank)
                     Button("Rename Tab…") { selected.beginTabEdit(tab) }
@@ -294,7 +296,7 @@ private struct TabsItems: View {
                 } else {
                     // A pin's letter is changed from its own menu,
                     // with the rest of its mark.
-                    Button("Unpin Tab") { selected.unpin(tab) }
+                    Button(Command.unpinTab.title) { selected.unpin(tab) }
                         .shortcut(.pin)
                 }
             }
@@ -361,9 +363,16 @@ private struct TabsItems: View {
         Button("Pick All Tabs") { selected.pickAll() }
             .shortcut(.pickAll)
             .disabled(selected.tabs.count < 2)
-        Button(selected.chosen.allSatisfy(\.kept) ? "Don’t Keep Tab" : "Keep Tab") { selected.toggleKeepTabs() }
-            .shortcut(.keepTab)
-            .disabled(!selected.menuKeepable)
+        if !selected.prefs.sidebar {
+            Button(selected.chosen.allSatisfy(\.kept) ? "Don’t Keep Tab" : "Keep Tab") { selected.toggleKeepTabs() }
+                .shortcut(.keepTab)
+                .disabled(!selected.menuKeepable)
+        }
+        if Command.pinTrailApp.available(in: selected) {
+            Button(Command.pinTrailApp.title) { Command.pinTrailApp.run(in: selected) }
+        } else if Command.unpinTrailApp.available(in: selected) {
+            Button(Command.unpinTrailApp.title) { Command.unpinTrailApp.run(in: selected) }
+        }
         Button("New Folder with Tabs") { selected.newFolder(picked: selected.chosen) }
             .shortcut(.folderWithTabs)
             .disabled(!selected.menuKeepable)
@@ -972,7 +981,8 @@ struct ContentView: View {
                     // rest of the window keeps the plain ground the page
                     // lies on, as it does with no backdrop at all.
                     Palette.ground
-                        .padding(browser.flank == .left ? .leading : .trailing, browser.sideShown)
+                        .padding(.leading, browser.leadingSidebarRoom) // design: reserve the rail independently of the tab column on either side
+                        .padding(.trailing, browser.flank == .right ? browser.sideShown : 0) // design: only the right-hand tab column occupies this edge
                 } else {
                 // Not under the tabs: a real view takes a click before
                 // anything SwiftUI draws over it, and over the whole window
@@ -981,7 +991,7 @@ struct ContentView: View {
                 // parts of them.
                 BackdropDrag(
                     strip: browser.topPeek,
-                    reserved: browser.prefs.sidebar && browser.flank == .left ? browser.sideShown : 0,
+                    reserved: browser.leadingSidebarRoom,
                     trailing: browser.prefs.sidebar && browser.flank == .right ? browser.sideShown : 0,
                     top: !browser.prefs.sidebar, shut: browser.prefs.stripShut, shelf: shelfRoom
                 )
@@ -1010,9 +1020,9 @@ struct ContentView: View {
                 // one surface either way (see Column), and only this room
                 // is laid out, so the page makes room for it in the same
                 // beat as it changes shape.
-                if sidebar && browser.flank == .left {
+                if sidebar && (browser.flank == .left || browser.spaceRailWidth > 0) {
                     Color.clear
-                        .frame(width: browser.sideShown)
+                        .frame(width: browser.leadingSidebarRoom)
                         .transition(.move(edge: .leading))
                 }
 
@@ -1496,7 +1506,7 @@ struct ContentView: View {
         let left = browser.flank == .left
         return EdgeInsets(
             top: band == 0 && shelfRoom == 0 ? inset : 0,
-            leading: left ? max(0, inset - browser.sideShown) : inset,
+            leading: max(0, inset - browser.leadingSidebarRoom),
             bottom: inset,
             trailing: left ? inset : max(0, inset - browser.sideShown)
         )
@@ -1594,7 +1604,7 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: corner, style: .continuous)
                 .fill(Color.clear)
                 .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                .onTapGesture { browser.dismiss() }
+                .onTapGesture { if !browser.showsHomeField { browser.dismiss() } }
                 // The page's click is this tap's, as it was before the
                 // window's own click away (Browser.fieldAway).
                 .background(ClickZone(away: browser.fieldAway))
@@ -1604,7 +1614,7 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: corner, style: .continuous)
                 .fill(Color.clear)
                 .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                .onTapGesture { browser.dismiss() }
+                .onTapGesture { if !browser.showsHomeField { browser.dismiss() } }
         }
     }
 
@@ -1684,6 +1694,15 @@ struct ContentView: View {
                     // both when drawing and when receiving clicks.
                     card
                         .zIndex(browser.fieldShowing ? 0 : 2)
+                    if browser.spaceRailWidth > 0 {
+                        Worn(browser: browser, mode: browser.prefs.backdrop, swatch: backdropTone, glassActive: glassActive) { tone in
+                            SpaceRail(browser: browser)
+                                .toned(tone)
+                        }
+                        .padding(.top, browser.menuDown)
+                        .ignoresSafeArea()
+                        .zIndex(3)
+                    }
                     // The field comes and goes with no motion: raised by ⌘T
                     // or ⌘L it is there whole in the next frame, put away it
                     // is gone in that one, full and compact alike, as Arc's
@@ -1702,7 +1721,7 @@ struct ContentView: View {
             // column both, since a file crosses from one to the other.
             .overlay { leaf {
                 HoardPlace(hoard: browser.hoard, peek: browser.peek, strip: browser.topPeek, immersed: frontImmersed,
-                           sidebar: browser.prefs.sidebar, docked: browser.sideShown > 0,
+                           sidebar: browser.prefs.sidebar, docked: browser.sideShown > 0 || browser.spaceRailWidth > 0,
                            stripShut: browser.prefs.stripShut, bandDoors: browser.bandDoors, flank: browser.flank)
                     .ignoresSafeArea()
             } }
@@ -1914,7 +1933,7 @@ struct ContentView: View {
     /// column's top band, in the same beat as the page.
     @ViewBuilder
     private var stillLights: some View {
-        if browser.stillLights {
+        if browser.stillLights || (browser.railInsideColumn > 0 && !browser.prefs.sideShut && !browser.titleLights && !browser.fullScreen && !frontImmersed) {
             Lights()
                 .frame(width: Lights.run, height: Metrics.row)
                 .padding(.leading, Lights.first - Lights.lead)
@@ -2048,6 +2067,7 @@ struct ContentView: View {
         // see Lights.swift. The title bar's own are put away, but for full
         // screen, which is looked after by Brim.
         Lights.hideOwn(of: window)
+        MouseGestureInput.shared.install()
         Brim.keep(window, for: browser)
         // Glass stays lit behind other apps, see Awake.swift.
         Awake.keep(window)
@@ -2098,7 +2118,7 @@ struct ContentView: View {
             let column = browser.prefs.sidebar
             // A hover card reserves no width beside the page (sideShown
             // is zero), but its visible rows still take the middle button.
-            let columnWidth = browser.sidePeek ? Metrics.floatInset + browser.prefs.sideWidth : browser.sideShown
+            let columnWidth = browser.sidePeek ? Metrics.floatInset + browser.presentedSidebarWidth : browser.sideShown
             let overTabs = column
                 ? (browser.flank == .left ? spot.x < columnWidth : spot.x > content.bounds.width - columnWidth)
                 : content.bounds.height - spot.y < Metrics.strip
@@ -2156,7 +2176,7 @@ struct ContentView: View {
     /// unseen (register 939). The page's full screen is left first, as
     /// Chrome and Safari leave it, and the key is pressed again here.
     private static let leavesPageFullScreen: Set<Shortcut.Action> = [
-        .newTab, .newTabInFolder, .openAddress, .recentTab, .recentTabReverse, .nextTab, .previousTab,
+        .newTab, .openCommandField, .newTabInFolder, .openAddress, .recentTab, .recentTabReverse, .nextTab, .previousTab,
         .tab1, .tab2, .tab3, .tab4, .tab5, .tab6, .tab7, .tab8, .tab9,
     ]
 
@@ -2924,6 +2944,7 @@ struct ContentView: View {
         case .blankWindow: browser.newBlankWindow()
         case .closeWindow: BrowserWindows.shared.window(for: browser)?.performClose(nil)
         case .newTab: browser.pressNewTab()
+        case .openCommandField: browser.openCommandField()
         case .newTabInFolder:
             guard let nest = browser.folderHere else { return false }
             browser.newTab(in: nest)
@@ -2945,7 +2966,7 @@ struct ContentView: View {
             action == .backArrow ? browser.back(byKey: true) : browser.forward(byKey: true)
         case .tab1, .tab2, .tab3, .tab4, .tab5, .tab6, .tab7, .tab8, .tab9:
             let number = Int(action.rawValue.dropFirst(3)) ?? 1
-            browser.select(index: number == 9 ? browser.tabs.count - 1 : number - 1)
+            browser.select(number: number)
         case .space1, .space2, .space3, .space4, .space5, .space6, .space7, .space8, .space9:
             guard browser.turnsSpaces else { return false }
             browser.switchSpace(index: (Int(action.rawValue.dropFirst(5)) ?? 1) - 1)

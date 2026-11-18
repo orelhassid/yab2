@@ -2,11 +2,9 @@ import AppKit
 import Combine
 import SwiftUI
 
-// Settings, in a window of their own, the way a Mac app keeps them, and not
-// a plate over the page. AppKit owns the frame: the title bar, the back and
-// forward in the toolbar, the sidebar with its search. SwiftUI only fills the
-// page on the right, as the system's grouped form, so every switch, menu and
-// button is the one the rest of the Mac uses.
+// Settings shares its sidebar, detail components and model between a browser
+// tab and a separate window. Each host owns its layout; the pages edit the
+// same preferences in either presentation.
 
 /// The pages down the sidebar, and the words each one answers to when the
 /// search at the top of it is typed into.
@@ -17,10 +15,10 @@ import SwiftUI
 /// what it is for; a feature with more to it than fits on one page keeps
 /// the rest a page further in, reached from a row that wears its tile.
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, search, appearance, websites, tabs, sync, shortcuts
+    case profile, general, search, appearance, websites, tabs, sync, shortcuts, mouse
     case ai, mail, snippets, spaces, liveFolders, smallWindow, reading, passwords, autofill, privacy, extensions, boosts, developers
     case experimental, about, inviteFriends
-    /// A page further in: never in the sidebar, which lights its parent.
+    /// A page further in: nested in library navigation; the window sidebar lights its parent.
     case bringIn, engine, history, models, commands, agents, assistants, siteButtons, whileYouBrowse, agentRoutines, agentMemory, agentSkills, credits, appIcon, bestFriend
     case mailInbox, mailNotify, mailReading, mailWriting, mailCalendar, mailAgents, mailBlocked
 
@@ -70,6 +68,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     /// Stable English text remains a search alias in every language.
     var englishTitle: String {
         switch self {
+        case .profile: return "Profile"
         case .general: return "General"
         case .search: return "Field"
         case .appearance: return "Appearance"
@@ -94,6 +93,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .passwords: return "Passwords"
         case .autofill: return "Autofill"
         case .privacy: return "Privacy"
+        case .mouse: return "Mouse"
         case .shortcuts: return "Shortcuts"
         case .developers: return "Developers"
         case .experimental: return "Experimental"
@@ -120,6 +120,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .profile: return "person.crop.circle"
         case .general: return "gearshape"
         case .search: return "magnifyingglass"
         case .appearance: return "paintpalette"
@@ -144,6 +145,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .passwords: return "key"
         case .autofill: return "creditcard"
         case .privacy: return "hand.raised"
+        case .mouse: return "computermouse"
         case .shortcuts: return "command"
         case .about: return "info.circle"
         case .inviteFriends: return "brand.blobplus"
@@ -277,6 +279,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             return "developer developers dev mode localhost server port cli command line terminal path yab mcp skill claude code codex cursor zed windsurf inspector devtools measure rulers"
         case .mail:
             return "mail email gmail inbox google connect account sync reply draft archive snooze"
+        case .profile: return "user profile sign-ins personal settings account"
         case .general:
             return "default browser links other apps mail slack warn quit quitting confirm close import bring downloads save folder location ask where file files update updates version new release restart"
         case .search:
@@ -323,6 +326,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             return "sync icloud devices another mac iphone account recovery key code join encrypted end to end cloud backup extensions plugins"
         case .privacy:
             return "ad block ads blocker trackers tracking shield site camera microphone permissions history clear cookies sign out cache data website"
+        case .mouse: return "mouse gestures mapping draw sensitivity stroke right click trackpad option alt"
         case .shortcuts:
             return "shortcuts keys keyboard commands hotkeys remap rebind change record " + Shortcut.items.map(\.does).joined(separator: " ")
         case .about:
@@ -415,7 +419,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     /// How well the sidebar's search names this page itself, by its title
     /// or anything on it, before its rows are asked.
     func found(_ query: String, bundle: Bundle = .main) -> Double? {
-        SettingsMatch.score(query, title: SettingsWords.text(englishTitle, bundle: bundle), words: keywords + " " + englishTitle)
+        SettingsMatch.score(query, title: SettingsWords.text(SettingsNavigation.title(for: self), bundle: bundle), words: keywords + " " + englishTitle)
     }
 }
 
@@ -457,8 +461,8 @@ final class SettingsModel: ObservableObject {
     private var scrolled: [Int: CGFloat] = [:]
 
     init() {
-        page = .general
-        history = [Place(page: .general)]
+        page = .profile
+        history = [Place(page: .profile)]
     }
 
     /// The page someone elsewhere asked for, taken once: the extensions
@@ -655,14 +659,24 @@ extension Browser {
 final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     static let shared = SettingsWindow()
 
-    private(set) var window: NSWindow?
+    private var separateWindow: NSWindow?
+    private weak var tabHost: SettingsTabHost?
+    private weak var settingsTab: Tab?
+
+    /// Dialogs and editors use the window containing the shared Settings view.
+    var window: NSWindow? { tabHost?.window ?? separateWindow }
+    var isShowing: Bool {
+        if separateWindow?.isVisible != true, let settingsTab, let browser, browser.activeID == settingsTab.id,
+           settingsTab.libraryPage == .settings { return true }
+        return separateWindow?.isVisible == true
+    }
 
     /// The page's own scroll: the widest in the pane beside the sidebar.
     private var pageScroll: NSScrollView? {
-        guard let pane = split?.splitViewItems.last?.viewController.view ?? window?.contentView else { return nil }
+        guard let pane = (tabHost as NSView?) ?? split?.splitViewItems.last?.viewController.view ?? window?.contentView else { return nil }
         var best: NSScrollView?
         func walk(_ view: NSView) {
-            if let scroll = view as? NSScrollView, !scroll.isHiddenOrHasHiddenAncestor,
+            if let scroll = view as? NSScrollView, scroll.hasVerticalScroller, !scroll.isHiddenOrHasHiddenAncestor,
                scroll.frame.width > (best?.frame.width ?? 0) { best = scroll }
             view.subviews.forEach(walk)
         }
@@ -751,6 +765,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     private var watchAgents: AnyCancellable?
     private var watchMail: AnyCancellable?
     private weak var browser: Browser?
+    private weak var contentBrowser: Browser?
+    private var returningToWindow = false
     /// Set while the window is on its way out, so the browser hearing that
     /// it closed doesn't try to close it a second time.
     private var closing = false
@@ -760,11 +776,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// lining up. So the width is fixed, and only the height is the reader's.
     /// Tall enough for the whole sidebar, every page, About and Send
     /// Feedback, without its list scrolling under the search.
-    private static let size = NSSize(width: 760, height: 540)
+    private static let size = NSSize(width: 940, height: 720)
     private static let smallest = NSSize(width: 760, height: 440)
 
     /// The page showing, or General while the window has never opened.
-    var page: SettingsPage { model?.page ?? .general }
+    var page: SettingsPage { model?.page ?? .profile }
 
     func show(for browser: Browser) {
         show(nil, for: browser)
@@ -782,29 +798,101 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// General. Already open, it stays where it is unless a page is asked.
     func show(_ page: SettingsPage?, for browser: Browser) {
         self.browser = browser
-        // Extensions lists the window's sign-in's again.
         if model?.extensionsSpace != nil { model?.extensionsSpace = nil }
         if model?.boostsSpace != nil { model?.boostsSpace = nil }
-        let asked = SettingsModel.asked()
-        let wanted = page ?? asked
-        let open = window.map { $0.isVisible || $0.isMiniaturized } ?? false
-        if window == nil { make(browser) }
-        if !open { model?.start(at: wanted ?? .general) } else if let wanted { model?.go(wanted) }
+        let wanted = page ?? SettingsModel.asked()
+        let open = isShowing
+        if separateWindow == nil { make(browser) }
+        if !open { model?.start(at: wanted ?? .profile) } else if let wanted { model?.go(wanted) }
         if let row = SettingsModel.askedRow() { model?.take(.item(row)) }
-        // Set only when it changes: each write is a publish, and the whole
-        // page is drawn again for it.
         if model?.search.isEmpty == false { model?.search = "" }
-        // General's Open links in Yab names the app links go to now; found
-        // here, off the main thread, rather than while drawing.
+        bindContent(to: browser)
         DefaultBrowser.shared.refresh()
+        if SettingsPresentation.saved == .tab {
+            separateWindow?.orderOut(nil)
+            browser.showLibrary(.settings)
+            settingsTab = browser.active
+            BrowserWindows.shared.window(for: browser)?.makeKeyAndOrderFront(nil)
+        } else {
+            returningToWindow = true
+            defer { returningToWindow = false }
+            restoreWindow()
+            if let settingsTab {
+                self.settingsTab = nil
+                if browser.tabs.contains(where: { $0 === settingsTab }) { browser.close(settingsTab) }
+            }
+            guard let separateWindow else { return }
+            if !open { separateWindow.center() }
+            separateWindow.makeKeyAndOrderFront(nil)
+        }
         updateNavigation()
-        guard let window else { return }
-        if !open { window.center() }
         NSApp.activate()
-        window.makeKeyAndOrderFront(nil)
-        // A card left up when Settings closed comes back over it, rather
-        // than its veil holding every click with no card to answer.
         SettingsCards.shared.refresh()
+    }
+
+    /// Reuse the Settings components and model, with a separate layout host.
+    func attachTab(_ host: SettingsTabHost, browser: Browser, tab: Tab) {
+        guard !returningToWindow, browser.activeID == tab.id, tab.libraryPage == .settings,
+              browser.tabs.contains(where: { $0 === tab }), host.window != nil else { return }
+        if let current = tabHost, current !== host, current.window?.isKeyWindow == true,
+           host.window?.isKeyWindow != true { return }
+        self.browser = browser
+        if separateWindow == nil { make(browser) }
+        guard let model, tabHost !== host else { return }
+        bindContent(to: browser)
+        SettingsCards.shared.parentClosed()
+        self.browser = browser
+        settingsTab = tab
+        separateWindow?.orderOut(nil)
+        tabHost = host
+        host.install(browser: browser, model: model)
+        model.key = host.window?.isKeyWindow == true
+        if let window = host.window { SettingsCards.shared.attach(to: window, browser: browser) }
+        updateNavigation()
+        SettingsCards.shared.refresh()
+    }
+
+    func detachTab(_ host: SettingsTabHost) {
+        guard tabHost === host else { return }
+        SettingsCards.shared.detach()
+        model?.key = false
+        tabHost = nil
+    }
+
+    func tabFocusChanged(_ host: SettingsTabHost) {
+        guard tabHost === host else { return }
+        model?.key = host.window?.isKeyWindow == true
+    }
+
+    private func bindContent(to browser: Browser) {
+        guard contentBrowser !== browser, let model,
+              let detail = split?.splitViewItems.last?.viewController as? NSHostingController<SettingsDetail> else { return }
+        detail.rootView = SettingsDetail(browser: browser, prefs: browser.prefs, model: model)
+        contentBrowser = browser
+    }
+
+    private func restoreWindow() {
+        guard let separateWindow else { return }
+        SettingsCards.shared.parentClosed()
+        tabHost = nil
+        if let browser {
+            bindContent(to: browser)
+            SettingsCards.shared.attach(to: separateWindow, browser: browser)
+        }
+    }
+
+    func showShortcutFilters(under button: NSButton) {
+        shortcutToolbar?.openList(under: button)
+    }
+
+    func tabKeys(_ event: NSEvent) -> Bool {
+        guard tabHost != nil, isShowing, event.window === window, !SettingsCards.shared.up,
+              !Keymap.shared.recording else { return false }
+        if model?.page == .shortcuts, window?.firstResponder is NSText { return false }
+        if Keymap.shared.matches(event, .find) { focusSearch(); return true }
+        if Keymap.shared.matches(event, .back) { model?.travel(-1); return true }
+        if Keymap.shared.matches(event, .forward) { model?.travel(1); return true }
+        return false
     }
 
     func showNewSpace(for browser: Browser) {
@@ -869,13 +957,18 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     }
 
     func hide() {
-        guard !closing, let window, window.isVisible else { return }
-        window.close()
+        guard !closing else { return }
+        if let settingsTab, let browser, browser.tabs.contains(where: { $0 === settingsTab }) {
+            SettingsCards.shared.parentClosed()
+            self.settingsTab = nil
+            browser.close(settingsTab)
+        }
+        separateWindow?.close()
     }
 
     /// ⌘F: to the search at the top of the sidebar.
     func focusSearch() {
-        guard let window, let field = Self.searchField(in: split?.splitViewItems.first?.viewController.view) else { return }
+        guard let window, let field = Self.searchField(in: tabHost ?? split?.splitViewItems.first?.viewController.view) else { return }
         window.makeFirstResponder(field)
     }
 
@@ -1094,6 +1187,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     // MARK: - the window
 
     private func make(_ browser: Browser) {
+        contentBrowser = browser
         let model = SettingsModel()
         self.model = model
 
@@ -1105,8 +1199,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         let split = NSSplitViewController()
         split.view.frame = NSRect(origin: .zero, size: Self.size)
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
-        side.minimumThickness = 170
-        side.maximumThickness = 210
+        side.minimumThickness = 208
+        side.maximumThickness = 240
         side.canCollapse = false
         split.addSplitViewItem(side)
         let page = NSSplitViewItem(viewController: detail)
@@ -1167,8 +1261,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         if !rooms.isEmpty {
             window.setFrame(WindowPlacing.fitting(window.frame, screens: rooms, fallback: NSScreen.main?.visibleFrame ?? rooms[0]), display: false)
         }
-        split.splitView.setPosition(180, ofDividerAt: 0)
-        self.window = window
+        split.splitView.setPosition(220, ofDividerAt: 0)
+        self.separateWindow = window
         SettingsCards.shared.attach(to: window, browser: browser)
 
         watch = model.objectWillChange.sink { [weak self] _ in
@@ -1185,10 +1279,19 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         }
     }
 
+    func travelInTab(_ tab: Tab, step: Int) {
+        guard settingsTab === tab, tabHost != nil else { return }
+        model?.travel(step)
+        updateNavigation()
+    }
+
     private func updateNavigation() {
         guard let model else { return }
+        if tabHost != nil {
+            settingsTab?.updateSettingsHistory(back: model.canGoBack, forward: model.canGoForward)
+        }
         if !model.page.available { model.go(.experimental) }
-        window?.title = model.page.title
+        separateWindow?.title = model.page.title
         if headingPage != model.page {
             headingPage = model.page
             showHeading(nil)
@@ -1203,7 +1306,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
             heading?.alphaValue = 1
             heading?.setAccessibilityElement(true)
         } else if ownGlass { heading?.stringValue = "" }
-        if let toolbar = window?.toolbar {
+        if let toolbar = separateWindow?.toolbar {
             // Hiding the switch alone leaves its toolbar item's width behind.
             if ownGlass {
                 if let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == masterID }) {
@@ -1246,7 +1349,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
     /// Where a hero's name ends, down from the window's top: under the
     /// toolbar's foot, the name is gone from view and the toolbar says it.
     func heroTitle(_ title: String, bottom: CGFloat) {
-        guard let window, let content = window.contentView else { return }
+        guard tabHost == nil, let window, let content = window.contentView else { return }
         let foot = content.bounds.height - window.contentLayoutRect.maxY
         showHeading(bottom < foot ? title : nil)
     }
@@ -1287,7 +1390,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         SyncDeviceAdding.shared.stop()
         SettingsCards.shared.parentClosed()
         closing = true
-        browser?.tuning = false
+        if tabHost == nil { browser?.tuning = false }
         closing = false
         // The page behind gets the keyboard back.
         Links.window?.makeKeyAndOrderFront(nil)
@@ -1443,56 +1546,21 @@ final class SettingsFrame: NSWindow {
 
 struct SettingsSidebar: View {
     @ObservedObject var model: SettingsModel
+    var inLibrary = false
     @AppStorage(MailExperiment.key, store: Store.settings) private var mailExperiment = false
 
     private static let searchPadding: CGFloat = 8
-    /// How far the pages have gone under the search, for their fade.
-    @State private var ends = ColumnEnds()
 
     var body: some View {
         let rows = SettingsResult.search(model.search).rows.filter { mailExperiment || $0.page != .mail }
-        GeometryReader { geometry in
-            // The pages run the whole height, under the titlebar and the
-            // search: they start below the search and go
-            // under it as they scroll, dimmed and blurred there as the
-            // browser's column rows go under its pins (ColumnEnds), so
-            // they are still seen going. Drawn here rather than left to
-            // the split view's accessory, whose edge macOS 27 rules with
-            // a hard line.
-            // The list ignores the top safe area; the search stays below
-            // it. Derive their distance in this layout pass. Keeping two
-            // measured coordinates in @State could mix different opening
-            // layouts and leave a large inset until the window was resized.
-            let under = geometry.safeAreaInsets.top + Self.searchPadding + GlassSearch.height
-            ZStack(alignment: .top) {
-                PageList(
-                    rows: rows,
-                    grouped: model.search.isEmpty,
-                    top: under + 14,
-                    ends: ends,
-                    selection: Binding(
-                        get: { model.sidebarChosen },
-                        set: { model.pick($0) }
-                    )
-                )
-                .mask { ColumnFade(ends: ends, top: under, foot: false) }
-                .overlay { ColumnBlur(ends: ends, top: under, foot: false, grain: 0) }
-                .overlay {
-                    if rows.isEmpty {
-                        Text("No results")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .transition(.opacity)
-                    }
-                }
-                // The words wait for the last page to fold away, and go at
-                // once when one comes back.
-                .animation(.easeOut(duration: 0.2).delay(rows.isEmpty ? 0.18 : 0), value: rows.isEmpty)
-                .ignoresSafeArea(.container, edges: .vertical)
-
-                GlassSearch(model: model)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, Self.searchPadding)
+        Group {
+            if inLibrary {
+                SettingsLibraryNavigation(model: model, rows: rows)
+            } else {
+                VStack(spacing: 12) {
+                    GlassSearch(model: model)
+                    SettingsLibraryNavigation(model: model, rows: rows)
+                }.padding(.horizontal, 8).padding(.top, Self.searchPadding)
             }
         }
         .font(.system(size: 13))
@@ -1511,6 +1579,7 @@ private struct SidebarSearch: View {
     @ObservedObject var model: SettingsModel
     /// No bezel: the glass around it is the field.
     var bare = false
+    var prompt = "Search"
 
     var body: some View {
         SearchField(
@@ -1526,14 +1595,74 @@ private struct SidebarSearch: View {
                 if SettingsResult.search(model.search).rows.contains(chosen) { model.take(chosen) }
             },
             move: { step in
-                let rows = SettingsResult.search(model.search).rows
+                let rows = model.search.isEmpty ? SettingsNavigation.groups.flatMap(\.pages).filter(\.available).map(SettingsResult.page) : SettingsResult.search(model.search).rows
                 guard !rows.isEmpty else { return }
                 let at = rows.firstIndex(of: model.sidebarChosen) ?? (step > 0 ? -1 : rows.count)
                 model.pick(rows[min(max(at + step, 0), rows.count - 1)])
             },
-            bare: bare
+            bare: bare, prompt: prompt
         )
         .frame(height: 22)
+    }
+}
+
+struct SettingsLibrarySearch: View {
+    @ObservedObject var model: SettingsModel
+    var body: some View {
+        LibrarySearchWell(text: Binding(get: { model.search }, set: {
+            model.search = $0
+            if $0.isEmpty { model.spot = nil }
+        })) {
+            SidebarSearch(model: model, bare: true, prompt: "Search settings")
+        }
+    }
+}
+
+private struct SettingsLibraryNavigation: View {
+    @ObservedObject var model: SettingsModel
+    let rows: [SettingsResult]
+    var body: some View {
+        ThreadScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                if model.search.isEmpty {
+                    ForEach(SettingsNavigation.groups.indices, id: \.self) { index in
+                        let group = SettingsNavigation.groups[index]
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(SettingsWords.text(group.title))
+                                .font(.caption).foregroundStyle(.secondary)
+                                .padding(.horizontal, CardFrame.inset)
+                                .padding(.bottom, 6)
+                            ForEach(group.pages.filter { $0.available }) { page in
+                                pageRow(page)
+                            }
+                        }
+                        .padding(.top, index == 0 ? 0 : 20)
+                    }
+                } else {
+                    ForEach(rows, id: \.self) { row in navigationRow(row) }
+                    if rows.isEmpty {
+                        Text("No results").font(CardFrame.detail).foregroundStyle(Palette.muted)
+                    }
+                }
+            }
+        }
+        .foregroundStyle(Palette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func pageRow(_ page: SettingsPage) -> some View {
+        LibraryScopeRow(title: SettingsNavigation.title(for: page), symbol: page.icon,
+                        selected: SettingsNavigation.destination(for: model.page) == page,
+                        selectedIconTint: .accentColor) {
+            model.pick(.page(page))
+        }
+    }
+    private func navigationRow(_ row: SettingsResult) -> some View {
+        let depth: Int
+        switch row { case .page: depth = 0; case .item: depth = 1 }
+        return LibraryScopeRow(title: title(row), symbol: row.page.icon, selected: model.sidebarChosen == row, depth: depth) { model.pick(row) }
+    }
+    private func title(_ row: SettingsResult) -> String {
+        switch row { case .page(let page): page.title; case .item(let item): item.title }
     }
 }
 
@@ -1591,6 +1720,7 @@ private struct SearchField: NSViewRepresentable {
     /// The arrows walk the results without leaving the field.
     var move: (Int) -> Void
     var bare = false
+    var prompt = "Search"
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var parent: SearchField
@@ -1624,7 +1754,7 @@ private struct SearchField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSTextField {
         let field = bare ? NSTextField() : NSSearchField()
-        field.placeholderString = SettingsWords.text("Search")
+        field.placeholderString = SettingsWords.text(prompt)
         field.controlSize = .regular
         field.delegate = context.coordinator
         (field as? NSSearchField)?.sendsSearchStringImmediately = true
@@ -2426,6 +2556,7 @@ struct PageHero: View {
     /// Whether the icon is a tile's size; a picture of the page's own
     /// (Reading Mode's page) keeps its own.
     var tile = true
+    @Environment(\.settingsInLibrary) private var inLibrary
 
     init(page: SettingsPage) {
         title = page.title
@@ -2460,6 +2591,17 @@ struct PageHero: View {
         // A section's header, with nothing under it: the grouped form draws
         // a header on the page itself, where a row would get a card.
         Section {} header: {
+            Group {
+                if inLibrary, tile {
+                    LibraryIdentityRow(title: SettingsWords.text(title)) {
+                        icon.frame(width: 56, height: 56)
+                    } detail: {
+                        if let blurb {
+                            SettingsText(SettingsWords.text(blurb), size: 13)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                } else {
             VStack(spacing: 0) {
                 icon.frame(width: tile ? 56 : nil, height: tile ? 56 : nil)
                     .padding(.bottom, tile ? 12 : 16)
@@ -2477,6 +2619,8 @@ struct PageHero: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 5)
                         .padding(.horizontal, 24)
+                }
+            }
                 }
             }
             .foregroundStyle(.primary)
@@ -3045,10 +3189,19 @@ private struct SettingsNotice: View {
 /// The pane beside the sidebar. Each page is a view of its own watching
 /// only what it shows (SettingsCorePages and the pages' own files); this
 /// keeps what lasts while the window is open and brings a found row into view.
-private struct SettingsDetail: View {
+private struct SettingsFormPresentation: ViewModifier {
+    let inLibrary: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if inLibrary { content.formStyle(LibrarySettingsFormStyle()) }
+        else { content.formStyle(.grouped) }
+    }
+}
+
+struct SettingsDetail: View {
     @ObservedObject var browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject var model: SettingsModel
+    var inLibrary = false
 
     @State private var isDefault = Links.isDefault
     /// General's other browsers, counted once while the window is open.
@@ -3061,16 +3214,31 @@ private struct SettingsDetail: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollViewReader { scroller in
-            form
-                .onChange(of: model.spot) { _, spot in
-                    guard let spot else { return }
-                    // After the page it is on has been laid out, when that
-                    // page has only just been switched to.
-                    let anchor = spot.anchor(prefs)
-                    DispatchQueue.main.async { scroller.scrollTo(anchor, anchor: .center) }
-                }
+        VStack(alignment: .leading, spacing: CardFrame.inset) {
+            if !inLibrary {
+                Text(SettingsNavigation.breadcrumbs(for: model.page).joined(separator: " / "))
+                    .font(.title2.weight(.semibold)).padding(.horizontal, CardFrame.inset)
+            }
+            let collections = SettingsNavigation.collections(for: model.page)
+            if collections.contains(model.page) {
+                Picker("Section", selection: Binding(get: { model.page }, set: { model.go($0) })) {
+                    ForEach(collections) { Text($0.title).tag($0) }
+                }.pickerStyle(.segmented).labelsHidden().fixedSize().padding(.horizontal, CardFrame.inset)
+            }
+            if inLibrary { SettingsTabToolbar(browser: browser, model: model) }
+            ScrollViewReader { scroller in
+                form
+                    .onChange(of: model.spot) { _, spot in
+                        guard let spot else { return }
+                        // Wait for the selected page's rows to be laid out.
+                        let anchor = spot.anchor(prefs)
+                        DispatchQueue.main.async { scroller.scrollTo(anchor, anchor: .center) }
+                    }
+            }
         }
+        .environment(\.settingsInLibrary, inLibrary)
+        .foregroundStyle(inLibrary ? Palette.ink : Color.primary)
+
     }
 
     private var form: some View {
@@ -3091,7 +3259,7 @@ private struct SettingsDetail: View {
 
     private var rows: some View {
         pageRows
-        .formStyle(.grouped)
+        .modifier(SettingsFormPresentation(inLibrary: inLibrary))
         // Every page starts at its top: a sub-page such as Best Friend, an
         // extension's page, and the list after it. Keyed by both, or the
         // form kept the page before's scroll.
@@ -3114,7 +3282,27 @@ private struct SettingsDetail: View {
     private var formRows: some View {
         ThreadForm {
             switch model.page {
-            case .general: GeneralPage(browser: browser, prefs: prefs, model: model, bringing: bringing, isDefault: $isDefault)
+            case .profile:
+                if browser.canManageProfiles { ProfileSettings(browser: browser) }
+                Section("Profile data") {
+                    ForEach([SettingsPage.sync, .passwords, .autofill]) { page in
+                        HStack(spacing: CardFrame.inset) {
+                            Symbol(page.icon, size: SideBar.mark)
+                            Text(page.title)
+                            Spacer()
+                            Button("Manage") { model.go(page) }.settingsButton().accessibilityLabel("Manage " + page.title)
+                        }
+                    }
+                }
+                Section("Import") {
+                    SettingsRow("Bring in from another browser") {
+                        Button("Import") { model.go(.bringIn) }.settingsButton()
+                    }.settingsAnchor("bring-in")
+                }
+            case .general:
+                GeneralPage(browser: browser, prefs: prefs, model: model, bringing: bringing, isDefault: $isDefault)
+                SearchPage(prefs: prefs)
+                SmallWindowPage(prefs: prefs)
             case .search: SearchPage(prefs: prefs)
             case .appearance: AppearancePage(browser: browser, prefs: prefs, model: model)
             case .websites: WebsitesPage(prefs: prefs, model: model)
@@ -3141,8 +3329,13 @@ private struct SettingsDetail: View {
             case .passwords: PasswordsPage(browser: browser, prefs: prefs, model: model)
             case .autofill: AutofillPage(browser: browser, prefs: prefs)
             case .privacy: PrivacyPage(browser: browser, prefs: prefs, model: model)
+                WebsitesPage(prefs: prefs, model: model)
+            case .mouse: MouseGestureSettings()
             case .shortcuts: EmptyView() // Own lazy list (pageRows).
-            case .about: AboutPage(browser: browser, model: model)
+            case .about:
+                UpdateSettingsSection(browser: browser)
+                Section { Button("Invite Friends") { model.go(.inviteFriends) }.settingsButton() }
+                AboutPage(browser: browser, model: model)
             case .bringIn: BringInPage(browser: browser, model: model, bringsOpenTabs: $bringsOpenTabs)
             case .history: HistoryPage(browser: browser, prefs: prefs)
             case .credits: CreditsPage(model: model)
@@ -3153,6 +3346,7 @@ private struct SettingsDetail: View {
             case .agentMemory: AgentMemoryPage(browser: browser, prefs: prefs, model: model)
             case .agentSkills: AgentSkillsPage(model: model)
             case .developers: DevelopersPage(browser: browser, prefs: prefs)
+                ExperimentalPage(prefs: prefs, model: model)
             case .experimental: ExperimentalPage(prefs: prefs, model: model)
             }
         }

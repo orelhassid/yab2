@@ -412,9 +412,16 @@ final class Preferences: ObservableObject, Relaying {
         didSet { store.set(sideFlank.rawValue, forKey: "sidebar.flank") }
     }
     /// How wide the column is. Pulled by its edge, and remembered.
+    private var storedSideWidth: CGFloat
     var sideWidth: CGFloat {
-        willSet { relay.send(\.sideWidth, newValue) }
-        didSet { store.set(Double(sideWidth), forKey: "sidebar.width") }
+        get { storedSideWidth }
+        set {
+            let width = min(Metrics.sideMax, max(Metrics.sideMin, newValue))
+            guard width != storedSideWidth else { return }
+            relay.send(\.sideWidth, width)
+            storedSideWidth = width
+            store.set(Double(width), forKey: "sidebar.width")
+        }
     }
     /// The spaces in the column's foot as dots whatever the room, as
     /// Dia's; otherwise their emoji, dots only once too narrow for them
@@ -493,6 +500,11 @@ final class Preferences: ObservableObject, Relaying {
     /// A peek's own address along the top of its page (PeekBand), the
     /// band's site as the address bar writes it. Off unless asked for, as
     /// the address bar is: Arc's peek has none. Every window at once.
+    var shareSpacePages: Bool {
+        get { store.object(forKey: "appearance.spacePages") as? Bool ?? true }
+        set { store.set(newValue, forKey: "appearance.spacePages") }
+    }
+
     var peekAddress: Bool {
         willSet { relay.send(\.peekAddress, newValue) }
         didSet {
@@ -899,6 +911,32 @@ final class Preferences: ObservableObject, Relaying {
             LiveFolders.shared.availabilityChanged()
         }
     }
+    static let leftTrailKey = "sidebar.leftTrail"
+    var spaceTransition: SpaceTransition {
+        willSet { relay.send(\.spaceTransition, newValue) }
+        didSet {
+            guard spaceTransition != oldValue else { return }
+            store.set(spaceTransition.rawValue, forKey: SpaceTransition.key)
+            SpaceTransition.current = spaceTransition
+            SpacePager.shared.finish()
+            SpacePull.shared.cancel()
+            for browser in BrowserWindows.shared.browsers where browser.prefs.spaceTransition != spaceTransition {
+                browser.prefs.spaceTransition = spaceTransition
+            }
+        }
+    }
+
+    var showLeftTrail: Bool {
+        willSet { relay.send(\.showLeftTrail, newValue) }
+        didSet {
+            guard showLeftTrail != oldValue else { return }
+            store.set(showLeftTrail, forKey: Self.leftTrailKey)
+            for browser in BrowserWindows.shared.browsers where browser.prefs.showLeftTrail != showLeftTrail {
+                browser.prefs.showLeftTrail = showLeftTrail
+            }
+        }
+    }
+
     /// Pins: In Every Space, one row of pins every space that shares
     /// sign-ins shows, or In Each Space, a row of its own in each
     /// (SharedPins.swift). Every window follows the one it was set in.
@@ -1156,7 +1194,7 @@ final class Preferences: ObservableObject, Relaying {
         offerDevMode = store.object(forKey: "dev.offer") as? Bool ?? true
         jsonView = store.string(forKey: JSONShow.key).flatMap(JSONShow.init) ?? .tree
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
-        sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
+        storedSideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
         // Site icons for everyone. The old "glyph" key held letters for most,
         // picked in a welcome that no longer asks, so it is left unread.
         glyph = store.string(forKey: "tabs.glyph").flatMap(Glyph.init) ?? .icons
@@ -1203,6 +1241,9 @@ final class Preferences: ObservableObject, Relaying {
         // In Every Space for a new Mac, In Each Space for one in use before:
         // decided once, at the first launch, and written down.
         pinsEverySpace = SharedPins.decide(settings: store, folder: Store.folder)
+        showLeftTrail = store.object(forKey: Self.leftTrailKey) as? Bool ?? true
+        spaceTransition = SpaceTransition.read(from: store)
+        SpaceTransition.current = spaceTransition
         // Before the first web view exists: WebKit reads these once.
         Preferences.tellWebKit()
         // Left behind by an assistant this browser no longer has, and by

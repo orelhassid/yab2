@@ -141,6 +141,8 @@ struct Suggestion: Identifiable, Equatable {
 }
 
 struct Visit: Codable {
+    var metaTitle: String? = nil
+    var metaDescription: String? = nil
     var url: String
     var key: String
     var title: String
@@ -667,6 +669,27 @@ final class History: ObservableObject {
 
     /// A visit counted before its page had a title (Browser.noticeCommit):
     /// the title it has now.
+    func captureMetadata(from page: any PageHandle, at url: URL) {
+        let key = Self.key(for: url)
+        guard visits[key] != nil else { return }
+        let script = """
+        (() => [location.href,
+                document.querySelector('meta[property="og:title"]')?.content?.slice(0, 512) || document.title.slice(0, 512),
+                document.querySelector('meta[name="description"], meta[property="og:description"]')?.content?.slice(0, 1024) || ''])()
+        """
+        page.run(script, in: .yab, gesture: false) { [weak self] result in
+            guard let self, case let .success(value) = result, let fields = value as? [String], fields.count == 3,
+                  URL(string: fields[0]) == url, var visit = visits[key], visit.url == url.absoluteString else { return }
+            let title = fields[1].isEmpty ? nil : fields[1]
+            let description = fields[2].isEmpty ? nil : fields[2]
+            guard visit.metaTitle != title || visit.metaDescription != description else { return }
+            visit.metaTitle = title
+            visit.metaDescription = description
+            visits[key] = visit
+            save()
+        }
+    }
+
     func retitle(_ url: URL, title: String) {
         let key = Address.pretty(url).lowercased()
         guard !title.isEmpty, var seen = visits[key], seen.title != title else { return }

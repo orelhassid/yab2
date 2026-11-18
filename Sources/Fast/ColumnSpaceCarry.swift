@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import SwiftUI
 
 /// The hand belongs to the window, not to a page in the sliding row.
 /// A visit is only a preview. Tabs remain at home until the mouse lifts.
@@ -21,6 +22,8 @@ final class ColumnSpaceCarry {
     private var point: CGPoint
     private var overlay: CarryView?
     private var cell: ColumnCell?
+    private var trailCell: NSView?
+    private var iconPreview = false
     private var spring: DispatchWorkItem?
     private var springID: UUID?
     private(set) var overlaying = false
@@ -76,8 +79,9 @@ final class ColumnSpaceCarry {
     }
 
     private func ensureOverlay() {
-        guard overlay == nil, let pages, let parent = (browser?.column as NSView?) ?? pages.superview else { return }
+        guard overlay == nil, let pages, let parent = pages.window?.contentView ?? pages.superview else { return }
         let view = CarryView(frame: pages.convert(pages.bounds, to: parent))
+        view.clipsToBounds = false
         view.wantsLayer = true
         view.layer?.masksToBounds = false
         parent.addSubview(view, positioned: .above, relativeTo: nil)
@@ -124,14 +128,14 @@ final class ColumnSpaceCarry {
             draw()
             return
         }
-        let width = browser.prefs.sideWidth
+        let width = browser.sidebarContentWidth
         let top = ColumnLayout.pinsTop(browser)
-        let pinsBottom = top + ColumnLayout.pinBlock(count: browser.pinCellCount, width: width)
+        let pinsBottom = top + ColumnLayout.pinBlock(count: browser.sidebarGridPins.count, width: width)
         if folder == nil, tabs.allSatisfy({ !$0.isBlank }), at.y < pinsBottom - 6 {
-            let grid = ColumnLayout.grid(count: browser.pinCellCount + pinCount, width: width)
+            let grid = ColumnLayout.grid(count: browser.sidebarGridPins.count + pinCount, width: width)
             let col = min(max(0, Int((at.x - SideBar.margin) / (grid.width + SideBar.pinGap))), grid.cols - 1)
             let row = max(0, Int((at.y - top) / (grid.height + SideBar.pinGap)))
-            let index = min(row * grid.cols + col, browser.pinCellCount)
+            let index = min(row * grid.cols + col, browser.sidebarGridPins.count)
             pinAt = index
             landing = .pin(index)
             gap = nil
@@ -142,7 +146,7 @@ final class ColumnSpaceCarry {
             let want = ColumnLayout.slot(at.y - gripY - page.rowsTop, line: line)
             let slot = min(max(0, Int(want.rounded())), ColumnLayout.rows(cells, folders: browser.folderBook))
             let place = ColumnLayout.placing(ColumnLayout.position(slot, in: cells, folders: browser.folderBook), in: cells)
-            let loose = browser.tabs.filter { $0.pin == nil && !ids.contains($0.id) }
+            let loose = browser.sidebarLooseTabs.filter { !ids.contains($0.id) }
             let index = place.before.flatMap { before in loose.firstIndex { $0.id == before.id } } ?? loose.count
             landing = .row(index: index, kept: place.kept, nest: place.nest?.id)
             gap = slot
@@ -213,7 +217,33 @@ final class ColumnSpaceCarry {
         let indent = overlaying ? 0 : item.indent
         let width = max(20, pages.bounds.width - 2 * SideBar.margin - indent)
         let row = ColumnItem(id: item.id, kind: item.kind, indent: indent, y: 0, height: SideBar.row, x: 0, width: width)
-        cell.frame = CGRect(x: SideBar.margin + indent, y: point.y - gripY, width: width, height: SideBar.row)
+        let compact = SpaceDrop.shared.trailOwner == ObjectIdentifier(browser)
+        let changed = compact != iconPreview
+        let side = SideBar.row
+        let iconFrame = CGRect(x: point.x - side / 2, y: point.y - side / 2, width: side, height: side)
+        let rowFrame = CGRect(x: SideBar.margin + indent, y: point.y - gripY, width: width, height: side)
+        if compact, trailCell == nil, let tab = item.tab {
+            let icon = NSHostingView(rootView: RailButton(tab.rowLabel, selected: true, action: {}) {
+                Mark(icon: tab.displayIcon, letter: tab.monogram, size: SideBar.mark)
+            })
+            icon.sizingOptions = []
+            icon.frame = iconFrame
+            icon.alphaValue = 0
+            overlay.addSubview(icon)
+            trailCell = icon
+        }
+        trailCell?.frame = iconFrame
+        let target = compact ? iconFrame : rowFrame
+        if changed {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.16
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                cell.animator().frame = target
+                cell.animator().alphaValue = compact ? 0 : 1
+                trailCell?.animator().alphaValue = compact ? 1 : 0
+            }
+        } else { cell.frame = target }
+        iconPreview = compact
         let hold = overlaying ? ColumnCell.Hold(lifted: true) : (source?.drawn(item).hold ?? ColumnCell.Hold(lifted: true))
         cell.bind(row, ColumnCell.Context(browser: browser, look: pages.carryLook, liveID: liveID),
                   hold: hold, force: true)

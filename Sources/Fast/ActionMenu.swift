@@ -868,15 +868,15 @@ enum ActionMenu {
     /// Room round the plates for their shadow, as DropPopup has.
     static let room = DropPopup.room
 
-    static func show(_ menu: NSMenu, from view: NSView, with event: NSEvent) {
+    static func show(_ menu: NSMenu, from view: NSView, with event: NSEvent, scope: SidebarSpaceActions? = nil) {
         guard let window = view.window else { return }
-        show(menu, in: window, at: window.convertPoint(toScreen: event.locationInWindow))
+        show(menu, in: window, at: window.convertPoint(toScreen: event.locationInWindow), scope: scope)
     }
 
     /// `pointer` on the screen, where the press was. `up`: rising from it
     /// or falling whatever room there is (the column's plus, whose menu
     /// stands over it); `done`, once it is put away.
-    static func show(_ menu: NSMenu, in window: NSWindow, at pointer: NSPoint, up: Bool? = nil, done: (() -> Void)? = nil) {
+    static func show(_ menu: NSMenu, in window: NSWindow, at pointer: NSPoint, up: Bool? = nil, scope: SidebarSpaceActions? = nil, done: (() -> Void)? = nil) {
         close()
         self.done = done
         menu.appearance = window.effectiveAppearance
@@ -936,7 +936,7 @@ enum ActionMenu {
             let previous = dispatchWindow
             dispatchWindow = window
             defer { dispatchWindow = previous }
-            action()
+            if let scope { scope.run(action) } else { action() }
         }
         wire(list, depth: 0)
         // A search that leaves fewer lines shortens the panel away from the

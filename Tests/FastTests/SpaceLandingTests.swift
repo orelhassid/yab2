@@ -93,6 +93,133 @@ struct SpaceLandingTests {
         }
     }
 
+    @Test func librariesFollowTheRequestingSpaceWithTheirControls() throws {
+        try world { browser, home, away, _, _ in
+            browser.showLibrary(.bookmarks)
+            let tab = try #require(browser.active)
+            let controls = browser.libraryControls(for: .bookmarks, tab: tab)
+            let folder = UUID()
+            controls.search = "design"
+            controls.folder = folder
+            for space in [away, home] {
+                browser.switchSpace(to: space)
+                browser.showLibrary(.bookmarks)
+                #expect(browser.spaceID == space && browser.active === tab)
+                #expect(browser.everyTab.filter { $0.libraryPage == .bookmarks }.count == 1)
+                #expect(!browser.sidebarLooseTabs.contains { $0 === tab })
+                let current = browser.libraryControls(for: .bookmarks, tab: tab)
+                #expect(current.search == "design" && current.folder == folder)
+            }
+            #expect(browser.libraryControls(for: .history, tab: tab) !== controls)
+            let privateTab = Tab(shy: true, configuration: Web.configuration(shy: true))
+            #expect(browser.libraryControls(for: .bookmarks, tab: privateTab) !== controls)
+        }
+    }
+
+    @Test func parkedFolderExpansionFinishesInItsOwningSpace() throws {
+        try world { browser, home, away, source, destination in
+            let scope = SidebarSpaceActions(browser: browser, id: away)
+            scope.run { browser.newFolder(with: destination, today: true) }
+            let nest = try #require(destination[0].nest)
+            for expected in [false, true] {
+                scope.run { browser.folderBook.toggle(nest.key, knownNest: nest, immediately: true) }
+                #expect(nest.open == expected)
+                #expect(browser.spaceID == home && browser.active === source[1])
+                let parked = try #require(browser.parked[away])
+                let space = try #require(browser.spaces.first { $0.id == away })
+                let page = ColumnLayout.parked(browser, row: parked, travelling: [], space: space)
+                #expect(page.items.contains { $0.tab === destination[2] } == expected)
+            }
+        }
+    }
+
+    @Test func sharedSidebarRowsOperateInTheirOwningSpace() {
+        world { browser, home, away, source, destination in
+            let scope = SidebarSpaceActions(browser: browser, id: away)
+            scope.run { browser.newFolder(with: Array(destination.prefix(2)), today: true, around: destination[0]) }
+            #expect(destination[0].nest != nil && destination[0].nest === destination[1].nest)
+            #expect(browser.spaceID == home && browser.active === source[1])
+            scope.run { browser.shut(destination[2]) }
+            #expect(browser.parked[away]?.tabs.contains { $0 === destination[2] } == false)
+            #expect(browser.spaceID == home && browser.active === source[1])
+            scope.run({ browser.tapTab(destination[1]) }, stay: true)
+            #expect(browser.spaceID == away && browser.active === destination[1])
+        }
+    }
+
+    @Test func overviewMovesBetweenColumnsAndKeepsTheBoardOpen() {
+        world { browser, home, away, source, destination in
+            let board = source[1], tab = source[0]
+            #expect(browser.moveOverviewTab(tab, from: home, to: away, before: destination[1].id, board: board))
+            #expect(browser.active === board)
+            #expect(browser.parked[away]?.tabs.map(\.id) == [destination[0], tab, destination[1], destination[2]].map(\.id))
+            #expect(!browser.moveOverviewTab(tab, from: home, to: away, before: nil, board: board))
+            #expect(browser.moveOverviewTab(tab, from: away, to: home, before: board.id, board: board))
+            #expect(browser.tabs.map(\.id) == source.map(\.id))
+            #expect(browser.parked[away]?.tabs.map(\.id) == destination.map(\.id))
+            #expect(browser.spaceID == home && browser.active === board)
+        }
+    }
+
+    @Test func overviewReordersActiveAndParkedRowsInSidebarOrder() {
+        world { browser, home, away, source, destination in
+            let board = source[1]
+            #expect(browser.moveOverviewTab(source[0], from: home, to: home, before: nil, board: board, afterLastVisible: source[2].id))
+            #expect(browser.tabs.map(\.id) == [board, source[2], source[0]].map(\.id))
+            #expect(browser.undoWindow())
+            #expect(browser.tabs.map(\.id) == source.map(\.id))
+            #expect(browser.moveOverviewTab(destination[2], from: away, to: away, before: destination[0].id, board: board))
+            #expect(browser.spaceID == home && browser.active === board)
+            let expected = [destination[2], destination[0], destination[1]].map(\.id)
+            #expect(browser.parked[away]?.tabs.map(\.id) == expected)
+            browser.switchSpace(to: away)
+            #expect(browser.sidebarLooseTabs.map(\.id) == expected)
+        }
+    }
+
+    @Test func overviewMovesSplitPartnersTogetherAndPreservesTheirOrder() {
+        world { browser, _, away, source, destination in
+            let board = source[1]
+            browser.parked[away]?.pairs = [Pair(first: destination[0].id, second: destination[1].id, share: 0.5)]
+            #expect(browser.moveOverviewTab(destination[1], from: away, to: away, before: nil, board: board))
+            #expect(browser.parked[away]?.tabs.map(\.id) == [destination[2], destination[0], destination[1]].map(\.id))
+            #expect(browser.active === board)
+        }
+    }
+
+    @Test func filteredOverviewDropsAfterLastVisibleAndRespectsKeptBoundary() {
+        world { browser, home, _, source, _ in
+            let board = source[1]
+            source[0].kept = true
+            #expect(!browser.moveOverviewTab(source[0], from: home, to: home, before: nil, board: board))
+            source[0].kept = false
+            #expect(browser.moveOverviewTab(source[0], from: home, to: home, before: nil, board: board, afterLastVisible: board.id))
+            #expect(browser.tabs.map(\.id) == [board, source[0], source[2]].map(\.id))
+        }
+    }
+
+    @Test func overviewCanSendBetweenTwoParkedSpacesAndUndo() {
+        world { browser, home, away, source, destination in
+            let third = Space(id: UUID(), name: "Reading", icon: "📚", ownSignIns: false)
+            browser.spaces.append(third)
+            Spaces.sharing.insert(third.id)
+            defer {
+                Spaces.sharing.remove(third.id)
+                if let window = browser.windowID {
+                    try? FileManager.default.removeItem(at: Store.file("session-window-\(window.uuidString)-\(third.id.uuidString).json"))
+                }
+            }
+            browser.parked[third.id] = Parked(tabs: [], active: nil)
+            let board = source[1], tab = destination[1]
+            #expect(browser.moveOverviewTab(tab, from: away, to: third.id, before: nil, board: board))
+            #expect(browser.parked[third.id]?.tabs.first === tab)
+            #expect(browser.spaceID == home && browser.active === board)
+            #expect(browser.undoWindow())
+            #expect(browser.spaceID == away && browser.tabs.map(\.id) == destination.map(\.id))
+            #expect(browser.parked[third.id]?.tabs.isEmpty == true)
+        }
+    }
+
     @Test func dotDropIsTopOfTodayAndCanStayAtHome() {
         world { browser, home, away, source, destination in
             destination[0].kept = true
@@ -121,6 +248,36 @@ struct SpaceLandingTests {
             #expect(browser.undoWindow())
             #expect(!source[1].kept && source[1].nest == nil)
             #expect(browser.spaceID == home)
+        }
+    }
+
+    @Test func overviewFilesIntoParkedFolderAndKeepsBoardSelected() {
+        world { browser, home, away, source, destination in
+            let folder = Nest(name: "Listen", open: false)
+            destination[0].kept = true
+            destination[0].nest = folder
+            let moved = browser.moveOverviewTab(source[2], from: home, to: away, before: nil,
+                                                board: source[1], placement: .folder(folder.id))
+            #expect(moved && source[2].nest === folder && source[2].kept)
+            #expect(browser.parked[away]?.tabs.map(\.id) == [destination[0], source[2], destination[1], destination[2]].map(\.id))
+            #expect(browser.spaceID == home && browser.active === source[1])
+            #expect(browser.undoWindow())
+            #expect(source[2].nest == nil && browser.tabs.map(\.id) == source.map(\.id))
+        }
+    }
+
+    @Test func overviewInsertsIntoExpandedFolderAndBackIntoLooseRows() {
+        world { browser, home, _, source, _ in
+            let folder = Nest(name: "Reading")
+            folder.fleeting = true
+            source[0].nest = folder
+            let filed = browser.moveOverviewTab(source[2], from: home, to: home, before: nil, board: source[1],
+                                                placement: .row(index: 0, kept: false, nest: folder.id))
+            #expect(filed && source[2].nest === folder && browser.tabs.first === source[2])
+            let unfiled = browser.moveOverviewTab(source[2], from: home, to: home, before: nil, board: source[1],
+                                                  placement: .row(index: 2, kept: false, nest: nil))
+            #expect(unfiled && source[2].nest == nil && browser.tabs.map(\.id) == source.map(\.id))
+            #expect(browser.active === source[1])
         }
     }
 

@@ -596,7 +596,10 @@ final class ColumnHand: NSObject {
             stopScrolling()
             at = point
             if spaceCarry?.overlaying == true { spaceCarry?.move(CGPoint(x: point.x + SideBar.margin, y: point.y)) }
-            if let bridge = spaceCarry, bridge.finish(dot: SpaceDrop.shared.slot) {
+            if SpaceDrop.shared.finishTrail(browser, at: spacePoint(point)) {
+                spaceCarry?.cancel()
+                finishSpaceCarry()
+            } else if let bridge = spaceCarry, bridge.finish(dot: SpaceDrop.shared.slot) {
                 finishSpaceCarry()
             } else if let id = dragging, let tab = browser.tabs.first(where: { $0.id == id }) {
                 rowEnded(tab, at: point)
@@ -730,13 +733,13 @@ final class ColumnHand: NSObject {
 
     // MARK: - the lists
 
-    private var looseTabs: [Tab] { browser?.tabs.filter { $0.pin == nil } ?? [] }
+    private var looseTabs: [Tab] { browser?.sidebarLooseTabs ?? [] }
     /// The grid's cells: a pinned pair is one (PinPairs.swift).
-    private var pinnedTabs: [Tab] { browser?.gridPins ?? [] }
-    private var width: CGFloat { browser?.prefs.sideWidth ?? 240 }
+    private var pinnedTabs: [Tab] { browser?.sidebarGridPins ?? [] }
+    private var width: CGFloat { browser?.sidebarContentWidth ?? 240 }
     private var columnWidth: CGFloat { width - 2 * SideBar.margin }
     private var top: CGFloat { browser.map(ColumnLayout.pinsTop) ?? 0 }
-    private var pinsLine: CGFloat { top + ColumnLayout.pinBlock(count: browser?.pinCellCount ?? 0, width: width) }
+    private var pinsLine: CGFloat { top + ColumnLayout.pinBlock(count: browser?.sidebarGridPins.count ?? 0, width: width) }
     private var rowsTop: CGFloat { page.rowsTop }
 
     private func index(of tab: Tab) -> Int { looseTabs.firstIndex { $0 === tab } ?? 0 }
@@ -861,7 +864,7 @@ final class ColumnHand: NSObject {
         if pinFrom < pinGoal, index > pinFrom, index <= pinGoal { goal = index - 1 }
         if pinGoal < pinFrom, index >= pinGoal, index < pinFrom { goal = index + 1 }
         guard goal != index, let browser else { return .zero }
-        let count = browser.pinCellCount
+        let count = browser.sidebarGridPins.count
         let here = pinCenter(index, count: count)
         let there = pinCenter(goal, count: count)
         return CGSize(width: there.x - here.x, height: there.y - here.y)
@@ -962,7 +965,13 @@ final class ColumnHand: NSObject {
         }
         // Over the space's capsule, or the tray it opens.
         let held = herd.map { herd in browser.tabs.filter { herd.members.contains($0.id) } } ?? [tab]
+        let wasOverTrail = SpaceDrop.shared.overTrail
         if SpaceDrop.shared.track(held, browser: browser, at: spacePoint(point)) {
+            if SpaceDrop.shared.overTrail {
+                stopTimers()
+                aim = still(tab, at: from)
+                landedFor = .min
+            }
             unfold()
             if let herd, !herd.landed {
                 page.hand(CGPoint(x: columnWidth / 2, y: point.y - herd.grip), ColumnMotion.follow)
@@ -974,6 +983,7 @@ final class ColumnHand: NSObject {
             }
             return
         }
+        if wasOverTrail { landedFor = .min }
         let out = browser.flank == .left ? point.x > width - SideBar.margin + 8 : point.x < -SideBar.margin - 8
         if out { unfold() }
         if out, decked == nil, carry == nil, let herd, herd.ids.count == 1, !herd.landed,
@@ -1026,13 +1036,14 @@ final class ColumnHand: NSObject {
         // make way for it at their top (2026-10-14); but a folded space's
         // name, which keeps what is let go on it.
         let name = page.headItems.first { if case .name = $0.kind { true } else { false } }
-        var line = carry == nil ? pinsLine - 6 : top + pinBlock(count: browser.pinCellCount + 1) + 4
-        if let name, !(folders.shut && tab.keepable) { line = max(line, name.y + name.height / 2 + (carry == nil ? 0 : 4)) }
-        if point.y < line {
+        let line = carry == nil ? pinsLine - 6 : top + pinBlock(count: browser.sidebarGridPins.count + 1) + 4
+        let onHeader = name.map { point.y >= $0.y - 2 && point.y < $0.y + $0.height + 2 } ?? false
+        let pinHere = onHeader ? !folders.shut && point.y < (name?.y ?? 0) + SideBar.row / 2 : point.y < line
+        if pinHere {
             onName = false
             let mate = pinnablePair(tab).flatMap { browser.tab(id: $0.second) }
             let goal = pinPlace(pinTarget(at: point), shared: Browser.sharable(tab) && (mate.map(Browser.sharable) ?? true))
-            let cell = pinGeometry(count: browser.pinCellCount + 1)
+            let cell = pinGeometry(count: browser.sidebarGridPins.count + 1)
             if carry == nil {
                 lift(tab, toPins: true, index: goal,
                      from: CGPoint(x: columnWidth / 2, y: rowsTop + (page.laidTop(tab.id.uuidString) ?? slotY(drawnRow(tab, index: from))) + heldShift(tab) + SideBar.row / 2),
@@ -1168,7 +1179,7 @@ final class ColumnHand: NSObject {
         }
         if let carry, carry.toPins {
             // Up in the pins: it lands as a square, where the gap was.
-            let count = browser.pinCellCount + 1
+            let count = browser.sidebarGridPins.count + 1
             let cell = pinGeometry(count: count)
             // Out of the hand before the rows are laid again: held, the
             // rows were laid one frame with the shifts of a landing among
@@ -1251,7 +1262,7 @@ final class ColumnHand: NSObject {
                 tab.nest = guise.nest.flatMap { id in browser.nests.first { $0.id == id } }
             }
             let past = self.aim != nil && self.target > self.from && browser.partner(of: tab) != nil && browser.pair(of: tab.id)?.first == tab.id
-            if self.target != self.from { browser.move(tab, to: self.target + (past ? 1 : 0) + browser.pinnedCount) }
+            if self.target != self.from { browser.moveSidebarTab(tab, toLooseRow: self.target + (past ? 1 : 0)) }
             if changed {
                 self.folders.refresh()
                 browser.writeSession(now: true)
@@ -1846,14 +1857,14 @@ final class ColumnHand: NSObject {
             page.redraw(ColumnMotion.settle, held: nil, pin: tab.id)
             return
         }
-        let width = pinGeometry(count: browser.pinCellCount).width, height = pinGeometry(count: browser.pinCellCount).height
+        let width = pinGeometry(count: browser.sidebarGridPins.count).width, height = pinGeometry(count: browser.sidebarGridPins.count).height
         // Below the grid, among the rows: the pin is being let go of.
         let below = point.y > pinsLine + (carry == nil ? 6 : -6)
         if below {
             let goal = min(max(0, Int(slot(at: point.y - rowsTop).rounded(.down))), ColumnLayout.rows(baseCells, folders: folders))
             let spot = CGPoint(x: columnWidth / 2, y: point.y)
             if carry == nil {
-                let start = pinCenter(pinFrom, count: browser.pinCellCount)
+                let start = pinCenter(pinFrom, count: browser.sidebarGridPins.count)
                 lift(tab, toPins: false, index: goal,
                      from: CGPoint(x: start.x + pinTravel.width, y: start.y + pinTravel.height),
                      size: CGSize(width: width, height: height),
@@ -1864,7 +1875,7 @@ final class ColumnHand: NSObject {
             return
         }
         if carry != nil { drop() }
-        let cols = pinGeometry(count: browser.pinCellCount).cols
+        let cols = pinGeometry(count: browser.sidebarGridPins.count).cols
         let stepX = width + SideBar.pinGap, stepY = height + SideBar.pinGap
         let moved = Int((pinTravel.height / stepY).rounded()) * cols + Int((pinTravel.width / stepX).rounded())
         let goal = pinPlace(min(max(0, pinFrom + moved), max(0, pinnedTabs.count - 1)), shared: tab.everywhere != nil, moving: true)
@@ -1901,7 +1912,7 @@ final class ColumnHand: NSObject {
         if let carry, !carry.toPins {
             // Down among the rows: it lands as one, where the gap was.
             let base = baseCells
-            let rowsTop = top + pinBlock(count: browser.pinCellCount - 1) + page.nameBlock - page.offset
+            let rowsTop = top + pinBlock(count: browser.sidebarGridPins.count - 1) + (browser.namesSpaces || browser.windowPurpose == .privateOnly ? 0 : page.nameBlock) - page.offset
             let spot = ColumnLayout.placing(ColumnLayout.position(carry.index, in: base, folders: folders), in: base)
             // The line come in over it stands a row above where it lands.
             let lined = pinComesToday ? ColumnLayout.lineStep : 0
@@ -1919,9 +1930,9 @@ final class ColumnHand: NSObject {
                 } else if let nest = spot.nest, nest.today {
                     for half in halves { half.nest = nest }
                 }
-                let rest = browser.tabs.filter { $0.pin == nil && $0.id != tab.id }
+                let rest = browser.sidebarLooseTabs.filter { $0.id != tab.id }
                 let index = spot.before.flatMap { before in rest.firstIndex { $0.id == before.id } } ?? rest.count
-                browser.move(tab, to: browser.pinnedCount + index)
+                browser.moveSidebarTab(tab, toLooseRow: index)
                 self.folders.refresh()
             }
             pinDragging = nil
@@ -1929,7 +1940,7 @@ final class ColumnHand: NSObject {
             return
         }
         guard pinDragging == tab.id else { return }
-        let count = browser.pinCellCount
+        let count = browser.sidebarGridPins.count
         let start = pinCenter(pinFrom, count: count)
         let end = pinCenter(pinGoal, count: count)
         let left = CGSize(width: start.x + pinTravel.width - end.x, height: start.y + pinTravel.height - end.y)
@@ -1954,10 +1965,10 @@ final class ColumnHand: NSObject {
 
     private func pinTarget(at point: CGPoint, adding: Int = 1) -> Int {
         guard let browser else { return 0 }
-        let grid = pinGeometry(count: browser.pinCellCount + adding)
+        let grid = pinGeometry(count: browser.sidebarGridPins.count + adding)
         let col = min(max(0, Int(point.x / (grid.width + SideBar.pinGap))), grid.cols - 1)
         let row = max(0, Int((point.y - top) / (grid.height + SideBar.pinGap)))
-        return min(row * grid.cols + col, browser.pinCellCount)
+        return min(row * grid.cols + col, browser.sidebarGridPins.count)
     }
 
     private func belowRows(_ y: CGFloat) -> Bool {
@@ -2045,7 +2056,7 @@ final class ColumnHand: NSObject {
     private func herdMove(to point: CGPoint) {
         guard let browser, let herd, !herd.landed else { return }
         page.hand(CGPoint(x: columnWidth / 2, y: point.y - herd.grip), ColumnMotion.follow)
-        let line = herd.pinAt == nil ? pinsLine - 6 : top + pinBlock(count: browser.pinCellCount + herd.pinnable) + 4
+        let line = herd.pinAt == nil ? pinsLine - 6 : top + pinBlock(count: browser.sidebarGridPins.count + herd.pinnable) + 4
         if herd.pinnable > 0, point.y < line {
             let held = browser.tabs.first { $0.id == herd.held }
             let at = pinPlace(pinTarget(at: point, adding: herd.pinnable), shared: held.map(Browser.sharable) ?? false)
@@ -2126,7 +2137,7 @@ final class ColumnHand: NSObject {
             return
         }
         if let at = herd.pinAt {
-            let spot = pinCenter(at, count: browser.pinCellCount + herd.pinnable)
+            let spot = pinCenter(at, count: browser.sidebarGridPins.count + herd.pinnable)
             herdKept = true
             page.hand(spot, ColumnMotion.settle)
             page.stackGoes(into: false)

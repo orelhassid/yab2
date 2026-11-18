@@ -27,6 +27,45 @@ struct SpaceProfileTests {
         #expect(member.profileID == Space.firstID)
     }
 
+    @Test func deletingAProfileRequiresADestinationForEverySpace() throws {
+        let first = Space(id: Space.firstID, name: "Personal", icon: "🏠", ownSignIns: false)
+        let work = Space(id: UUID(), name: "Work", icon: "💼", ownSignIns: true, signedInAs: "Dia:Work")
+        let projects = Space(id: UUID(), name: "Projects", icon: "📁", ownSignIns: true, signedInAs: "Dia:Work", signInWith: work.id)
+        let client = Space(id: UUID(), name: "Client", icon: "💻", ownSignIns: true)
+        let spaces = [first, work, projects, client]
+        #expect(BrowserProfile.listed(in: spaces).map(\.id) == [first.id, work.id, client.id])
+        #expect(BrowserProfile.reassigning(work.id, to: [work.id: first.id], in: spaces) == nil)
+        #expect(BrowserProfile.reassigning(work.id, to: [work.id: first.id, projects.id: work.id], in: spaces) == nil)
+        #expect(BrowserProfile.reassigning(first.id, to: [first.id: client.id], in: [first]) == nil)
+        let moved = try #require(BrowserProfile.reassigning(work.id, to: [work.id: first.id, projects.id: client.id], in: spaces))
+        #expect(moved.map(\.id) == spaces.map(\.id))
+        #expect(moved.map(\.profileID) == [first.id, first.id, client.id, client.id])
+        #expect(moved[1].signedInAs == nil)
+        #expect(moved[2].signedInAs == nil)
+    }
+
+    @Test func googleIdentityPersistsAndKeepsACustomName() throws {
+        let suite = "yab-profile-test-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let id = UUID()
+        let identities = BrowserProfileIdentities(settings: defaults)
+        let identity = BrowserProfileIdentities.Google(email: "work@example.test", name: "Google Name",
+                                                       photo: URL(string: "https://lh3.googleusercontent.com/avatar"))
+        identities.link(identity, to: id)
+        #expect(identities[id].title(fallback: "Work") == "Google Name")
+        identities.rename(id, to: "  My Work  ")
+        let reloaded = BrowserProfileIdentities(settings: defaults)
+        #expect(reloaded[id].google == identity)
+        #expect(reloaded[id].google?.picture == identity.photo)
+        #expect(reloaded[id].title(fallback: "Work") == "My Work")
+        #expect(reloaded[UUID()].google == nil)
+        reloaded.link(nil, to: id)
+        #expect(reloaded[id].title(fallback: "Work") == "My Work")
+        reloaded.rename(id, to: "")
+        #expect(reloaded[id].title(fallback: "Work") == "Work")
+    }
+
     @Test func deletedOwnerDoesNotBreakMembersOrSync() throws {
         let gone = UUID()
         let member = Space(id: UUID(), name: "Same name", icon: "📁", ownSignIns: true, signInWith: gone)

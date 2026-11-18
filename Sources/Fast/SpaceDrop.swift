@@ -35,6 +35,9 @@ final class SpaceDrop: ObservableObject {
     /// letting go on that same door still means top of today.
     @Published private(set) var slot: UUID?
 
+    @Published private(set) var trailOwner: ObjectIdentifier?
+    @Published private(set) var overTrail = false
+
     private var carrying: [Tab] = []
     /// The folder they are, when a folder of yours is in the hand.
     private var folder: Nest?
@@ -57,6 +60,18 @@ final class SpaceDrop: ObservableObject {
         }()
         carrying = tabs
         self.folder = folder
+        let eligible = folder == nil && (browser.spaceRailWidth > 0 || browser.sidebarAppsShown) && !tabs.isEmpty
+            && tabs.allSatisfy { TrailApps.shared.address(for: $0) != nil }
+        let hoveringTrail = eligible && SpaceAnchors.overTrail(point, in: window, pinsOnly: false)
+        let trail = hoveringTrail ? ObjectIdentifier(browser) : nil
+        if trailOwner != trail { trailOwner = trail }
+        let inside = hoveringTrail && SpaceAnchors.overTrail(point, in: window)
+        if overTrail != inside { overTrail = inside }
+        if inside {
+            settle()
+            SpaceTray.shown?.leave()
+            return true
+        }
         // A foot door accepts a drop immediately and opens after a rest.
         if SpaceTray.shown == nil, let id = SpaceAnchors.slot(at: point, in: window), (id != browser.spaceID || slot == id),
            browser.spaces.contains(where: { $0.id == id }) {
@@ -98,7 +113,7 @@ final class SpaceDrop: ObservableObject {
         }
         guard SpaceTray.shown == nil, overCapsule(point, window: window) else {
             settle()
-            return false
+            return hoveringTrail
         }
         if !hot {
             hot = true
@@ -114,6 +129,18 @@ final class SpaceDrop: ObservableObject {
         return true
     }
 
+    func finishTrail(_ browser: Browser, at point: NSPoint?) -> Bool {
+        guard owner === browser, trailOwner == ObjectIdentifier(browser),
+              let window = BrowserWindows.shared.window(for: browser) ?? Links.window,
+              let point, SpaceAnchors.overTrail(point, in: window) else {
+            if overTrail { overTrail = false }
+            return false
+        }
+        carrying.forEach { TrailApps.shared.pin($0) }
+        cancel()
+        return true
+    }
+
     /// Let go. Yes when it was over a space and the tabs went there, or
     /// over New Space; the row they came from forgets the drag.
     func finish(_ browser: Browser) -> Bool {
@@ -122,6 +149,12 @@ final class SpaceDrop: ObservableObject {
             carrying = []
             self.folder = nil
         }
+        if overTrail, owner === browser {
+            carrying.forEach { TrailApps.shared.pin($0) }
+            cancel()
+            return true
+        }
+        if trailOwner != nil { trailOwner = nil }
         let tabs = carrying
         let lit = slot
         settle()
@@ -154,6 +187,8 @@ final class SpaceDrop: ObservableObject {
 
     /// A drag given up (Escape): nothing goes anywhere, the tray goes.
     func cancel() {
+        if trailOwner != nil { trailOwner = nil }
+        if overTrail { overTrail = false }
         carrying = []
         folder = nil
         settle()

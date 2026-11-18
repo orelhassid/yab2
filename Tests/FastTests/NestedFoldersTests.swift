@@ -137,7 +137,7 @@ struct NestedFoldersTests {
         func pick(_ index: Int, from active: Tab? = nil) -> Tab.ID? {
             browser.activeID = active?.id ?? tabs[3].id
             browser.folderBook.refresh()
-            browser.select(index: index)
+            browser.select(number: index + 1)
             return browser.activeID
         }
         browser.folderBook.refresh()

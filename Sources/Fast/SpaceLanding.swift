@@ -117,7 +117,10 @@ extension Browser {
         case .folder(let id):
             nest = nests.first { $0.id == id }
             kept = nest?.today != true
-            index = rest.lastIndex { $0.nest?.id == id }.map { $0 + 1 } ?? keptCount
+            if let nest {
+                let end = rest.lastIndex { $0.nest?.within(nest) == true }.map { $0 + 1 }
+                index = end ?? (kept ? folderBook.standIndex(for: nest, in: rest.filter(\.kept)) ?? keptCount : rest.count)
+            } else { index = keptCount }
         case .pin: return
         }
         if let folder {

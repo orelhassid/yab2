@@ -2475,7 +2475,7 @@ final class Bench {
             case "send": if let space = browser.spaces.first(where: { $0.name.lowercased() == value.lowercased() }) { lastMove = browser.moveTabs(browser.chosen, to: space.id) }
             case "undo": if let move = lastMove { browser.undoMove(move) }
             case "askdelete": if let space = browser.spaces.first(where: { $0.name.lowercased() == value.lowercased() }) { tray?.askDelete(space) }
-            case "reemoji": if let space = browser.spaces.first(where: { $0.name.lowercased() == value.lowercased() }) { tray?.changeEmoji(of: space) }
+            case "reemoji": if let space = browser.spaces.first(where: { $0.name.lowercased() == value.lowercased() }) { SpaceTray.customize(space, browser: browser) }
             case "focus": tray?.draft.focus = Int(value)
             case "name": tray?.draft.name = value
             case "step": if let step = ["spaces": SpaceDraft.Step.spaces, "start": .start, "name": .name, "emoji": .emoji, "color": .color, "signins": .signIns][value] { tray?.go(step) }
@@ -8582,7 +8582,7 @@ final class Bench {
             // And opened there.
             if request["settings"] as? Bool == true { SettingsWindow.shared.show(for: browser) }
             // And closed, for a picture of the browser window after it.
-            if request["settings"] as? Bool == false, Store.testing { SettingsWindow.shared.window?.close() }
+            if request["settings"] as? Bool == false, Store.testing { SettingsWindow.shared.hide() }
             // A thing on that page opened, as a click on its row does:
             // a skill, a space, a site's prompts.
             if let item = request["item"] as? String, let page = (request["page"] as? String).flatMap(SettingsPage.init) {
@@ -9781,7 +9781,7 @@ final class Bench {
     func spaceHead(_ browser: Browser) -> [String: [Double]] {
         guard let top = browser.nameTop, let window = Links.window, let screen = NSScreen.screens.first else { return [:] }
         let column = browser.flank == .left ? 0 : window.frame.width - browser.prefs.sideWidth
-        let local = CGRect(x: column + SideBar.margin, y: top, width: browser.prefs.sideWidth - 2 * SideBar.margin, height: SideBar.row)
+        let local = CGRect(x: column + browser.railInsideColumn + SideBar.margin, y: top, width: browser.sidebarContentWidth - 2 * SideBar.margin, height: SideBar.row)
         let onScreen = local.offsetBy(dx: window.frame.minX, dy: screen.frame.maxY - window.frame.maxY)
         func values(_ r: CGRect) -> [Double] { [r.minX, r.minY, r.width, r.height].map { Double($0) } }
         return ["window": values(local), "screen": values(onScreen)]

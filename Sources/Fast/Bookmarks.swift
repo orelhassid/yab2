@@ -21,6 +21,8 @@ struct Bookmark: Codable, Identifiable, Hashable {
     /// Imported profile collection: shown in this Space by the bookmark bar.
     var space: UUID?
     var importKey: String?
+    var folderIcon: String?
+    var folderColor: String?
 
     var isFolder: Bool { url == nil }
 
@@ -518,11 +520,25 @@ final class Bookmarks: ObservableObject {
 
     /// A new title or address for one that is kept. chrome.bookmarks.update.
     func update(_ id: Bookmark.ID, title: String?, url: String?) {
+        edit(id) { node in
+            if let title { node.title = title }
+            if let url, !node.isFolder { node.url = url }
+        }
+    }
+
+    func setFolderIcon(_ icon: String?, for id: Bookmark.ID) {
+        edit(id) { if $0.isFolder { $0.folderIcon = icon } }
+    }
+
+    func setFolderColor(_ tint: FolderTint, for id: Bookmark.ID) {
+        edit(id) { if $0.isFolder { $0.folderColor = tint.stored } }
+    }
+
+    private func edit(_ id: Bookmark.ID, change: (inout Bookmark) -> Void) {
         func walk(_ nodes: inout [Bookmark]) -> Bool {
             for i in nodes.indices {
                 if nodes[i].id == id {
-                    if let title { nodes[i].title = title }
-                    if let url, !nodes[i].isFolder { nodes[i].url = url }
+                    change(&nodes[i])
                     return true
                 }
                 guard var kids = nodes[i].children else { continue }

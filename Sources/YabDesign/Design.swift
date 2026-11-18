@@ -494,7 +494,7 @@ extension View {
         let shape = RoundedRectangle(cornerRadius: Radius.control + inset, style: .continuous)
         return padding(inset)
             .background(Palette.ground, in: shape)
-            .overlay(shape.strokeBorder(Palette.hairline, lineWidth: 1))
+            .overlay(shape.strokeBorder(Palette.hairline, lineWidth: 1).allowsHitTesting(false))
             .castShadow(shape, color: .black.opacity(Double(Shadow.rest.opacity)), radius: Shadow.rest.radius, y: Shadow.rest.y)
     }
 

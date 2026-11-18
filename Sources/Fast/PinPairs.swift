@@ -140,6 +140,10 @@ extension Browser {
     /// up into the pins, as Dia pins a split by dragging it there; it
     /// lands from the hand, so it doesn't grow in.
     func pinPair(_ pair: Pair, cell: Int? = nil) {
+        if prefs.sidebar {
+            pinInCurrentSpace([pair.first, pair.second].compactMap { tab(id: $0) })
+            return
+        }
         if startsArranging { return arranging { pinPair(pair, cell: cell) } }
         guard canPinPair(pair) else { return }
         let pair = pinsInPlace(of: pair)
@@ -289,7 +293,7 @@ extension Browser {
     /// The row index a pin dragged to cell `cell` of the grid goes to, a
     /// pinned pair taking two places in the row and one cell.
     func pinRow(forCell cell: Int, moving tab: Tab, from: Int) -> Int {
-        let grid = gridPins
+        let grid = sidebarGridPins
         guard grid.indices.contains(cell), let at = tabs.firstIndex(where: { $0.id == grid[cell].id }) else { return cell }
         // Going later, past a pair: after both of it.
         if cell > from, pinMate(of: grid[cell]) != nil { return at + 1 }

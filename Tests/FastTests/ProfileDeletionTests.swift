@@ -52,6 +52,27 @@ struct ProfileDeletionTests {
         try check(browser, personal, work)
     }
 
+    @Test func deletingTheDefaultProfileMovesItsSpaceAndTabsWithoutErasingTheSharedStore() throws {
+        try world { browser, personal, work in
+            let url = try #require(URL(string: "https://profile-deletion.test/keep-this-tab"))
+            let tab = Tab(configuration: browser.configuration(for: url))
+            tab.restore(url: url, title: "Keep this tab")
+            browser.prepare(tab)
+            browser.lay([tab])
+            browser.activeID = tab.id
+            let targetStore = Spaces.store(for: personal.id)
+            #expect(browser.deleteBrowserProfile(Space.firstID, reassigning: [Space.firstID: personal.id]))
+            #expect(browser.spaceID == Space.firstID)
+            #expect(browser.spaces.map(\.id) == [Space.firstID, personal.id, work.id])
+            #expect(Spaces.read().map(\.profileID) == [personal.id, personal.id, work.id])
+            #expect(browser.browserProfiles.map(\.id) == [personal.id, work.id])
+            let restored = try #require(browser.tabs.first { ($0.pending ?? $0.address) == url })
+            #expect(restored.store === targetStore)
+            #expect(Spaces.store(for: Space.mailID) === Store.websites)
+            #expect(browser.spaces.first { $0.id == personal.id }?.signedInAs == personal.signedInAs)
+        }
+    }
+
     @Test func deletesBuiltInAndKeepsBothImportedProfilesAndStores() throws {
         try world { browser, personal, work in
             let homeStore = Spaces.store(for: Space.firstID)

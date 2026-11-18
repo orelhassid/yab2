@@ -1114,10 +1114,10 @@ struct SidePlate: View {
         } else {
             ids = (Extensions.unread(signIn) ?? []).filter { $0.enabled && $0.pinned == true }.map(\.id)
         }
-        let height = SideExtensionLayout(width: browser.prefs.sideWidth,
+        let height = SideExtensionLayout(width: browser.presentedSidebarWidth,
                                    count: ids.count,
                                    door: door, margin: SideBar.margin,
-                                   columns: SideBar.pinColumns(ids.count, width: browser.prefs.sideWidth), gap: SideBar.pinGap).height
+                                   columns: SideBar.pinColumns(ids.count, width: browser.presentedSidebarWidth), gap: SideBar.pinGap).height
         return .init(shown: shown, extensionHeight: height, extensions: ids)
     }
 
@@ -1407,25 +1407,35 @@ struct EmptyPlate: View {
     @ObservedObject var browser: Browser
     var frosted = false
     @Environment(\.tone) private var tone
-    @State private var hovering = false
-
     var body: some View {
         Button { browser.newTab() } label: {
-            Text("Search or type a URL")
-                .foregroundStyle(Palette.muted(on: tone))
-                .sidebarFont(size: 12.5)
-                .lineLimit(1)
-                .padding(.leading, PlateGlass.lead)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+            SidebarAddressPlate(frosted: frosted) {
+                Text("Search or type a URL")
+                    .foregroundStyle(Palette.muted(on: tone))
+                    .sidebarFont(size: 12.5)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .frame(height: SidePlate.height)
-        .overlay(PlateGlass(shown: true))
-        .background(PlateGround(hovering: hovering, frosted: frosted))
-        .contentShape(RoundedRectangle(cornerRadius: SidePlate.corner, style: .continuous))
-        .onHover { hovering = $0 }
+    }
+}
+
+struct SidebarAddressPlate<Content: View>: View {
+    var frosted = false
+    @ViewBuilder let content: () -> Content
+    @State private var hovering = false
+
+    var body: some View {
+        content()
+            .padding(.leading, PlateGlass.lead)
+            .frame(height: SidePlate.height)
+            .overlay(PlateGlass(shown: true).allowsHitTesting(false))
+            .background(PlateGround(hovering: hovering, frosted: frosted))
+            .contentShape(RoundedRectangle(cornerRadius: SidePlate.corner, style: .continuous))
+            .onHover { hovering = $0 }
     }
 }
 

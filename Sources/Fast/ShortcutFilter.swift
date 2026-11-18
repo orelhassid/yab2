@@ -323,8 +323,12 @@ final class ShortcutFilterToolbar: NSObject, NSMenuDelegate {
     /// in parts, each row with a box, its icon and how many rows it has.
     /// Boxes tick in place and the list stays until Esc or a press beside.
     private func openList() {
-        guard let button = menuButton(in: window?.contentView?.superview), button.window != nil,
-              !DropPopup.closed(from: button) else { return }
+        guard let button = menuButton(in: window?.contentView?.superview) else { return }
+        openList(under: button)
+    }
+
+    func openList(under button: NSButton) {
+        guard button.window != nil, !DropPopup.closed(from: button) else { return }
         let counts = selection.counts
         let mods = ShortcutFilter.Modification.allCases
         var lines = mods.enumerated().map { index, value in

@@ -860,6 +860,7 @@ final class Brim {
     private var cornerQuiet: CFTimeInterval = 0
     /// Presses in the window, heard while the pointer is watched.
     private var presses: Any?
+    private var floatingPress: NSPoint?
     /// The pointer's moves, heard as they come, over the window and past it.
     private var moves: [Any] = []
     /// The same for the strip put away: when the pointer came to rest where
@@ -1055,17 +1056,45 @@ final class Brim {
         ].compactMap { $0 }
         // Presses are listened to: a tap on a trackpad is over in less
         // than a look.
-        presses = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+        presses = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             AppKitMainThread.sync {
                 if let self, let window = self.window, event.window === window {
-                    self.pressed(at: window.convertPoint(toScreen: event.locationInWindow))
+                    if event.type != .leftMouseUp {
+                        self.pressed(at: window.convertPoint(toScreen: event.locationInWindow))
+                    }
+                    self.trackFloatingClick(event, in: window)
                 }
             }
             return event
         }
     }
 
+    /// Leave the click with its original control. Dock after its release,
+    /// so selecting a tab still selects it and dragging one stays a drag.
+    private func trackFloatingClick(_ event: NSEvent, in window: NSWindow) {
+        let start = floatingPress
+        floatingPress = nil
+        guard let browser, browser.spaceRailWidth > 0, browser.sidePeek,
+              browser.prefs.sideShut, let column = browser.column,
+              let frame = window.contentView?.superview else { return }
+        let point = event.locationInWindow
+        guard point.x >= browser.spaceRailWidth,
+              let hit = frame.hitTest(frame.convert(point, from: nil)),
+              hit.isDescendant(of: column) else { return }
+        if event.type == .leftMouseDown {
+            floatingPress = point
+        } else if event.type == .leftMouseUp, let start,
+                  hypot(point.x - start.x, point.y - start.y) < 4 {
+            DispatchQueue.main.async { [weak browser] in
+                guard let browser, browser.sidePeek, browser.prefs.sideShut, !browser.folding,
+                      browser.columnMost >= browser.prefs.sideWidth else { return }
+                browser.toggleColumn()
+            }
+        }
+    }
+
     private func stopWatching() {
+        floatingPress = nil
         ticking?.invalidate()
         ticking = nil
         letting?.cancel()
@@ -1275,13 +1304,24 @@ final class Brim {
 
         // Full screen or not, only a column put away comes out as a card.
         if browser.prefs.sidebar, browser.prefs.sideShut {
-            let reach = browser.prefs.sideWidth + Metrics.floatInset + Metrics.floatSafe
+            let rail = browser.spaceRailWidth
+            let onRail = rail > 0 && pointer.x >= frame.minX && pointer.x < frame.minX + rail
+                && fromTop >= browser.menuDown && fromTop < frame.height
+            let reach = browser.presentedSidebarWidth + Metrics.floatInset + Metrics.floatSafe
             // In a window only the left edge brings the column out; its top
             // edge is the window's own, to resize it by.
             let over = EdgeReach.inside(here, height: frame.height)
             // Gone over to another display, beside the window's edge: not
             // the edge, and not the card's either.
             let away = EdgeReach.away(pointer, window: frame, screen: window.screen?.frame)
+            let keepsPreview: Bool
+            if rail > 0 {
+                let overColumn = here.x >= 0 && here.x < browser.presentedSidebarWidth + Metrics.floatInset
+                    && fromTop >= browser.menuDown && fromTop < frame.height
+                keepsPreview = onRail || overColumn
+            } else {
+                keepsPreview = !away && (EdgeReach.keeps(here, reach: reach, height: frame.height, full: full) || fromTop <= browser.menuDown)
+            }
             if browser.sidePeek { cancelRest() }
             if !browser.sidePeek {
                 // A rest at the very edge brings it out, or out past it
@@ -1305,7 +1345,7 @@ final class Brim {
                 } else if EdgeReach.wall(here, last: last, height: frame.height) {
                     past = true
                 }
-                let edge = !away && EdgeReach.at(here, past: past, height: frame.height)
+                let edge = rail > 0 ? onRail : !away && EdgeReach.at(here, past: past, height: frame.height)
                 let now = CACurrentMediaTime()
                 let rest = belowMenu ? EdgeReach.rest(edge: edge) : nil
                 let before = dwell.until
@@ -1343,7 +1383,7 @@ final class Brim {
                     visited = true
                     bringOut()
                 }
-            } else if !away, EdgeReach.keeps(here, reach: reach, height: frame.height, full: full) || fromTop <= browser.menuDown {
+            } else if keepsPreview {
                 // Over the column, just past the window's edge beside it,
                 // or up in the menu bar that came down with it.
                 visited = true
@@ -1363,7 +1403,10 @@ final class Brim {
                     }
                 }
                 letting = work
-                DispatchQueue.main.asyncAfter(deadline: .now() + EdgeReach.columnLetGo, execute: work)
+                // With the sidebar on the right, allow the pointer to cross
+                // the page from its reveal control on the left.
+                let delay = rail > 0 && right ? Self.bandGrace : EdgeReach.columnLetGo
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
             }
         } else {
             cancelRest()
@@ -1477,6 +1520,7 @@ final class Brim {
         guard browser.sidePeek != out else { return }
         browser.peek.sliding = true
         browser.quietly {
+            if out { browser.hoverResizeWidth = nil }
             if out, !browser.sideCard { browser.sideCard = true }
             browser.sidePeek = out
         }

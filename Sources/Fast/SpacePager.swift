@@ -366,7 +366,7 @@ final class SpacePager {
     /// as out of it: only Mail on screen was let slide, so going in by the
     /// envelope or two fingers had no row under it (feedback #158).
     static func allowed(_ browser: Browser) -> Bool {
-        guard let column = browser.column, !SpaceTurn.still else { return false }
+        guard let column = browser.column, !SpaceTurn.still, browser.prefs.spaceTransition == .slide else { return false }
         return SpacePaging.slides(place(browser, column), spaces: browser.prefs.usesSpaces || withMail(browser, toward: nil),
                                   reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
@@ -428,7 +428,7 @@ final class SpacePager {
     /// drawing masked out.
     private func raise(_ browser: Browser, toward target: Int? = nil, movingPlate: Bool? = nil) -> Bool {
         let mail = Self.withMail(browser, toward: target)
-        let carriesPlate = movingPlate ?? Self.movesPlate(browser, toward: target) ?? true
+        let carriesPlate = !browser.fixedSpaceSwitcher && (movingPlate ?? Self.movesPlate(browser, toward: target) ?? true)
         if ColumnKit.on && !carriesPlate { return raiseLive(browser) }
         // Out over the page as a card, the column stands in from the
         // window's edges and paints a ground of its own, cut out of the
@@ -1039,7 +1039,7 @@ final class SpacePager {
     private static func key(_ id: UUID, row: Parked?, travelling: [Tab], rows: Int, paint: SpaceWash.Paint?, size: CGSize,
                             floating: Bool, shared: Bool, browser: Browser) -> String {
         let folders = browser.folderBook
-        var key = "\(ObjectIdentifier(browser).hashValue) \(id) \(rows) \(size) \(floating) \(shared) \(browser.prefs.sideWidth) \(browser.barShown(row, travelling: travelling)) \(browser.namesSpaces)"
+        var key = "\(ObjectIdentifier(browser).hashValue) \(id) \(rows) \(size) \(floating) \(shared) \(browser.presentedSidebarWidth) \(browser.barShown(row, travelling: travelling)) \(browser.namesSpaces)"
         key += " \(NSApp.effectiveAppearance.name.rawValue) \(paint.map { "\($0)" } ?? "-") \(browser.prefs.glyph) \(browser.prefs.density)"
         key += " \(browser.prefs.backdrop) \(browser.prefs.wearsGlass)"
         key += " \(row?.active?.uuidString ?? "-") \(row?.pairs.map { "\($0.first)\($0.second)\($0.share)" } ?? [])"
@@ -1256,7 +1256,7 @@ struct PagedSpaceRoot: View {
         Worn(browser: browser, mode: prefs.backdrop, swatch: swatch, glassActive: glassActive) { tone in
             content.equatable()
                 .modifier(SidebarTypography())
-                .frame(width: prefs.sideWidth, alignment: .topLeading)
+                .frame(width: browser.presentedSidebarWidth, alignment: .topLeading)
                 // The host's height, from its top, whatever the rows add up
                 // to: taller than the host, the page grew to them and the
                 // host centered it, its pins and rows drawn half a band too
@@ -1322,7 +1322,7 @@ struct PagedGround: View {
                     Palette.ground
                 }
             }
-            .frame(width: prefs.sideWidth)
+            .frame(width: browser.presentedSidebarWidth)
             .frame(maxHeight: .infinity)
         }
     }

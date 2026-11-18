@@ -231,12 +231,18 @@ struct IconPicker: View {
     var folder: Nest? = nil
     /// A space's: the emoji it is offered, first.
     var space: [String]? = nil
+    let spaceName: String?
+    let bookmark: Bookmark?
+    let rename: ((String) -> Void)?
+    @State private var spacePreview: FolderTint?
+    private var customizing: Bool { folder != nil || spaceName != nil || bookmark != nil }
     let pick: (String?) -> Void
     let close: () -> Void
     var cancel: (() -> Void)? = nil
     var setColor: ((FolderTint) -> Void)? = nil
     var chooseImage: (() -> Void)? = nil
     /// Emoji alone, with no Icon page: a project's face.
+    var profilePicture = false
     var emojiOnly = false
 
     private enum Kind: Hashable { case emoji, icon }
@@ -258,33 +264,38 @@ struct IconPicker: View {
     @State private var meanings = 0
     @State private var colorAt: Int?
     @State private var onColors = false
-    @State private var chosenColor: FolderTint = .black
+    @State private var chosenColor: FolderTint?
     @FocusState private var typing: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let across = 8
     private static let side: CGFloat = 32
 
-    init(mark: String?, folder: Nest? = nil, space: [String]? = nil, pick: @escaping (String?) -> Void, close: @escaping () -> Void,
+    init(mark: String?, folder: Nest? = nil, space: [String]? = nil, spaceName: String? = nil, spaceTint: FolderTint? = nil, pick: @escaping (String?) -> Void, close: @escaping () -> Void,
          cancel: (() -> Void)? = nil, setColor: ((FolderTint) -> Void)? = nil, chooseImage: (() -> Void)? = nil,
-         emojiOnly: Bool = false) {
+         emojiOnly: Bool = false, profilePicture: Bool = false, bookmark: Bookmark? = nil, rename: ((String) -> Void)? = nil) {
+        self.bookmark = bookmark
+        self.rename = rename
         self.mark = mark
+        self.profilePicture = profilePicture
         self.emojiOnly = emojiOnly
         self.folder = folder
         self.space = space
+        self.spaceName = spaceName
         self.pick = pick
         self.close = close
         self.cancel = cancel
         self.setColor = setColor
         self.chooseImage = chooseImage
-        _chosenColor = State(initialValue: FolderTint(stored: folder?.color))
+        _chosenColor = State(initialValue: folder.map { FolderTint(stored: $0.color) } ?? spaceTint)
         let icon = space == nil ? (mark?.hasPrefix("icon:") == true || mark?.hasPrefix("space:") == true) : !Spaces.isEmoji(mark ?? "")
         _kind = State(initialValue: icon && !emojiOnly ? .icon : .emoji)
     }
 
     /// A space's offered emoji, two rows of them.
     private var suggested: [Item] {
-        (space ?? []).filter(Spaces.isEmoji).prefix(2 * Self.across).map { Item(id: $0, part: "suggested") }
+        let first = profilePicture ? ["🦊", "🐻", "🐼", "🦉", "🐰", "🐱", "🐶", "🐺", "🦁", "🐨", "🐧", "🐸"] : (space ?? [])
+        return first.filter(Spaces.isEmoji).prefix(2 * Self.across).map { Item(id: $0, part: "suggested") }
     }
 
     var body: some View {
@@ -292,18 +303,26 @@ struct IconPicker: View {
         let items = sections.flatMap(\.items)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
-                if let folder {
-                    FolderCustomizeHeader(folder: folder)
-                        .padding(.top, 12)
-                        .padding(.bottom, 12)
-                    palette(folder)
+                if customizing {
+                    Group {
+                        if let folder {
+                            FolderCustomizeHeader(folder: folder)
+                        } else if let name = bookmark?.title ?? spaceName {
+                            CustomizeHeader(name: name, tint: spacePreview ?? chosenColor, rename: rename) { _ in
+                                SpaceMark(icon: mark ?? "folder", size: 40)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 12)
+                    palette
                         .padding(.horizontal, 12)
                         .padding(.bottom, 12)
                     Divider()
                 }
+                if profilePicture { kindSelector }
                 HStack(spacing: 6) {
                     field(items)
-                    if space == nil {
+                    if space == nil && !profilePicture {
                         Button {
                             if let chooseImage { chooseImage() }
                             else {
@@ -333,7 +352,7 @@ struct IconPicker: View {
                             Section {
                                 ForEach(Array(section.items.enumerated()), id: \.element) { offset, item in
                                     Cell(item: item.id, current: item.id == mark,
-                                         at: at == section.start + offset && (folder == nil || !onColors)) { pick(item.id) }
+                                         at: at == section.start + offset && (!customizing || !onColors)) { pick(item.id) }
                                 }
                             }
                         }
@@ -355,7 +374,7 @@ struct IconPicker: View {
                     Divider()
                     bar(proxy)
                 }
-                if !emojiOnly {
+                if !emojiOnly && !profilePicture {
                     Divider()
                     kindSelector
                 }
@@ -369,7 +388,7 @@ struct IconPicker: View {
         .onChange(of: kind) { _, _ in
             at = nil
             onColors = false
-            folder?.previewTint = nil
+            preview(nil)
             words = ""
             part = 0
         }
@@ -472,7 +491,7 @@ struct IconPicker: View {
                     guard press.modifiers.isEmpty else { return .ignored }
                     switch press.key {
                     case .return:
-                        if folder != nil, onColors {
+                        if customizing, onColors {
                             let tint = FolderTint.allCases[colorAt ?? 0]
                             chosenColor = tint
                             setColor?(tint)
@@ -481,22 +500,22 @@ struct IconPicker: View {
                         }
                         guard let item = items.indices.contains(at ?? 0) ? items[at ?? 0] : nil else { return .handled }
                         pick(item.id)
-                        if folder != nil { close() }
+                        if customizing { close() }
                     case .escape:
                         if words.isEmpty { (cancel ?? close)() } else { words = "" }
                     case .tab:
-                        guard folder != nil else { return .ignored }
+                        guard customizing else { return .ignored }
                         onColors.toggle()
-                        if onColors { colorAt = colorAt ?? FolderTint.allCases.firstIndex(of: chosenColor) }
-                        else { at = at ?? 0; folder?.previewTint = nil }
+                        if onColors { colorAt = colorAt ?? FolderTint.allCases.firstIndex(of: chosenColor ?? .black) }
+                        else { at = at ?? 0; preview(nil) }
                     case .downArrow:
-                        if folder != nil, onColors { onColors = false; at = 0; folder?.previewTint = nil }
+                        if customizing, onColors { onColors = false; at = 0; preview(nil) }
                         else { move(at == nil ? 0 : Self.across, in: items.count) }
                     default:
-                        if folder != nil, onColors {
+                        if customizing, onColors {
                             let step = press.key == .leftArrow || press.key == .upArrow ? -1 : 1
                             colorAt = min(max((colorAt ?? 0) + step, 0), FolderTint.allCases.count - 1)
-                            folder?.previewTint = FolderTint.allCases[colorAt ?? 0]
+                            preview(FolderTint.allCases[colorAt ?? 0])
                             return .handled
                         }
                         guard at != nil else { return .ignored }
@@ -516,7 +535,11 @@ struct IconPicker: View {
         at = min(max((at ?? 0) + step, 0), count - 1)
     }
 
-    private func palette(_ folder: Nest) -> some View {
+    private func preview(_ tint: FolderTint?) {
+        if let folder { folder.previewTint = tint } else { spacePreview = tint }
+    }
+
+    private var palette: some View {
         HStack(spacing: 6) {
             ForEach(Array(FolderTint.allCases.enumerated()), id: \.element) { index, tint in
                 Button {
@@ -544,9 +567,9 @@ struct IconPicker: View {
                 }
                 .buttonStyle(.plain)
                 .onHover { on in
-                    withAnimation(Motion.quick) { folder.previewTint = on ? tint : nil }
+                    withAnimation(Motion.quick) { preview(on ? tint : nil) }
                 }
-                .accessibilityLabel(tint == .black ? "No folder color" : "\(tint.title) folder color")
+                .accessibilityLabel("\(tint.title) \(spaceName == nil ? "folder" : "space") color")
                 .accessibilityValue(chosenColor == tint ? "Selected" : "")
             }
         }
@@ -659,31 +682,156 @@ struct IconPicker: View {
 
 private struct FolderCustomizeHeader: View {
     @ObservedObject var folder: Nest
-    @Environment(\.tone) private var tone
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var tint: FolderTint? {
-        let value = folder.previewTint ?? folder.color.flatMap(FolderTint.init(rawValue:))
-        return value == .black ? nil : value
+    var body: some View {
+        let tint = folder.previewTint ?? folder.color.flatMap(FolderTint.init(rawValue:))
+        CustomizeHeader(name: folder.name, tint: tint) { ink in
+            if let image = CustomMarks.image(folder.customMark) {
+                Image(nsImage: image).renderingMode(image.isTemplate ? .template : .original)
+                    .resizable().scaledToFit()
+            } else {
+                Face(pose: .seen, size: 48, tint: ink, folder: true, unfolded: false, folderTint: tint == .black ? nil : tint)
+            }
+        }
     }
-    private var ink: Color { tint?.ink(dark: colorScheme == .dark) ?? Palette.strong(on: tone) }
+}
+
+private struct CustomizeHeader<Mark: View>: View {
+    let name: String
+    let tint: FolderTint?
+    var rename: ((String) -> Void)? = nil
+    @State private var draft = ""
+    @State private var editing = false
+    @FocusState private var fieldFocused: Bool
+
+    private func commit(_ rename: (String) -> Void) {
+        editing = false
+        let clean = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !clean.isEmpty && clean != name { rename(clean) }
+    }
+    @ViewBuilder let mark: (Color) -> Mark
+    @Environment(\.tone) private var tone
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        let ink = tint.flatMap { $0 == .black ? nil : $0.ink(dark: scheme == .dark) } ?? Palette.strong(on: tone)
         VStack(spacing: 6) {
-            Group {
-                if let image = CustomMarks.image(folder.customMark) {
-                    Image(nsImage: image).renderingMode(image.isTemplate ? .template : .original)
-                        .resizable().scaledToFit().foregroundStyle(ink)
-                } else {
-                    Face(pose: .seen, size: 48, tint: ink, folder: true, unfolded: false, folderTint: tint)
-                }
+            mark(ink).frame(width: 48, height: 48)
+            if let rename, editing {
+                TextField("Name", text: $draft)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.center)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 200)
+                    .focused($fieldFocused)
+                    .onChange(of: fieldFocused) { _, focused in
+                        if !focused && editing { commit(rename) }
+                    }
+                    .onAppear { fieldFocused = true }
+                    .onChange(of: name) { _, new in if !editing { draft = new } }
+                    .onSubmit {
+                        commit(rename)
+                    }
+                    .onKeyPress(.escape) {
+                        draft = name
+                        editing = false
+                        return .handled
+                    }
+                    .accessibilityLabel("Name")
+            } else if rename != nil {
+                Button(name) { draft = name; editing = true }
+                    .buttonStyle(.plain).font(.system(size: 13, weight: .semibold))
+                    .accessibilityLabel("Edit name")
+            } else {
+                Text(name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
             }
-            .frame(width: 48, height: 48)
-            Text(folder.name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(ink)
-                .lineLimit(1)
         }
+        .foregroundStyle(ink)
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// One visit to an existing Space, from its menu or its Settings icon well.
+@MainActor
+final class SpaceCustomizeSession: ObservableObject {
+    let browser: Browser
+    let space: Space
+    @Published private(set) var name: String
+    let openingIcon: String
+    let openingPaint: SpacePaint
+    @Published private(set) var icon: String
+    @Published private(set) var paint: SpacePaint
+    private var finished = false
+
+    init(browser: Browser, space: Space) {
+        self.browser = browser
+        self.space = space
+        name = space.name
+        openingIcon = space.icon
+        openingPaint = space.id == browser.spaceID ? SpacePaint(browser.prefs) : space.paint ?? SpacePaint(browser.prefs)
+        icon = openingIcon
+        paint = openingPaint
+    }
+
+    func rename(_ value: String) {
+        browser.renameSpace(space.id, to: value)
+        name = value
+    }
+
+    func mark(_ picked: String?) {
+        guard let picked, picked != icon else { return }
+        icon = picked
+        browser.setSpaceIcon(space.id, to: picked)
+    }
+
+    func color(_ tint: FolderTint) {
+        if tint == .black {
+            paint.wearPlain()
+        } else {
+            paint.swatch = Swatch.custom.rawValue
+            paint.color = NSColor(tint.swatch).hex
+            paint.colors = []
+        }
+        browser.setSpacePaint(space.id, to: paint)
+    }
+
+    func cancel() {
+        guard !finished else { return }
+        finished = true
+        if icon != openingIcon { browser.setSpaceIcon(space.id, to: openingIcon) }
+        if paint != openingPaint { browser.setSpacePaint(space.id, to: openingPaint) }
+    }
+
+    func finish() {
+        guard !finished else { return }
+        finished = true
+        let previousIcon = icon == openingIcon ? nil : openingIcon
+        let previousPaint = paint == openingPaint ? nil : openingPaint
+        guard previousIcon != nil || previousPaint != nil else { return }
+        let id = space.id
+        browser.did { [weak browser] in
+            if let previousIcon { browser?.setSpaceIcon(id, to: previousIcon) }
+            if let previousPaint { browser?.setSpacePaint(id, to: previousPaint) }
+        }
+    }
+}
+
+struct SpaceCustomizer: View {
+    @StateObject var session: SpaceCustomizeSession
+    let close: () -> Void
+
+    var body: some View {
+        let suggested = SpaceDraft.guess(session.name).more + Spaces.icons + SpaceDraft.all
+        var seen = Set<String>()
+        let offered = ([session.openingIcon] + suggested).filter { seen.insert($0).inserted }
+        let paint = session.paint
+        let tint = paint.picked == .plain ? FolderTint.black : FolderTint.allCases.first {
+            $0 != .black && paint.colors.isEmpty && paint.picked == .custom && NSColor($0.swatch).hex == paint.color
+        }
+        let rename: ((String) -> Void)?
+        if session.space.id == Space.mailID { rename = nil } else { rename = { session.rename($0) } }
+        return IconPicker(mark: session.icon, space: offered, spaceName: session.name, spaceTint: tint,
+                          pick: session.mark, close: close, cancel: { session.cancel(); close() }, setColor: session.color,
+                          rename: rename)
+            .onDisappear { session.finish() }
     }
 }

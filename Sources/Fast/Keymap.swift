@@ -548,7 +548,7 @@ enum Shortcut {
     /// What a key can be given to. The raw value is what the choice is kept
     /// under, so a case is never renamed.
     enum Action: String, CaseIterable {
-        case newWindow, blankWindow, closeWindow, newTab, privateTab, closeTab, reopen, nextTab, previousTab, duplicate, mute, stopLoading
+        case newWindow, blankWindow, closeWindow, newTab, openCommandField, privateTab, closeTab, reopen, nextTab, previousTab, duplicate, mute, stopLoading
         case recentTab, recentTabReverse, backArrow, forwardArrow
         case tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9
         case space1, space2, space3, space4, space5, space6, space7, space8, space9
@@ -697,7 +697,8 @@ enum Shortcut {
             // no key unless one is chosen (BlankWindow.swift).
             Item(.blankWindow, "Blank window, its tabs in no space", "opens a blank window", nil),
             Item(.closeWindow, "Close window", "closes the window", k("w", [.command, .shift])),
-            Item(.newTab, "New tab, or find an open one, a setting, anything", "opens a new tab", k("t")),
+            Item(.newTab, "Open Home for a new tab", "opens Home", k("t")),
+            Item(.openCommandField, "Open Command Field", "opens the command field", k("k", [.control, .command])),
             // Dia's: the folder the tab in front is in.
             Item(.newTabInFolder, "New tab in this tab’s folder", "opens a new tab in the folder", k("t", [.option, .command])),
             Item(.privateTab, "New private tab", "opens a private tab", k("n", [.shift, .command])),
@@ -1025,7 +1026,7 @@ enum Shortcut {
     /// caret (ContentView.perform).
     static let first: Set<Action> = [
         .column, .back, .forward,
-        .newWindow, .closeWindow, .newTab, .newTabInFolder, .reopen, .privateTab, .closeTab, .closeOthers, .closeBefore, .closeAfter, .nextTab, .previousTab, .recentTab, .recentTabReverse, .openAddress, .pasteAndGo, .copyAddress, .copyMarkdownLink,
+        .newWindow, .closeWindow, .newTab, .openCommandField, .newTabInFolder, .reopen, .privateTab, .closeTab, .closeOthers, .closeBefore, .closeAfter, .nextTab, .previousTab, .recentTab, .recentTabReverse, .openAddress, .pasteAndGo, .copyAddress, .copyMarkdownLink,
         .backArrow, .forwardArrow, .reload, .stopLoading, .hardReload, .fillForm, .closeChat, .reader, .inspector, .console, .inspectElement, .devMode, .devSheet, .measure, .capture,
         .sendFeedback, .nextSpace, .previousSpace,
         .clipboard, .emoji, .autofill, .chats, .routines, .boostStore, .now, .purchases,
@@ -1057,7 +1058,7 @@ enum Shortcut {
     /// Each action's menu item, by its title, the name System Settings'
     /// App Shortcuts knows it by (see Hotkeys).
     private static let fixedTitles: [Action: String] = [
-        .newWindow: "New Window", .blankWindow: "Blank Window", .closeWindow: "Close Window", .newTab: "New Tab", .privateTab: "New Private Window", .closeTab: "Close Tab", .reopen: "Reopen Closed Tab",
+        .newWindow: "New Window", .blankWindow: "Blank Window", .closeWindow: "Close Window", .newTab: "New Tab", .openCommandField: "Open Command Field", .privateTab: "New Private Window", .closeTab: "Close Tab", .reopen: "Reopen Closed Tab",
         .nextTab: "Next Tab", .previousTab: "Previous Tab", .duplicate: "Duplicate Tab", .mute: "Mute Tab",
         .openAddress: "Open Address…", .copyAddress: "Copy URL", .copyMarkdownLink: "Copy Markdown Link", .sharePage: "Share Page\u{2026}", .pasteAndGo: "Paste and Go", .pasteAndMatchStyle: "Paste and Match Style", .keepTab: "Keep Tab", .folderWithTabs: "New Folder with Tabs", .newTabInFolder: "New Tab in Folder", .bookmark: "Add This Page",
         .back: "Back", .forward: "Forward", .reload: "Reload Page", .stopLoading: "Stop Loading", .hardReload: "Reload Without Cache",

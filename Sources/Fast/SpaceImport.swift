@@ -51,7 +51,9 @@ extension Browser {
         }) { return .space(named.id) }
         // A browser's first profile is how you were signed in, which is
         // what yab's first space is.
-        if place.isProfile, place.shared, spaces.contains(where: \.isFirst) { return .space(Space.firstID) }
+        if place.isProfile, place.shared, let shared = spaces.first(where: { !$0.ownSignIns }) {
+            return .space(shared.id)
+        }
         return .new
     }
 

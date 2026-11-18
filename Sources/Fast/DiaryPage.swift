@@ -53,6 +53,8 @@ final class DiaryScheme: NSObject, WKURLSchemeHandler {
             body = resource.0; type = resource.1
         }
         switch url.host() {
+        case let host? where LibraryPage(rawValue: host) != nil:
+            body = Data("<!doctype html><meta name='color-scheme' content='light dark'><title>\(host.capitalized)</title>".utf8)
         case MailPage.host:
             body = MainActor.assumeIsolated { MailPage.page }
         case KnowPage.host:

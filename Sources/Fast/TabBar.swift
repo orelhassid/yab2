@@ -3087,12 +3087,18 @@ struct TabMenu: View {
                 Button("Swap Halves", mark: "arrow.left.arrow.right") { browser.swapHalves(pair) }
             }
         }
+        if browser.windowPurpose == .normal, !browser.blank, let url = TrailApps.shared.address(for: tab) {
+            let pinned = TrailApps.shared.contains(url)
+            Button(pinned ? Command.unpinTrailApp.title : Command.pinTrailApp.title, mark: pinned ? "pin.slash" : "pin") {
+                if pinned { TrailApps.shared.remove(url, in: browser) } else { TrailApps.shared.pin(tab) }
+            }
+        }
         if tab.pin != nil {
             Button("Unpin", mark: "pin.slash") { browser.unpin(tab) }.shortcut(.pin)
         } else if tab.kept {
-            Button("Don't Keep Tab", mark: "anchor") { browser.releaseTabs([tab]) }.shortcut(.keepTab)
+            Button("Unpin Tab", mark: "pin.slash") { browser.releaseTabs([tab]) }.shortcut(.keepTab)
         } else {
-            Button("Pin", mark: "pin") { browser.pin(tab) }.shortcut(.pin).disabled(tab.isBlank)
+            Button(Command.pinTab.title, mark: "pin") { browser.pin(tab) }.shortcut(.pin).disabled(tab.isBlank)
         }
         Divider()
         if AIUse.offers {
@@ -3151,10 +3157,10 @@ struct TabMenu: View {
     @ViewBuilder
     private func several(_ group: [Tab]) -> some View {
         let n = group.count
-        let loose = group.filter { $0.pin == nil && !$0.isBlank }.count
+        let loose = group.filter { $0.pin == nil && !$0.isBlank && (!browser.prefs.sidebar || !$0.kept) }.count
         let kept = group.filter(\.kept).count
         if loose > 0 {
-            Button(loose == 1 ? "Pin" : "Pin \(loose) Tabs", mark: "pin") { browser.pin(group) }.shortcut(.pin)
+            Button(loose == 1 ? Command.pinTab.title : "Pin \(loose) Tabs in This Space", mark: "pin") { browser.pin(group) }.shortcut(.pin)
         } else {
             Button("Unpin \(n) Tabs", mark: "pin.slash") { browser.unpin(group) }.shortcut(.pin)
         }
@@ -3274,9 +3280,9 @@ struct TabMenu: View {
                 browser.folderBook.keep(agentTabs, in: browser)
             }
         }
-        let loose = group.filter { $0.pin == nil && !$0.isBlank }.count
+        let loose = group.filter { $0.pin == nil && !$0.isBlank && (!browser.prefs.sidebar || !$0.kept) }.count
         if loose > 0 {
-            Button(loose == 1 ? "Pin" : "Pin \(loose) Tabs", mark: "pin") { browser.pin(group) }
+            Button(loose == 1 ? Command.pinTab.title : "Pin \(loose) Tabs in This Space", mark: "pin") { browser.pin(group) }
                 // Nothing is pinned or kept in a Blank Window, as in Arc's.
                 .disabled(browser.blank)
         } else {
@@ -3285,7 +3291,7 @@ struct TabMenu: View {
         // Above the line, or under it again (Kept.swift).
         let keepable = group.filter { $0.keepable && !$0.kept }.count
         let kept = group.filter(\.kept).count
-        if keepable > 0 {
+        if keepable > 0 && !browser.prefs.sidebar {
             Button(keepable == 1 ? "Keep Tab" : "Keep \(keepable) Tabs", mark: "anchor") { browser.keepTabs(group) }
                 .shortcut(.keepTab)
                 .disabled(browser.blank)
@@ -3374,15 +3380,17 @@ struct TabMenu: View {
         }
         RefreshIconItem(tab: tab)
         if tab.pin == nil {
-            Button("Pin", mark: "pin") { browser.pin(tab) }
-                .shortcut(.pin)
-                .disabled(tab.isBlank || browser.blank)
+            if !browser.prefs.sidebar {
+                Button(Command.pinTab.title, mark: "pin") { browser.pin(tab) }
+                    .shortcut(.pin)
+                    .disabled(tab.isBlank || browser.blank)
+            }
             // Above the line in the column, the tabs that stay (Kept.swift).
             if tab.kept {
-                Button("Don't Keep Tab", mark: "anchor") { browser.releaseTabs([tab]) }
+                Button("Unpin Tab", mark: "pin.slash") { browser.releaseTabs([tab]) }
                     .shortcut(.keepTab)
             } else {
-                Button("Keep Tab", mark: "yab.anchor") { browser.keepTabs([tab]) }
+                Button(Command.pinTab.title, mark: "pin") { browser.keepTabs([tab]) }
                     .shortcut(.keepTab)
                     .disabled(!tab.keepable || browser.blank)
             }

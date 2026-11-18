@@ -71,6 +71,8 @@ struct SpacesPage: View {
     @ObservedObject var prefs: Preferences
     @ObservedObject var model: SettingsModel
 
+    @AppStorage(TrailSpaceLimit.key, store: Store.settings) private var trailLimit = TrailSpaceLimit.initial
+
     var body: some View {
         if let opened = model.opened {
             // Its own state for each space's page, never the last one's.
@@ -84,6 +86,13 @@ struct SpacesPage: View {
                 // own: a row in the hand moves over the others, and the
                 // form's cells would clip it.
                 Section {
+                    if prefs.showLeftTrail {
+                        SettingsRow("Spaces on left trail") {
+                            Stepper(value: $trailLimit, in: TrailSpaceLimit.range) {
+                                Text(trailLimit.formatted()).monospacedDigit()
+                            }.fixedSize().accessibilityLabel("Spaces on left trail")
+                        }.settingsAnchor("trail-space-limit")
+                    }
                     SpaceList(browser: browser, model: model)
                         // The form's inset round a cell traded for the
                         // list's own air (a grouped form on macOS ignores
@@ -96,14 +105,6 @@ struct SpacesPage: View {
                 // with spaces, Appearance sets no look, it sends you here.
                 if browser.spaces.count > 1 {
                     SpacesBrowserLook(browser: browser, prefs: prefs)
-                }
-                // One row of pins every space shares, as Arc's Favorites,
-                // or a row in each (docs/shared-pins.md).
-                Section {
-                    SettingsRow("Pins", detail: "Spaces with separate sign-ins have separate pins.") {
-                        MenuCell(title: "Pins", options: [("In Every Space", true), ("In Each Space", false)], selection: $prefs.pinsEverySpace, trailing: true)
-                    }
-                    .settingsAnchor("pins")
                 }
                 if browser.spaces.count > 1 {
                     LinkRouteSettings(browser: browser)
@@ -506,16 +507,26 @@ private struct SpacePage: View {
                     .accessibilityIdentifier("space-icon-well")
                     .keyTip("Choose an emoji")
                     .popover(isPresented: $picking, arrowEdge: .bottom) {
-                        // Change Icon's picker, as a tab's: every emoji
-                        // searched, this space's offered ones first.
-                        IconPicker(mark: form.icon, space: offered, pick: { mark in
-                            guard let mark else { return }
-                            form.icon = mark
-                            form.iconByHand = true
-                            picking = false
-                            if let id = form.id { browser.setSpaceIcon(id, to: mark) }
-                        }, close: { picking = false })
+                        if let space {
+                            SpaceCustomizer(session: SpaceCustomizeSession(browser: browser, space: space)) { picking = false }
+                        } else {
+                            IconPicker(mark: form.icon, space: offered, pick: { mark in
+                                guard let mark else { return }
+                                form.icon = mark
+                                form.iconByHand = true
+                                picking = false
+                            }, close: { picking = false })
+                        }
                     }
+                }
+                .onChange(of: space?.name) { _, name in
+                    if let name, !naming { form.name = name }
+                }
+                .onChange(of: space?.icon) { _, icon in
+                    if let icon { form.icon = icon }
+                }
+                .onChange(of: space?.paint) { _, paint in
+                    if let paint { form.paint = paint }
                 }
                 .settingsAnchor("space-emoji")
             }

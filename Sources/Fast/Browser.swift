@@ -19,6 +19,16 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// update: about 0.1 ms a read of a Browser or a Tab (bench
     /// willchange), many times over in every pass (feedback #120).
     nonisolated let objectWillChange = ObservableObjectPublisher()
+    @ObservationIgnored private var sharedLibraryControls: [LibraryPage: LibraryControls] = [:]
+
+    func libraryControls(for page: LibraryPage, tab: Tab) -> LibraryControls {
+        if tab.shy { return tab.controls(for: page) }
+        if let controls = sharedLibraryControls[page] { return controls }
+        let controls = LibraryControls()
+        sharedLibraryControls[page] = controls
+        return controls
+    }
+
     let pageTranslation = PageTranslation()
     @ObservationIgnored private var fieldNavigationInput: String?
     let selectionCommands = SelectionCommands()
@@ -906,6 +916,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     }
 
     /// A hand on the sidebar's width owns its geometry, including its pins.
+    var hoverResizeWidth: CGFloat?
     var sideSizing = false
     @ObservationIgnored private var sideSizeTurn = 0
 
@@ -1022,7 +1033,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
             if editing != oldValue { fieldAway.watch(editing) }
             if !editing { searchSuggestions.update(nil, engine: searchEngine.engine) {} }
             // The field raised again asks anew, whatever it last said.
-            if !editing { query.answered = nil }
+            if !editing {
+                query.answered = nil
+                commandsOnlyField = false
+            }
             if !editing, fieldGuest != nil { fieldGuest = nil; fieldHost = nil }
             if editing, fieldPutAway { fieldPutAway = false }
         }
@@ -1057,12 +1071,22 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// puts it away, the sidebar, the strip and the column as the page
     /// (App's scrim, which keeps the page's own click). The click still
     /// does its own: a tab clicked in the sidebar is then in front.
+    var homeSection = "overview"
+    private var commandsOnlyField = false
+
+    var showsHomeField: Bool {
+        fieldShowing && !commandsOnlyField && windowPurpose == .normal && !privateBrowsing && fieldGuest == nil
+            && (fresh || (active?.isBlank == true && !editing)) && asked != .split
+            && query.place == nil && query.scope == nil && !query.answering
+            && query.acting == nil && emojiWords == nil
+    }
+
     @ObservationIgnored lazy var fieldAway: ClickAway = {
         // A row takes its click on mouse-up. Dismissing on mouse-down lit
         // the old tab between the press and the row's selection. Let that
         // selection finish first, including its deferred first frame.
         let away = ClickAway(on: [.leftMouseUp, .rightMouseDown, .otherMouseDown]) { [weak self] in
-            guard let self, self.editing, self.switchPending == nil,
+            guard let self, self.editing, self.switchPending == nil, !self.showsHomeField,
                   (self.fieldGuest ?? self.active)?.isBlank == false else { return }
             self.dismiss()
         }
@@ -2009,6 +2033,11 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// out of its pair, as an agent asking for that tab pinned means it.
     @discardableResult
     func pin(_ tab: Tab, apart: Bool = false) -> Tab? {
+        if prefs.sidebar, !MailPage.isMail(tab.pending ?? tab.address) {
+            guard !blank, !Agents.shared.sealed(tab), !tab.shy else { return nil }
+            pinInCurrentSpace([tab])
+            return tab
+        }
         if startsArranging { return arranging { pin(tab, apart: apart) } }
         guard !Agents.shared.sealed(tab), !blank else { return nil }
         // A half of a pair, as Arc does: the split stays on screen, the
@@ -2065,6 +2094,11 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// Pin Tab: what is picked pinned, or unpinned when all of it is already.
     func togglePin() {
+        if prefs.sidebar {
+            if chosen.allSatisfy({ $0.kept || $0.pin != nil }) { releaseTabs(chosen) }
+            else { pinInCurrentSpace(chosen) }
+            return
+        }
         // A split's shortcut has the same scope as its context menu,
         // including when both chips are picked.
         if let pair = pair(of: activeID), chosen.allSatisfy({ pair.contains($0.id) }) {
@@ -2126,6 +2160,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     }
 
     func unpin(_ tab: Tab) {
+        if prefs.sidebar, tab.pin == nil, tab.kept { releaseTabs([tab]); return }
         if startsArranging { return arranging { unpin(tab) } }
         // A half of a pinned pair: the pair goes back to Today whole.
         if tab.pin != nil, let pair = pinPair(of: tab.id) { return unpinPair(pair) }
@@ -3419,6 +3454,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
             Nest.unflatten(row)
             Store.settings.set(unflattened + [space.uuidString], forKey: "folders.unflattened")
         }
+        if prefs.sidebar { TrailApps.shared.migrate(row, shared: shared) }
         // The kept after the pins, whatever order the file had them in.
         let pins = row.filter { $0.pin != nil }
         let kept = row.filter(\.kept)
@@ -3698,6 +3734,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     private func writeRowNow(_ tabs: [Tab], active activeID: Tab.ID?, space: UUID, pairs: [Pair], now: Bool) {
         Spaces.pageCounts[space] = nil
         let shared = space == Space.pinsID
+        if prefs.sidebar { TrailApps.shared.migrate(tabs.filter { shared || $0.everywhere == nil }, shared: shared) }
         if !shared { settleShared(tabs, in: space) }
         var written: [Tab.ID: Int] = [:]
         // The space's kept tabs and pins, every window's (KeptEverywhere.swift),
@@ -3862,10 +3899,6 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     // MARK: - tabs
 
-    /// ⌘T, or the plus. Over a page, the field and nothing else: the tab
-    /// comes with the place it is for (see `asked`), never as an empty row.
-    /// With no tab in front the field is already that, and only takes the
-    /// cursor. A held ⌘T is ignored after its first press.
     func newTab() {
         if NSApp.currentEvent?.type == .keyDown, NSApp.currentEvent?.isARepeat == true { return }
         Lag.shared.begin(.newTab)
@@ -3895,7 +3928,8 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // has nothing in it.
         if #available(macOS 15.4, *), windowPurpose == .normal {
             Extensions.of(self).offerNewTabPage { [weak self] page in
-                guard let self, fieldShowing, fresh, typed.isEmpty else { return }
+                guard let self, fieldShowing, typed.isEmpty else { return }
+                guard fresh else { return }
                 editing = false
                 open(page, foreground: true)
                 rememberSession()
@@ -3908,6 +3942,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
     func pressNewTab() {
         let press = { [weak self] in
             guard let self else { return }
+            if self.commandsOnlyField, self.fieldShowing {
+                self.openFresh()
+                return
+            }
             if self.tabs.isEmpty, self.fieldGuest == nil, self.fieldShowing,
                self.query.place == nil, self.query.returnPlace == nil, !self.query.answering {
                 if NSApp.currentEvent?.type == .keyDown, NSApp.currentEvent?.isARepeat == true { return }
@@ -4033,6 +4071,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// The field, empty, asking where to go, with no tab in front: over
     /// what stands under it (`under`), or on the window's own ground.
     func askNew() {
+        commandsOnlyField = false
         fieldPutAway = false
         landing = nil
         editing = false
@@ -4284,7 +4323,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
             if let stage, let page = tab.builtPage { stage.show(page, of: tab.id, tab: tab) }
             return
         }
-        guard tab.id != activeID else { return }
+        guard tab.id != activeID else {
+            if showsHomeField, active?.isBlank == false { dismiss() }
+            return
+        }
         // Asleep here, awake in another window: that page comes here, the
         // same one, never a second copy loading (BrowserWindows.handOff).
         if tab.asleep, Browser.handMade, BrowserWindows.shared.handOff(tab, to: self) { return }
@@ -5055,6 +5097,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// `index` on, where a stack of them was let go of over the grid. One
     /// new row and one write, however many there are.
     func pin(_ group: [Tab], at index: Int? = nil) {
+        if prefs.sidebar { pinInCurrentSpace(group); return }
         if startsArranging { return arranging { pin(group, at: index) } }
         guard !blank else { return }
         // A half of a pair stays in it, a square on its page pinned for it
@@ -5080,6 +5123,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// Back to the head of the loose tabs, in the order they stood.
     func unpin(_ group: [Tab]) {
+        if prefs.sidebar { releaseTabs(group.filter { $0.pin == nil && $0.kept }) }
         if startsArranging { return arranging { unpin(group) } }
         for tab in group where tab.pin != nil && MailPage.isMail(tab.pending ?? tab.address) { unpinMail(tab) }
         let unpinning = group.filter { $0.pin != nil && !MailPage.isMail($0.pending ?? $0.address) }
@@ -5479,24 +5523,21 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// ⌘1 to ⌘8 by place among the tabs you can reach: tabs under a shut
     /// folder and sealed tasks are not counted. ⌘9 is the last.
-    func select(index: Int) {
-        guard let at = Browser.numbered(index, among: numberable(), count: tabs.count) else { return }
+    func select(number: Int) {
+        guard let at = Browser.tabIndex(for: number, among: numberable()) else { return }
         select(tabs[at])
     }
 
     /// The places in the row ⌘ and a digit count among: the tabs you can
-    /// reach, as `select(index:)` and the numbers ⌘ held shows (KeyNumbers).
+    /// reach, as `select(number:)` and the numbers ⌘ held shows (KeyNumbers).
     func numberable() -> [Int] {
         let shut = passed()
-        return tabs.indices.filter { !shut[$0] }
+        return tabs.indices.filter { !shut[$0] && tabs[$0].libraryPage == nil }
     }
 
-    /// Where in the row ⌘1 to ⌘9 lands: `index` counted among the tabs you
-    /// can be on (`open`, their places in the row), and the row's last
-    /// index, ⌘9's, the last of them.
-    nonisolated static func numbered(_ index: Int, among open: [Int], count: Int) -> Int? {
-        guard index >= 0, let last = open.last else { return nil }
-        if index == count - 1 { return last }
+    nonisolated static func tabIndex(for number: Int, among open: [Int]) -> Int? {
+        if number == 9 { return open.last }
+        let index = number - 1
         return open.indices.contains(index) ? open[index] : nil
     }
 
@@ -8028,7 +8069,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         let making = self.asking
         // Only an explicitly requested new site follows its configured Space.
         // Search rows and switching to an existing tab keep their own meaning.
-        let routingSite = asked == .tab && offer.tab == nil && !offer.opensHere
+        let routingSite = routesNewSite && offer.tab == nil && !offer.opensHere
             && offer.kind != .search && offer.kind != .suggested && offer.kind != .asked
             && !privateBrowsing
         // Raised in a small window, a place goes to that window's page.
@@ -8265,7 +8306,13 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// ⌘T over a page: the field, empty, over the page, asking for a tab
     /// of its own; Split View's for the half beside it (see `asked`).
-    func openFresh(_ kind: Asked = .tab) {
+    func openCommandField() {
+        let open = { [weak self] in self?.openFresh(commandsOnly: true) ?? () }
+        if !leavePageFullScreen(then: open) { open() }
+    }
+
+    func openFresh(_ kind: Asked = .tab, commandsOnly: Bool = false) {
+        commandsOnlyField = commandsOnly
         query.pasteStyleTarget.captureBeforeField(in: BrowserWindows.shared.window(for: self))
         // A main-window entry takes the shared field back from Little Arc,
         // even when it was already editing there and never closed first.
@@ -8716,7 +8763,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         case .here:
             // Raised in a small window: its page goes there.
             if let guest = fieldGuest { guest.go(to: url) } else {
-                place(url, asking, from: from, routingSite: asked == .tab && !privateBrowsing
+                place(url, asking, from: from, routingSite: routesNewSite && !privateBrowsing
                       && (ending != nil || Address.url(from: typed) != nil))
             }
             editing = false
@@ -8748,12 +8795,24 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// (`asking`, read before the field went): a tab of its own beside the
     /// page, or the half beside the page; or, nil, the page under the
     /// field, after ⌘L.
+    private var routesNewSite: Bool {
+        asked == .tab || (asked == nil && fieldGuest == nil && active?.isBlank == true)
+    }
+
     func place(_ url: URL, _ asking: Asked?, from source: Tab?, routingSite: Bool = false) {
         // Mail's own address goes to its space, as `send` sends it, from a
         // row of Now as from the field, and from inside mail too: a tab made
         // for it would sit loose and pull you back to mail later.
         if windowPurpose == .normal, MailPage.isMail(url), prefs.usesMail {
             enterMail(url)
+            return
+        }
+        if routingSite, !privateBrowsing, source?.shy != true,
+           ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+           let destination = LinkRoutes.shared.space(for: url, in: self), destination != spaceID {
+            landing = nil
+            switchSpace(to: destination)
+            open(url, foreground: true)
             return
         }
         switch asking {
@@ -8763,17 +8822,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
             let tab = open(url, foreground: page == nil, from: source)
             if let page, canCarry(tab, beside: page) { split(tab, with: page) } else { select(tab) }
         case .tab:
-            // Cmd-T's new site uses the destination's sign-ins from its first
-            // load. Existing-tab rows and Cmd-L never enter this route.
-            if routingSite, !privateBrowsing, source?.shy != true,
-               ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
-               let destination = LinkRoutes.shared.space(for: url, in: self), destination != spaceID {
-                landing = nil
-                switchSpace(to: destination)
-                open(url, foreground: true)
-            } else {
-                open(url, foreground: true, from: source, into: landing)
-            }
+            open(url, foreground: true, from: source, into: landing)
             landing = nil
         case nil:
             if let page = peeking ?? active {
@@ -10385,7 +10434,11 @@ extension Browser: PageEvents {
             tab.releaseNavigation()
             tab.uncover()
             tab.returnToPlace()
-            if !tab.shy && !tab.bench { history(for: tab).record(url, title: tab.title, space: visitSpace(tab)) }
+            if !tab.shy && !tab.bench {
+                let history = history(for: tab)
+                history.record(url, title: tab.title, space: visitSpace(tab))
+                history.captureMetadata(from: page, at: url)
+            }
             return
         }
         if floating == tab.id, floater.kind == .video, picturing == nil { refloat(tab) }
@@ -10415,6 +10468,7 @@ extension Browser: PageEvents {
         offerDevMode(tab)
         // Counted already while it loaded (noticeCommit): only its title now.
         if DiaryPage.counted[tab.id] == url { history(for: tab).retitle(url, title: tab.title) } else { history(for: tab).record(url, title: tab.title, space: visitSpace(tab)) }
+        history(for: tab).captureMetadata(from: page, at: url)
         // What was asked of a site the field searches, and whether a site
         // it doesn't yet says how it is searched.
         Scopes.landed(on: url)

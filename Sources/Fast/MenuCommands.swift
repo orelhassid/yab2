@@ -25,13 +25,13 @@ enum MenuCommands {
         .sharePage, .back, .forward, .nextTab, .previousTab, .renameTab, .pickAllTabs, .keepTab, .releaseTab,
         .sleepTabs, .muteTab, .unmuteTab, .editPinnedURL, .clearToday, .tidyTabs,
         .moveTabToWindow, .smallWindow, .reopenWindow, .fullScreen, .exitFullScreen, .undoBrowserAction,
-        .newSpace, .switchSpace, .moveToSpace, .renameSpace, .deleteSpace,
+        .newSpace, .switchSpace, .nextSpace, .previousSpace, .moveToSpace, .changeSpaceIcon, .deleteSpace,
         .moveToFolder, .moveOutOfFolder, .renameFolder, .newFolderInside, .ungroupFolder, .newLiveFolder,
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
         .copyPageMarkdown, .savePageMarkdown, .captureFullPage, .keepPeek, .splitPeek,
         .showChat, .hideChat, .takeOverAgent, .stopAgent, .muteCall, .unmuteCall, .joinMeeting,
         .inspectElement, .measurePage, .hideRulers,
-        .lightTheme, .darkTheme, .systemTheme, .shortcuts, .addExtension, .importExtensions,
+        .lightTheme, .darkTheme, .systemTheme, .shortcuts, .openCommandField, .addExtension, .importExtensions,
         .newChatProject, .openChatProject, .moveChatToProject,
     ]
 
@@ -44,6 +44,8 @@ enum MenuCommands {
             out[command] = MenuCommand(title: title, aliases: aliases, symbol: symbol,
                                       shortcut: key, opens: opens, available: when, run: run)
         }
+        add(.openCommandField, "Open Command Field", ["command field", "command palette"],
+            key: .openCommandField, opens: true) { $0.openCommandField() }
         add(.addExtension, "Add Extension", ["Add", "add an extension", "install extension", "custom extension", "unpacked extension", "load unpacked", "A Folder on This Mac"],
             symbol: "puzzlepiece.extension", opens: true,
             when: { _ in if #available(macOS 15.4, *) { return true }; return false }) { browser in
@@ -109,9 +111,9 @@ enum MenuCommands {
             if let url = $0.active?.address { BrowserWindows.shared.newWindow(from: $0).arrive(url) }
         }
         add(.keepTab, "Keep Tab", ["keep tabs"], symbol: "anchor", key: .keepTab,
-            when: { $0.chosen.contains { $0.keepable && !$0.kept } }) { $0.keepTabs($0.chosen) }
+            when: { !$0.prefs.sidebar && $0.chosen.contains { $0.keepable && !$0.kept } }) { $0.keepTabs($0.chosen) }
         add(.releaseTab, "Don’t Keep Tab", ["don't keep tab", "unkeep tab", "don't keep tabs", "unkeep tabs"], symbol: "yab.anchor.slash", key: .keepTab,
-            when: { $0.chosen.contains(where: \.kept) }) { $0.releaseTabs($0.chosen) }
+            when: { !$0.prefs.sidebar && $0.chosen.contains(where: \.kept) }) { $0.releaseTabs($0.chosen) }
         add(.sleepTabs, "Put Tab to Sleep", ["sleep tab", "suspend tab", "put tabs to sleep"], symbol: "yab.sleepa",
             when: { $0.canSleep($0.chosen, byHand: true) }) { $0.sleep($0.chosen, byHand: true) }
         add(.keepSiteAwake, "Always Keep This Site Awake", ["keep site awake", "never sleep this site"],
@@ -158,22 +160,15 @@ enum MenuCommands {
             opens: true, when: { !$0.privateBrowsing }) { $0.openSettings(.spaces) }
         add(.switchSpace, "Switch Space…", ["focus on space", "switch space"], symbol: "yab.chevupdown",
             opens: true, when: { spaces($0) && $0.turnOrder.count > 1 }) { choose(.switchSpace, in: $0) }
-        add(.nextSpace, "Next Space", ["select next space"], symbol: "arrow.right", key: .nextSpace,
+        add(.nextSpace, "Next Space", ["select next space"], symbol: "chevron.down", key: .nextSpace,
             opens: true, when: { spaces($0) && $0.turnOrder.count > 1 }) { $0.stepSpace(1) }
-        add(.previousSpace, "Previous Space", ["select previous space"], symbol: "arrow.left", key: .previousSpace,
+        add(.previousSpace, "Previous Space", ["select previous space"], symbol: "chevron.up", key: .previousSpace,
             opens: true, when: { spaces($0) && $0.turnOrder.count > 1 }) { $0.stepSpace(-1) }
         add(.moveToSpace, "Move Tab to Space…", ["move tabs to space", "move tab to space"], symbol: "square.2.layers.3d",
             opens: true, when: { hasTargets(.moveToSpace, in: $0) }) { choose(.moveToSpace, in: $0) }
-        add(.renameSpace, "Rename Space…", ["rename space"], symbol: "pencil", opens: true,
-            when: { spaces($0) && $0.spaceID != Space.mailID }) { browser in
-            guard let space = browser.spaces.first(where: { $0.id == browser.spaceID }) else { return }
-            SpaceAsk.name(space, browser: browser) { browser.renameSpace(space.id, to: $0) }
-        }
-        add(.changeSpaceIcon, "Change Space Icon…", ["change space icon"], symbol: "face.smiling",
+        add(.changeSpaceIcon, "Edit Space…", ["edit space", "rename space", "customize space", "change space icon", "change space color"], symbol: "pencil",
             opens: true, when: spaces) { browser in
-            if let space = browser.spaces.first(where: { $0.id == browser.spaceID }) {
-                SpaceTray.changeEmoji(of: space, browser: browser)
-            }
+            SpaceTray.customize(browser.space, browser: browser)
         }
         add(.deleteSpace, "Delete Space…", ["delete space"], symbol: "trash",
             when: { spaces($0) && $0.canDeleteSpace($0.spaceID) && $0.spaceID != Space.mailID }) { browser in
@@ -325,7 +320,7 @@ enum MenuCommands {
                 [number == 9 ? "last tab" : "tab \(number)"], symbol: "rectangle",
                 key: Shortcut.numbered("tab", number), opens: true,
                 when: { $0.numberable().count >= (number == 9 ? 1 : number) }) {
-                $0.select(index: number == 9 ? $0.tabs.count - 1 : number - 1)
+                $0.select(number: number)
             }
         }
         add(.newChatProject, "New Project…", ["new project", "create project", "chat projects", "projects", "проекты"],

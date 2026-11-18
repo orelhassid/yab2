@@ -245,7 +245,7 @@ final class Hotkeys: ObservableObject {
         (.closeBefore, ["Close Tabs to the Left", "Close Tabs Above"]),
         (.closeAfter, ["Close Tabs to the Right", "Close Tabs Below"]),
         (.mail, ["Mail", "Back to Your Tabs"]),
-        (.pin, ["Pin Tab", "Unpin Tab"]),
+        (.pin, ["Pin Tab", "Unpin Tab", "Pin in This Space"]),
         (.history, ["Search History", "Show History"]),
         (.downloads, ["Search Downloads", "Show Downloads"]),
         (.split, ["Split View", "Separate Split View"]),
@@ -280,7 +280,7 @@ final class Hotkeys: ObservableObject {
             titles[.copyMarkdownLink] = "Copy \(count) Markdown Links"
             titles[.bookmark] = "Add \(count) Tabs to a Folder"
         } else if let tab = browser.active {
-            titles[.pin] = tab.pin == nil ? "Pin Tab" : "Unpin Tab"
+            titles[.pin] = tab.pin == nil && (!browser.prefs.sidebar || !tab.kept) ? Command.pinTab.title : Command.unpinTab.title
         }
         return titles
     }
@@ -423,7 +423,7 @@ final class KeyTip {
     /// comes, not where it came in. `wait`: the rest before a first tip.
     /// `view`: the tipped view, for no tip while something of another
     /// host stands over it under the pointer (`covered`).
-    func hover(_ owner: AnyObject, title: String, shortcut: String?, keys: String? = nil, at rect: NSRect = .zero, side: Side = .left, wait: TimeInterval = KeyTip.dwell, view: NSView? = nil, surface: HUD.Surface = .dark, position: (() -> NSRect?)? = nil) {
+    func hover(_ owner: AnyObject, title: String, shortcut: String?, keys: String? = nil, at rect: NSRect = .zero, side: Side = .left, wait: TimeInterval = KeyTip.dwell, view: NSView? = nil, surface: HUD.Surface = .dark, bubble: Bool = false, position: (() -> NSRect?)? = nil) {
         heard += 1
         self.owner = owner
         coming?.cancel()
@@ -439,10 +439,10 @@ final class KeyTip {
             } else {
                 at = side == .pointer ? KeyTip.pointer() : rect
             }
-            self?.show(title: title, keys: shortcut.map { Hotkeys.shared.keys($0) } ?? keys, at: at, side: side, surface: surface)
+            self?.show(title: title, keys: shortcut.map { Hotkeys.shared.keys($0) } ?? keys, at: at, side: side, surface: surface, bubble: bubble)
         }
         coming = work
-        if Date() < warm || panel?.alphaValue ?? 0 > 0 {
+        if wait == 0 || Date() < warm || panel?.alphaValue ?? 0 > 0 {
             work.perform()
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
@@ -597,11 +597,11 @@ final class KeyTip {
         return (at, side)
     }
 
-    private func show(title: String, keys: String?, at rect: NSRect, side: Side, surface: HUD.Surface) {
+    private func show(title: String, keys: String?, at rect: NSRect, side: Side, surface: HUD.Surface, bubble: Bool) {
         lastRect = rect
         lastTitle = title
         lastKeys = keys
-        let view = KeyTipView(title: title, keys: keys, room: KeyTip.room, surface: surface)
+        var view = KeyTipView(title: title, keys: keys, room: KeyTip.room, surface: surface, pointerSide: bubble ? side : nil)
         if host == nil {
             let panel = TipPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
             panel.isOpaque = false
@@ -634,6 +634,10 @@ final class KeyTip {
         let size = NSSize(width: whole.width - 2 * KeyTip.room, height: whole.height - 2 * KeyTip.room)
         let screen = NSScreen.screens.first(where: { $0.frame.intersects(rect) })?.visibleFrame
         let (origin, side) = KeyTip.place(size, by: rect, side: side, on: screen)
+        if bubble && view.pointerSide != side {
+            view.pointerSide = side
+            host.rootView = view
+        }
         let shown = panel.alphaValue > 0 && panel.isVisible
         // The window goes straight to its place, and the tip comes in from a
         // touch towards the button in Core Animation, in the render server:
@@ -650,7 +654,7 @@ final class KeyTip {
             let was = layer.presentation()?.opacity ?? layer.opacity
             layer.removeAnimation(forKey: "tip")
             layer.opacity = 1
-            if !shown || was < 1 {
+            if !bubble && (!shown || was < 1) {
                 let step: CGFloat = shown ? 0 : 4
                 let fade = CABasicAnimation(keyPath: "opacity")
                 fade.fromValue = shown ? was : 0
@@ -689,6 +693,7 @@ struct KeyTipView: View {
     /// The glass of what it names: light beside Peek's buttons over a
     /// dark page (HUD.surface(over:)), the corner's dark everywhere else.
     var surface: HUD.Surface = .dark
+    var pointerSide: KeyTip.Side? = nil
     /// Its keys' ink.
     private var keyInk: Color { surface == .light ? HUD.ink(on: .light).opacity(0.6) : .white.opacity(0.6) }
 
@@ -709,7 +714,14 @@ struct KeyTipView: View {
         .modifier(LeadingRoom(padding: Self.side))
         .padding(.vertical, keyed ? ButtonSize.regular.keyInset : 6)
         .frame(minHeight: keyed ? ButtonSize.regular.height : nil)
-        .background { HUD.plate(Radius.control, surface: surface) }
+        .padding(.horizontal, pointerSide == nil ? 0 : 4)
+        .padding(.vertical, pointerSide == nil ? 0 : 2)
+        .padding(pointerSide == .right ? .leading : .trailing, pointerSide == nil ? 0 : 6)
+        .background {
+            if let pointerSide {
+                HUD.plate(in: TipBubble(pointsLeft: pointerSide == .right), surface: surface)
+            } else { HUD.plate(Radius.control, surface: surface) }
+        }
         .fixedSize()
         .padding(room)
         .environment(\.colorScheme, surface == .light ? .light : .dark)
@@ -838,8 +850,8 @@ extension View {
     /// `surface`: the glass of the button it names, where that follows the
     /// page under it (Peek's buttons). `wait`: the rest before a first tip.
     func keyTip(_ title: String, shortcut: String? = nil, keys: String? = nil, side: KeyTip.Side = .below, surface: HUD.Surface = .dark,
-                wait: TimeInterval = KeyTip.dwell) -> some View {
-        modifier(KeyTipped(title: title, shortcut: shortcut, keys: keys, side: side, surface: surface, wait: wait))
+                wait: TimeInterval = KeyTip.dwell, bubble: Bool = false) -> some View {
+        modifier(KeyTipped(title: title, shortcut: shortcut, keys: keys, side: side, surface: surface, wait: wait, bubble: bubble))
     }
 
     /// A row's or a line's tooltip, under the pointer, as the system puts
@@ -890,6 +902,7 @@ private struct KeyTipped: ViewModifier {
     let side: KeyTip.Side
     let surface: HUD.Surface
     let wait: TimeInterval
+    let bubble: Bool
     @State private var anchor = KeyTipAnchor()
     /// The AppKit view the tip is placed by, made at the first hover, not
     /// with the view: one for every tipped button was most of what a screen
@@ -916,7 +929,7 @@ private struct KeyTipped: ViewModifier {
     }
 
     private func tip(_ rect: NSRect) {
-        KeyTip.shared.hover(anchor, title: title, shortcut: shortcut, keys: keys, at: rect, side: side, wait: wait, view: anchor.view, surface: surface)
+        KeyTip.shared.hover(anchor, title: title, shortcut: shortcut, keys: keys, at: rect, side: side, wait: wait, view: anchor.view, surface: surface, bubble: bubble)
     }
 }
 
@@ -991,5 +1004,32 @@ private final class KeyTipTracker: NSObject {
 
     @objc(mouseExited:) func mouseExited(with event: NSEvent) {
         KeyTip.shared.leave(self)
+    }
+}
+
+
+private struct TipBubble: InsettableShape {
+    let pointsLeft: Bool
+    var inset: CGFloat = 0
+
+    func inset(by amount: CGFloat) -> Self {
+        var copy = self
+        copy.inset += amount
+        return copy
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let box = rect.insetBy(dx: inset, dy: inset)
+        let depth: CGFloat = 6
+        var body = box
+        body.size.width -= depth
+        if pointsLeft { body.origin.x += depth }
+        let base = pointsLeft ? body.minX + 1 : body.maxX - 1
+        var point = Path()
+        point.move(to: CGPoint(x: base, y: box.midY - depth))
+        point.addLine(to: CGPoint(x: pointsLeft ? box.minX : box.maxX, y: box.midY))
+        point.addLine(to: CGPoint(x: base, y: box.midY + depth))
+        point.closeSubpath()
+        return RoundedRectangle(cornerRadius: Radius.control, style: .continuous).path(in: body).union(point)
     }
 }

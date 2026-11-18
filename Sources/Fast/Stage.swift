@@ -42,7 +42,7 @@ struct Page: View {
         let bare = page == nil || tab.device != nil
         // SwiftUI's own, opaque, over the whole card: it owns the edge, and
         // the page under it steps a point in (StageView.covered).
-        let covered = paned || tab.failure != nil || tab.untrusted != nil || tab.floating || tab.cover != nil
+        let covered = LibraryPage(url: tab.address) != nil || paned || tab.failure != nil || tab.untrusted != nil || tab.floating || tab.cover != nil
         ZStack {
             // The card's edge has one owner (docs/page-corners.md): the
             // stage while a page reaches it, else the clip of what SwiftUI
@@ -101,6 +101,12 @@ struct Page: View {
     @ViewBuilder
     private var overlays: some View {
         ZStack {
+            if let library = LibraryPage(url: tab.address), let browser = tab.delegate as? Browser, !tab.floating {
+                library.screen(browser: browser, tab: tab)
+                    .environment(browser.libraryControls(for: library, tab: tab))
+                    .id(tab.id.uuidString + library.rawValue)
+            }
+
             if let device = tab.device {
                 GeometryReader { room in
                     DeviceHandles(tab: tab, device: device, room: room.size)
@@ -2409,7 +2415,7 @@ struct DragStrip: NSViewRepresentable {
     /// A context press may reach the room revealed by native scrolling,
     /// even while the unscrolled rows extend below the window.
     var contextTail: (@MainActor (NSPoint, NSView, NSEvent) -> Bool)? = nil
-    /// An empty sidebar opens New Tab; title-bar strips keep the system action.
+    /// An empty sidebar toggles the column; title-bar strips keep the system action.
     var doubled: (@MainActor () -> Void)? = nil
 
     func makeNSView(context: Context) -> NSView { Strip() }
@@ -2442,6 +2448,7 @@ struct DragStrip: NSViewRepresentable {
         private var press: NSEvent?
         private var moved = false
         private var firstClick: TimeInterval?
+        private var firstClickAction: (@MainActor () -> Void)?
 
         override func menu(for event: NSEvent) -> NSMenu? {
             // AppKit asks here before mouseDown for a Control-click. Returning
@@ -2493,6 +2500,7 @@ struct DragStrip: NSViewRepresentable {
                 ActionMenu.show(menu, from: self, with: event)
                 return
             }
+            if event.clickCount == 1 { firstClickAction = doubled }
             press = event
             moved = false
         }
@@ -2517,7 +2525,7 @@ struct DragStrip: NSViewRepresentable {
         /// nothing at all.
         override func mouseUp(with event: NSEvent) {
             defer { press = nil }
-            if let doubled {
+            if doubled != nil {
                 guard let press, !moved else { firstClick = nil; return }
                 let first = firstClick
                 firstClick = event.clickCount == 1 ? event.timestamp : nil
@@ -2525,7 +2533,8 @@ struct DragStrip: NSViewRepresentable {
                 // first click followed by a second just outside it is not one.
                 if event.clickCount == 2, let first,
                    press.timestamp - first <= NSEvent.doubleClickInterval {
-                    doubled()
+                    firstClickAction?()
+                    firstClickAction = nil
                 }
                 return
             }

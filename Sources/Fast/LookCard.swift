@@ -95,7 +95,8 @@ final class LookCard: ObservableObject {
     /// The row of tabs changed size: a step for each tab opened, while the
     /// space's look turns and has two colors or more to turn.
     func counted(_ browser: Browser) {
-        let now = (space: browser.spaceID, count: browser.tabs.count)
+        let count = browser.spacesShown ? browser.sidebarTabs(browser.tabs).count : browser.tabs.count
+        let now = (space: browser.spaceID, count: count)
         defer { browser.lookSeen = now }
         guard let seen = browser.lookSeen, seen.space == now.space, now.count > seen.count, Self.turns(browser.prefs) else { return }
         browser.lookStep += now.count - seen.count
@@ -253,7 +254,7 @@ struct LookCardLayer: View {
     /// window's left edge with the tabs across the top.
     private func x(in width: CGFloat) -> CGFloat {
         let prefs = browser.prefs
-        let beside = prefs.sidebar ? prefs.sideWidth + (column ? 0 : Metrics.floatInset) : 0
+        let beside = prefs.sidebar ? browser.presentedSidebarWidth + (column ? 0 : Metrics.floatInset) : 0
         return right ? width - beside - Self.gap - Self.width : beside + Self.gap
     }
 }

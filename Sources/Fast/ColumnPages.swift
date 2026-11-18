@@ -86,6 +86,7 @@ final class ColumnPages: NSView {
         // frame is committed, however many things said so.
         watching = [
             browser.objectWillChange.sink { [weak self] _ in self?.soon() },
+            TrailApps.shared.objectWillChange.sink { [weak self] _ in self?.soon() },
             Folders.shared.objectWillChange.sink { [weak self] _ in self?.soon() },
             browser.prefs.objectWillChange.sink { [weak self] _ in self?.soon() },
             Extensions.listsChanged.sink { [weak self] _ in self?.soon() },
@@ -264,6 +265,7 @@ final class ColumnPages: NSView {
 
     /// A laying's reads are being watched (`sync`): one watch at a time.
     private var tracking = false
+    private var shownSpace: UUID?
 
     private func syncNow() {
         guard let browser else { return }
@@ -284,6 +286,16 @@ final class ColumnPages: NSView {
             Startup.accrue("column", ms: ColumnPages.lastSync)
         }
         let space = browser.spaceID
+        let transition = browser.prefs.spaceTransition.resolved(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        if transition == .none { layer?.removeAnimation(forKey: "space.fade") }
+        if let shownSpace, shownSpace != space, slide == nil, transition == .fade, !SpaceTurn.still {
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = SpaceTurn.duration
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer?.add(fade, forKey: "space.fade")
+        }
+        shownSpace = space
         if browser.inMail {
             if slide == nil { pages.values.forEach(park) }
             return
@@ -327,7 +339,7 @@ final class ColumnPages: NSView {
         var frame = frame_
         // The gaps the hand opens in the pins count: a row of the grid more
         // takes the rows down with it, and its let-go changes nothing.
-        if !browser.inMail { frame.lead = ColumnLayout.lead(browser, pins: browser.pinCellCount + (page.hand.pinGaps?.count ?? 0)) }
+        if !browser.inMail { frame.lead = ColumnLayout.lead(browser, pins: browser.sidebarGridPins.count + (page.hand.pinGaps?.count ?? 0)) }
         page.live(ColumnLayout.live(browser, shape: page.hand.shape), head: ColumnLayout.head(browser, gaps: page.hand.pinGaps), frame: frame, look: look)
         SwitchMarks.lit(browser.activeID)
     }
@@ -558,7 +570,7 @@ final class ColumnPages: NSView {
     private func laidKey(_ row: Parked, travelling: [Tab], space: Space) -> String {
         guard let browser else { return "" }
         var key = "\(space.id) \(space.name) \(space.icon) \(row.active?.uuidString ?? "-") \(row.pairs.count) \(browser.folderBook.version)"
-        key += " \(browser.folderBook.open.count) \(browser.prefs.sideWidth) \(Density.current) \(browser.namesSpaces) \(browser.sidePlated)"
+        key += " \(browser.folderBook.open.count) \(browser.sidebarContentWidth) \(Density.current) \(browser.namesSpaces) \(browser.sidePlated)"
         key += " extensions:\(SidePlate.extensionPlate(in: browser, space: space.id, tab: (row.tabs + travelling).first { $0.id == row.active }, shown: browser.sidePlated(row)))"
         key += " \(String(describing: look(of: space).tone?.page))"
         for tab in row.tabs + travelling {

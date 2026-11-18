@@ -200,12 +200,34 @@ struct Omnibox: View {
     private var ground: Color { dim ? Self.nearer : Palette.ground }
 
 
+    private var homeSelection: Binding<String> {
+        Binding(get: { browser.homeSection }, set: { browser.homeSection = $0 })
+    }
+
+    private var homeGroup: String { browser.homeSection }
+    private var homeField: Bool { browser.showsHomeField }
+
+    private var showsHome: Bool { homeField && browser.typed.isEmpty }
+
     var body: some View {
         GeometryReader { space in
             VStack(spacing: 8) {
-                surface(room: compactList ? Self.compactRoom(in: space.size.height, pageTop: pageTop, pageBottom: pageBottom) : Self.placeRoom(in: space.size.height))
+                if homeField {
+                    HomeNavigation(browser: browser, selected: homeSelection)
+                }
+                HStack(spacing: 8) {
+                    surface(room: showsHome ? 0 : compactList ? Self.compactRoom(in: space.size.height, pageTop: pageTop, pageBottom: pageBottom) : Self.placeRoom(in: space.size.height))
+                    if showsHome && homeGroup == "history" { HomeHistoryGrouping() }
+                }
+                if showsHome {
+                    if let page = LibraryPage(rawValue: homeGroup) {
+                        HomeLibraryList(browser: browser, page: page).id(page)
+                    } else {
+                        HomeTab(browser: browser, history: browser.history, downloads: browser.loot, bookmarks: browser.bookmarks, selection: homeSelection)
+                    }
+                }
             }
-                .frame(width: compactList ? min(Self.compactWidth, Self.width(in: space.size.width)) : Self.width(in: space.size.width))
+                .frame(width: homeField ? max(0, min(LibraryPageLayout.formWidth, space.size.width - 2 * Self.margin)) : compactList ? min(Self.compactWidth, Self.width(in: space.size.width)) : Self.width(in: space.size.width))
                 .animation(nil, value: compactList)
                 // A click on the box leaves it up; anywhere else in the
                 // window puts it away (Browser.fieldAway).
@@ -215,13 +237,14 @@ struct Omnibox: View {
                 // measuring. The top edge is what is placed, never the
                 // middle of the field and its list together, which rose by
                 // half of every row that came.
-                .padding(.top, compactList
+                .padding(.top, homeField ? max(pageTop + 12, min(64, space.size.height * 0.08)) : compactList
                     ? Self.compactTop(in: space.size.height, pageTop: pageTop, pageBottom: pageBottom)
                     : Self.top(in: space.size.height))
                 .frame(maxWidth: .infinity, alignment: .top)
         }
-        .padding(.leading, inset)
-        .padding(.trailing, trail)
+        .modifier(SpacePageSurface(browser: browser, active: homeField))
+        .padding(.leading, homeField && browser.flank == .left ? max(inset, browser.sideShown) : inset) // design: reserve the sidebar on its chosen edge
+        .padding(.trailing, homeField && browser.flank == .right ? max(trail, browser.sideShown) : trail) // design: reserve the sidebar on its chosen edge
         .onReceive(NSApplication.shared.publisher(for: \.effectiveAppearance)) { appAppearance = $0 }
     }
 
@@ -266,11 +289,11 @@ struct Omnibox: View {
     }
 
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: compactList ? Self.compactCorner : Self.corner, style: .continuous)
+        RoundedRectangle(cornerRadius: homeField ? Radius.control : compactList ? Self.compactCorner : Self.corner, style: .continuous)
     }
 
     /// The field's height here: the compact card's over its plain list.
-    private var fieldTall: CGFloat { compactList ? Self.compactFieldHeight : Self.fieldHeight }
+    private var fieldTall: CGFloat { homeField ? 36 : compactList ? Self.compactFieldHeight : Self.fieldHeight }
 
     /// Whether anything stands under the field: a place, a site's or an
     /// extension's search (its foot), emoji or rows.
@@ -406,8 +429,8 @@ struct Omnibox: View {
                 .transition(.identity)
                 .transaction { $0.animation = nil }
                 }
-                AddressField(browser: browser, query: query, dark: shy, hushed: stealth, look: look)
-                    .frame(height: 26)
+                AddressField(browser: browser, query: query, dark: shy, hushed: stealth, look: look, home: homeField)
+                    .frame(height: homeField ? 20 : 26)
                     .overlay(alignment: .leading) {
                         // The private field's words, drawn over the field
                         // rather than as its placeholder, so they can turn
@@ -518,7 +541,7 @@ struct Omnibox: View {
             .background {
                 // What scrolls under the field, blurred as it passes, the
                 // blur gone by the field's foot where the rows stand clear.
-                if hasContent, !query.answering {
+                if hasContent, !query.answering, !showsHome {
                     FieldBand()
                         .mask(LinearGradient(colors: [.black, .black, .clear], startPoint: .top, endPoint: .bottom))
                         .allowsHitTesting(false)
@@ -534,7 +557,9 @@ struct Omnibox: View {
             Group {
                 // The foot floats over the bottom of each, which keeps room
                 // under its last row to clear it.
-                if query.place == .clipboard {
+                if showsHome {
+                    EmptyView()
+                } else if query.place == .clipboard {
                     ClipPlace(browser: browser, query: query, height: room + fieldTall, ground: ground)
                         .footed(foot)
                 } else if query.place == .selection, query.answering {
@@ -640,8 +665,10 @@ struct Omnibox: View {
         .clipShape(shape)
         .background {
             // The card stands off the page, full and compact: a soft wide shadow round it, never under its glass.
-            FieldShadow(shape: shape, dark: dim)
-            if #available(macOS 26.0, *), glassy {
+            if !homeField { FieldShadow(shape: shape, dark: dim) }
+            if homeField {
+                shape.fill(showsHome ? Palette.ink.opacity(0.07) : ground)
+            } else if #available(macOS 26.0, *), glassy {
                 // Liquid Glass where the Mac draws it, over a material: the
                 // glass alone let a busy page read through the rows, and its
                 // tint barely changes that, from 0.3 to 0.88 alike. The
@@ -690,12 +717,12 @@ struct Omnibox: View {
             // second frame on it. The site is said by its chip, at the
             // head of the field.
             shape
-                .strokeBorder(refused ? Color.red.opacity(0.35) : ring, lineWidth: refused ? 1 : hairline)
+                .strokeBorder(refused ? Color.red.opacity(0.35) : homeField ? .clear : ring, lineWidth: refused ? 1 : hairline)
                 .allowsHitTesting(false)
         )
         .overlay {
             // And a light top edge, the glass catching it.
-            if compactList {
+            if compactList, !homeField {
                 shape.inset(by: 0.5)
                     .stroke(LinearGradient(colors: [.white.opacity(dim ? 0.18 : 0.7), .white.opacity(0)],
                                            startPoint: .top, endPoint: .center), lineWidth: 1)
@@ -1545,6 +1572,7 @@ struct AddressField: NSViewRepresentable {
     var hushed = false
     /// Light or dark, as the card round it is drawn.
     var look: ColorScheme?
+    var home = false
 
     func makeCoordinator() -> Coordinator { Coordinator(browser: browser) }
 
@@ -1619,15 +1647,18 @@ struct AddressField: NSViewRepresentable {
         let appearance = wanted.flatMap { NSAppearance(named: $0 == .dark ? .darkAqua : .aqua) }
         if field.appearance?.name != appearance?.name { field.appearance = appearance }
         // A private field's words are drawn over it, by the omnibox.
-        let hint = query.answering ? "Ask a follow-up…" : query.actionsPage ? "Search actions…"
+        let hint = home ? "Search or type a URL" : query.answering ? "Ask a follow-up…" : query.actionsPage ? "Search actions…"
             : Self.hint(for: query.scope, place: query.place, splitting: browser.asked == .split)
         if field.accessibilityPlaceholderValue() != hint { field.setAccessibilityPlaceholderValue(hint) }
         // Under an answer the field is a pill beside the foot's, its words
         // at the pill's size; its empty words are the omnibox's then, since
         // FieldWords draws in the field's own large face.
-        let size: CGFloat = query.answering ? 13.5 : 20
+        let size: CGFloat = home ? 15 : query.answering ? 13.5 : 20
         if field.font?.pointSize != size { field.font = .systemFont(ofSize: size) }
         let words = coordinator.words
+        words?.alphaValue = home ? 0 : 1
+        let nativeHint = home ? hint : nil
+        if field.placeholderString != nativeHint { field.placeholderString = nativeHint }
         if let cell = field.cell {
             // Where the field sets its own text: its drawing rect, the text's
             // own inset, and the baseline a line of this face has.

@@ -1,6 +1,41 @@
 import AppKit
 import SwiftUI
 
+/// A list embedded outside its Space still runs Sidebar commands against its owning row.
+@MainActor struct SidebarSpaceActions {
+    let browser: Browser
+    let id: UUID
+
+    func run(_ action: () -> Void, stay: Bool = false) {
+        guard browser.spaceID != id else { action(); return }
+        let origin = browser.spaceID
+        let still = SpaceTurn.still
+        SpaceTurn.still = true
+        defer { SpaceTurn.still = still }
+        browser.switchSpace(to: id)
+        guard browser.spaceID == id else { return }
+        action()
+        if !stay && browser.spaceID == id { browser.switchSpace(to: origin) }
+    }
+}
+
+extension Optional where Wrapped == SidebarSpaceActions {
+    @MainActor func perform(stay: Bool = false, _ action: () -> Void) {
+        if let scope = self { scope.run(action, stay: stay) } else { action() }
+    }
+}
+
+private struct SidebarSpaceActionsKey: EnvironmentKey {
+    static let defaultValue: SidebarSpaceActions? = nil
+}
+
+extension EnvironmentValues {
+    var sidebarSpaceActions: SidebarSpaceActions? {
+        get { self[SidebarSpaceActionsKey.self] }
+        set { self[SidebarSpaceActionsKey.self] = newValue }
+    }
+}
+
 /// A right-click menu that holds still while the row it hangs from redraws.
 ///
 /// SwiftUI's `.contextMenu` puts new lines in an open menu each time the
@@ -35,6 +70,7 @@ private struct SteadyMenuSpot: NSViewRepresentable {
         let view = SteadyMenuView()
         view.make = make
         view.half = half
+        view.scope = context.environment.sidebarSpaceActions
         view.actions = actions
         return view
     }
@@ -42,6 +78,7 @@ private struct SteadyMenuSpot: NSViewRepresentable {
     func updateNSView(_ view: SteadyMenuView, context: Context) {
         view.make = make
         view.half = half
+        view.scope = context.environment.sidebarSpaceActions
         view.actions = actions
     }
 }
@@ -49,6 +86,7 @@ private struct SteadyMenuSpot: NSViewRepresentable {
 /// Takes only a press asking for a menu: every other press, the pointer's
 /// hover and drags go through it to the row beneath, as if it weren't there.
 final class SteadyMenuView: NSView {
+    var scope: SidebarSpaceActions?
     var make: (@MainActor () -> NSMenu)?
     /// Made for the half pressed in, left or not, when there are halves.
     var half: (@MainActor (Bool) -> NSMenu)?
@@ -104,8 +142,12 @@ final class SteadyMenuView: NSView {
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        if let half { return half(convert(event.locationInWindow, from: nil).x < bounds.midX) }
-        return make?()
+        let left = convert(event.locationInWindow, from: nil).x < bounds.midX
+        let makeMenu = { self.half?(left) ?? self.make?() }
+        guard let scope, scope.id != scope.browser.spaceID else { return makeMenu() }
+        var menu: NSMenu?
+        scope.run { menu = makeMenu(); menu?.update() }
+        return menu
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -120,7 +162,7 @@ final class SteadyMenuView: NSView {
 
     private func pop(_ menu: NSMenu, with event: NSEvent) {
         if actions {
-            ActionMenu.show(menu, from: self, with: event)
+            ActionMenu.show(menu, from: self, with: event, scope: scope)
         } else {
             NSMenu.popUpContextMenu(menu, with: event, for: self)
         }

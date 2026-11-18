@@ -50,12 +50,6 @@ final class SpaceDraft: ObservableObject {
     var fromSpaces = false
     /// The space the keys are on in the list, when the arrows have moved.
     @Published var focus: Int?
-    /// The space whose emoji the emoji step is changing, from its menu in
-    /// the list, rather than a new one's.
-    var editing: UUID?
-    /// Opened for that one change, from the space's name in the column:
-    /// Done or back puts the tray away rather than going to the list.
-    var alone = false
     /// Tabs held over the tray, from the column or the strip: the list is
     /// where they go (SpaceDrop).
     @Published var carrying: [Tab] = []
@@ -123,12 +117,6 @@ final class SpaceDraft: ObservableObject {
 
     func pick(icon: String) { self.icon = icon; iconByHand = true }
 
-    /// Back to a new space's start, after changing a space's emoji.
-    func forget() {
-        editing = nil
-        iconByHand = false
-        name = ""
-    }
     func pick(swatch: Swatch) {
         // Your own starts from the color the card has now, not from one
         // picked long ago: the card keeps its color as the wheel comes up.
@@ -217,6 +205,8 @@ enum SpaceAnchors {
     static var plus: NSView? { anchor(.plus) }
     static var dot: NSView? { anchor(.dot) }
 
+    static func heading(_ id: UUID, overview: Bool = false) -> NSView? { anchor(overview ? .overviewHeading(id) : .heading(id)) }
+
     /// The middle of a space's place in the foot's row, in the window.
     static func slotPoint(_ id: UUID) -> NSPoint? {
         guard let mark = marks.allObjects.first(where: { $0.kind == .slot(id) && $0.window != nil }) else { return nil }
@@ -233,7 +223,14 @@ enum SpaceAnchors {
         return nil
     }
 
-    private static func anchor(_ kind: SpaceAnchor.Kind) -> NSView? {
+    static func overTrail(_ point: NSPoint, in window: NSWindow, pinsOnly: Bool = true) -> Bool {
+        marks.allObjects.contains { mark in
+            mark.kind == (pinsOnly ? .trailPins : .trail) && mark.window === window && !mark.isHiddenOrHasHiddenAncestor
+                && mark.convert(mark.bounds.intersection(mark.visibleRect), to: nil).contains(point)
+        }
+    }
+
+    static func anchor(_ kind: SpaceAnchor.Kind) -> NSView? {
         let window = Links.window
         let placed = marks.allObjects.filter { mark in
             guard mark.kind == kind, let at = mark.window, at === window ?? at, !mark.isHiddenOrHasHiddenAncestor,
@@ -245,14 +242,14 @@ enum SpaceAnchors {
 }
 
 struct SpaceAnchor: NSViewRepresentable {
-    enum Kind: Equatable { case plus, dot, slot(UUID) }
+    enum Kind: Equatable { case plus, dot, trail, trailPins, slot(UUID), heading(UUID), overviewHeading(UUID) }
     let kind: Kind
 
     func makeNSView(context: Context) -> Mark { Mark(kind) }
-    func updateNSView(_ view: Mark, context: Context) {}
+    func updateNSView(_ view: Mark, context: Context) { view.kind = kind }
 
     final class Mark: NSView {
-        let kind: Kind
+        var kind: Kind
         /// When it last came into a window.
         fileprivate private(set) var taken: CFTimeInterval = 0
 
@@ -295,18 +292,46 @@ final class SpaceTray: NSView {
     }
 
     /// The capsule pressed: the spaces, and New Space among them.
-    static func openSpaces(_ browser: Browser) {
+    static func openSpaces(_ browser: Browser, from anchor: NSView? = nil) {
         if let shown, shown.window != nil { shown.leave(); return }
         shown = nil
-        open(browser, at: .spaces)
+        open(browser, at: .spaces, anchor: anchor)
     }
 
-    /// Change Emoji… off the space's name in the column: the tray at the
-    /// emoji, for that space alone.
-    static func changeEmoji(of space: Space, browser: Browser) {
-        if let shown, shown.window != nil { shown.changeEmoji(of: space); return }
-        shown = nil
-        open(browser, at: .emoji, editing: space)
+    private final class CustomizationPopover: NSObject, NSPopoverDelegate {
+        let popover = NSPopover()
+        var session: SpaceCustomizeSession?
+
+        override init() {
+            super.init()
+            popover.behavior = .transient
+            popover.delegate = self
+        }
+
+        func popoverDidClose(_ notification: Notification) {
+            session?.finish()
+            session = nil
+            popover.contentViewController = nil
+        }
+    }
+
+    private static let customization = CustomizationPopover()
+
+    static func customize(_ space: Space, browser: Browser) {
+        shown?.leave()
+        DispatchQueue.main.async {
+            guard let anchor = SpaceAnchors.heading(space.id) ?? SpaceAnchors.anchor(.slot(space.id)) ?? SpaceAnchors.dot ?? SpaceAnchors.plus else { return }
+            let popover = customization.popover
+            popover.close()
+            let session = SpaceCustomizeSession(browser: browser, space: space)
+            customization.session = session
+            let picker = SpaceCustomizer(session: session) { [weak popover] in popover?.performClose(nil) }
+            let host = NSHostingController(rootView: picker.fixedSize())
+            popover.contentViewController = host
+            popover.contentSize = host.view.fittingSize
+            let edge: NSRectEdge = browser.prefs.sidebar ? (browser.prefs.sideFlank == .right ? .minX : .maxX) : .minY
+            popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge)
+        }
     }
 
     /// New Space, from a menu or the bench: the chain itself. `ownSignIns`:
@@ -342,12 +367,12 @@ final class SpaceTray: NSView {
     }
 
     private static func open(_ browser: Browser, at step: SpaceDraft.Step, tab taken: Tab? = nil, more: [Tab] = [], carrying: [Tab] = [], own: Bool = false,
-                             editing: Space? = nil, folder: Nest? = nil) {
+                             folder: Nest? = nil, anchor: NSView? = nil) {
         // One taken out of its window without leaving, the window's view
         // made anew under it, is no tray: it doesn't stand in a new one's way.
         if shown?.window == nil { shown = nil }
         guard shown == nil, let window = Links.window, let content = window.contentView,
-              let from = SpaceAnchors.plus?.window === window ? SpaceAnchors.plus : SpaceAnchors.dot else { return }
+              let from = anchor ?? (SpaceAnchors.plus?.window === window ? SpaceAnchors.plus : SpaceAnchors.dot) else { return }
         let active = taken ?? browser.active.flatMap { $0.isBlank || $0.bench ? nil : $0 }
         let tray = SpaceTray(browser: browser, draft: SpaceDraft(prefs: browser.prefs, tab: active, free: browser.freeIcon))
         tray.draft.step = step
@@ -358,12 +383,6 @@ final class SpaceTray: NSView {
         tray.draft.folder = folder
         tray.draft.carrying = carrying
         if own { tray.draft.own = true }
-        if let editing {
-            tray.draft.name = editing.name
-            tray.draft.pick(icon: editing.icon)
-            tray.draft.editing = editing.id
-            tray.draft.alone = true
-        }
         // Beside SwiftUI's view rather than in it: the hosting view keeps
         // its own layer's sublayers, and a view added to it never reached
         // the screen. The window's frame view takes one over it as it would.
@@ -372,6 +391,7 @@ final class SpaceTray: NSView {
         tray.autoresizingMask = [.width, .height]
         frame.addSubview(tray, positioned: .above, relativeTo: frame === content ? nil : content)
         shown = tray
+        tray.headingAnchor = anchor
         tray.arrive(from: tray.convert(from.bounds, from: from))
     }
 
@@ -387,10 +407,10 @@ final class SpaceTray: NSView {
         IconPicker(mark: "star.fill", space: [], pick: { _ in }, close: {})
     ).fittingSize
 
-    static let spaceRow: CGFloat = 36
+    static var spaceRow: CGFloat { SideBar.row }
     /// Between two rows of the list, New Space's included: one list, so
     /// New Space never reads as set apart from the spaces.
-    static let spaceGap: CGFloat = 4
+    static var spaceGap: CGFloat { SideBar.gap }
 
     /// The list is a menu, its rows close to the edge on the bar's curve,
     /// as the find bar's; the steps that ask are cards, the card's inset
@@ -419,7 +439,8 @@ final class SpaceTray: NSView {
     /// The tallest the tray may be: 60 short of the window's edge it grows
     /// toward; past that the list of spaces scrolls inside it.
     private var ceiling: CGFloat {
-        down ? bounds.height - origin.maxY - 8 - 60 : origin.minY - 8 - 60
+        if let anchor = headingAnchor { return max(0, bounds.maxY - convert(anchor.bounds, from: anchor).maxY - 2 * SideBar.gap) }
+        return down ? bounds.height - origin.maxY - 8 - 60 : origin.minY - 8 - 60
     }
     /// How tall the list of spaces may be inside the tray.
     var listHeight: CGFloat { max(Self.spaceRow, height(.spaces) - Self.head - mailRoom - Self.spaceGap - Self.spaceRow - Self.edge(.spaces)) }
@@ -462,6 +483,7 @@ final class SpaceTray: NSView {
     private var head: NSHostingView<TrayHead>!
     private var foot: NSHostingView<TrayFoot>!
     private var body_: NSView?
+    private weak var headingAnchor: NSView?
     private var origin: CGRect = .zero
     /// Growing up from the column's foot, or down from the head of the strip.
     private var down = false
@@ -522,6 +544,10 @@ final class SpaceTray: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         scrim.frame = bounds
+        if headingAnchor != nil, draft.step == .spaces, !busy, !gone {
+            let frame = rect(.spaces)
+            if panel.frame != frame { place(frame) }
+        }
         CATransaction.commit()
     }
 
@@ -602,6 +628,10 @@ final class SpaceTray: NSView {
     private func rect(_ step: SpaceDraft.Step) -> CGRect {
         let h = height(step)
         let width = stepWidth(step)
+        if step == .spaces, let anchor = headingAnchor {
+            let trigger = convert(anchor.bounds, from: anchor)
+            return CGRect(x: trigger.minX, y: trigger.maxY + SideBar.gap, width: width, height: h)
+        }
         if down {
             return CGRect(x: min(max(8, origin.minX - 8), bounds.width - width - 8), y: origin.maxY + 8, width: width, height: h)
         }
@@ -624,7 +654,8 @@ final class SpaceTray: NSView {
     }
 
     private func stepWidth(_ step: SpaceDraft.Step) -> CGFloat {
-        step == .emoji ? max(width, Self.pickerSize.width + 2 * CardFrame.inset) : width
+        if step == .spaces, let anchor = headingAnchor { return convert(anchor.bounds, from: anchor).width }
+        return step == .emoji ? max(width, Self.pickerSize.width + 2 * CardFrame.inset) : width
     }
 
     private func bodyFrame(_ h: CGFloat) -> CGRect {
@@ -640,7 +671,7 @@ final class SpaceTray: NSView {
         origin = plus
         down = plus.midY < bounds.height / 3
         let side = browser.prefs.sidebar && !down
-        width = side ? max(200, browser.prefs.sideWidth - 16) : 216
+        width = side ? max(200, browser.presentedSidebarWidth - 16) : 216
         if draft.step == .start, draft.tab == nil { draft.step = .name }
         let to = rect(draft.step)
         show(draft.step, fading: false)
@@ -668,7 +699,7 @@ final class SpaceTray: NSView {
     /// put away, the window's own comes back; made, the space's is worn.
     private func preview() {
         guard !gone else { return }
-        guard draft.editing == nil, draft.step == .color || draft.step == .signIns,
+        guard draft.step == .color || draft.step == .signIns,
               let paint = SpaceWash.worn(draft.paint, prefs: browser.prefs)
         else { unpreview(); return }
         if previewing {
@@ -732,10 +763,6 @@ final class SpaceTray: NSView {
         case .start: draft.fromSpaces ? go(.spaces) : leave()
         case .name:
             if draft.tab != nil { go(.start) } else if draft.fromSpaces { go(.spaces) } else { leave() }
-        case .emoji where draft.editing != nil:
-            if draft.alone { leave(); return }
-            draft.forget()
-            go(.spaces)
         case .emoji, .color: go(.name)
         case .signIns: go(.color)
         }
@@ -770,7 +797,7 @@ final class SpaceTray: NSView {
         case .spaces: break
         case .start: go(.name)
         case .name: if !draft.named.isEmpty { go(.color) }
-        case .emoji: pickedEmoji()
+        case .emoji: go(.name)
         case .color: go(.signIns)
         case .signIns: make()
         }
@@ -922,26 +949,6 @@ final class SpaceTray: NSView {
             layer.add(shift, forKey: "tray.refit")
         }
         CATransaction.commit()
-    }
-
-    /// A space's emoji to change, from its menu in the list: the same grid
-    /// as a new space's, and back to the list.
-    func changeEmoji(of space: Space) {
-        guard !busy else { return }
-        draft.name = space.name
-        draft.pick(icon: space.icon)
-        draft.editing = space.id
-        go(.emoji)
-    }
-
-    /// An emoji picked: on to the name of a new space, or worn by the space
-    /// being changed at once, and back to the list.
-    func pickedEmoji() {
-        guard let id = draft.editing else { go(.name); return }
-        browser.setSpaceIcon(id, to: draft.icon)
-        if draft.alone { leave(); return }
-        draft.forget()
-        go(.spaces)
     }
 
     func take(_ taking: Bool) {
@@ -1345,8 +1352,8 @@ struct TrayHead: View {
             // ran on the main thread's frames and dragged to half a second,
             // the old title and the new smeared over each other.
             Text(words.1.isEmpty ? words.0 : "\(words.0) \(words.1)")
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(Palette.ink)
+            .font(draft.step == .spaces ? CardFrame.detail : .system(size: 15, weight: .semibold))
+            .foregroundStyle(draft.step == .spaces ? Palette.muted : Palette.ink)
             Spacer(minLength: 0)
             door("xmark", "Close", close)
         }
@@ -1420,10 +1427,6 @@ struct SpaceLine: View {
     let current: Bool
     let focused: Bool
     let noisy: Bool
-    let dark: Bool
-    /// What a space never left since spaces had their own color wears: the
-    /// window's color now.
-    let fallback: SpacePaint
     let browser: Browser?
     /// Tabs held over the list: where they can't go, or where they would.
     var carry: Carry = .none
@@ -1445,14 +1448,11 @@ struct SpaceLine: View {
     @State private var hovering = false
 
     var body: some View {
-        let color = (space.paint ?? fallback).color(dark: dark)
         Button(action: act) {
-            HStack(spacing: 8) {
-                SpaceMark(icon: space.icon, size: 13)
+            SidebarTabRow {
+                SpaceMark(icon: space.icon, size: SideBar.mark)
                     .foregroundStyle(Palette.ink)
-                    .frame(width: 30, height: 30)
-                    .background(Color(nsColor: color), in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-                    .environment(\.colorScheme, Tone(color, lifted: true).scheme)
+                    .frame(width: SideBar.mark, height: SideBar.mark)
                     .keyframeAnimator(initialValue: 1.0, trigger: landed) { well, scale in
                         well.scaleEffect(scale)
                     } keyframes: { _ in
@@ -1462,7 +1462,7 @@ struct SpaceLine: View {
                         }
                     }
                 Text(space.name)
-                    .font(.system(size: SidebarTypography.current, weight: .medium))
+                    .font(.system(size: SidebarTypography.current, weight: .regular))
                     .foregroundStyle(Palette.ink)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -1482,16 +1482,18 @@ struct SpaceLine: View {
                     }
                 }
             }
-            .padding(.leading, 3) // design: the emoji's well 3 in from the row on every side, concentric in its corner
-            .padding(.trailing, 10) // design: the words keep the row's own air
-            .frame(height: SpaceTray.spaceRow)
-            .background(
-                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .fill(ground)
-            )
+            .background {
+                if carry != .away {
+                    if current || isDropTarget {
+                        SelectionPlate(corner: SideBar.radius, state: .selected, prefs: browser?.prefs)
+                    } else if hovering || focused {
+                        SelectionPlate(corner: SideBar.radius, state: .hover)
+                    }
+                }
+            }
             .background {
                 if lifted {
-                    let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                    let shape = RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
                     shape.fill(Palette.ground) // design: a row lifted in the hand, as the column's pin is, not a card
                         .castShadow(shape, color: .black.opacity(0.14), radius: 8, y: 3)
                 }
@@ -1499,7 +1501,7 @@ struct SpaceLine: View {
             // Where the tabs would go: the ring a picked color wears.
             .overlay {
                 if case .here = carry {
-                    RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                    RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
                         .strokeBorder(Color.accentColor, lineWidth: 2)
                 }
             }
@@ -1519,10 +1521,9 @@ struct SpaceLine: View {
         .accessibilityAddTraits(current ? [.isSelected] : [])
     }
 
-    private var ground: Color {
-        if case .here = carry { return Palette.wash }
-        if carry == .away { return .clear }
-        return current ? Palette.wash : hovering || focused ? Palette.hover : .clear
+    private var isDropTarget: Bool {
+        if case .here = carry { return true }
+        return false
     }
 }
 
@@ -1557,20 +1558,16 @@ private struct NewSpaceLine: View {
 
     var body: some View {
         Button(action: act) {
-            HStack(spacing: 8) {
+            SidebarTabRow {
                 Symbol("plus", size: 11)
-                    .frame(width: 30, height: 30)
-                Text("New Space").font(.system(size: SidebarTypography.current, weight: .medium))
+                    .frame(width: SideBar.mark, height: SideBar.mark)
+                Text("New Space").font(.system(size: SidebarTypography.current, weight: .regular))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(hovering || over ? Palette.ink : Palette.muted)
-            .padding(.leading, 3) // design: as the rows above it
-            .padding(.trailing, 10) // design: the rows' own air
-            .frame(height: SpaceTray.spaceRow)
-            .background(
-                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .fill(over ? Palette.wash : hovering ? Palette.hover : .clear)
-            )
+            .background {
+                if over || hovering { SelectionPlate(corner: SideBar.radius, state: over ? .selected : .hover) }
+            }
             .overlay {
                 if over {
                     RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
@@ -1587,7 +1584,7 @@ private struct NewSpaceLine: View {
 /// A space's own menu, the same wherever it is asked for, as Arc's is: the
 /// space's name in the column (••• or a right click), the room under its
 /// rows, its dot in the foot and its row in the tray. Arc's lines in Arc's
-/// order, those Yab has: Change Space Icon, Rename Space, its look, whose
+/// order, those Yab has: Customize Space, Rename Space, its look, whose
 /// sign-ins (Arc's Set Profile), New Folder and New Live Folder, its
 /// settings (Arc's Manage Spaces), Delete Space. Its place is dragged.
 struct SpaceMenu: View {
@@ -1599,10 +1596,7 @@ struct SpaceMenu: View {
         // its emoji and its look are yours, and its settings are Settings ›
         // Mail.
         let mail = space.id == Space.mailID
-        if !mail {
-            Button("Rename Space…", mark: "pencil") { SpaceAsk.name(space, browser: browser) { browser.renameSpace(space.id, to: $0) } }
-        }
-        Button("Change Space Icon…", mark: "face.smiling") { SpaceTray.changeEmoji(of: space, browser: browser) }
+        Button("Edit Space…", mark: "pencil") { SpaceTray.customize(space, browser: browser) }
         // Every space's name, at once. Not from a space folded under its
         // name: hidden, nothing would be left to unfold it. Back from this
         // menu on the column's empty room or a space's icon at its foot.
@@ -1744,7 +1738,7 @@ struct TrayStep: View {
             if let browser, let tray {
                 ForEach(tray.specials) { special in
                     SpaceLine(space: special, index: -2, current: current == special.id, focused: false, noisy: false,
-                              dark: dark, fallback: draft.window, browser: browser) { tray.pick(special.id) }
+                              browser: browser) { tray.pick(special.id) }
                 }
             }
             ScrollViewReader { reader in
@@ -1753,7 +1747,7 @@ struct TrayStep: View {
                         ForEach(Array(list.enumerated()), id: \.element.id) { index, space in
                             SpaceLine(space: space, index: index, current: space.id == current, focused: draft.focus == index,
                                           noisy: space.id != current && (browser?.parked[space.id]?.tabs.contains { $0.noisy } ?? false),
-                                          dark: dark, fallback: draft.window, browser: browser,
+                                          browser: browser,
                                           carry: carry(space, index: index, current: current, browser: browser),
                                           landed: draft.landed[space.id] ?? 0, lifted: lifted == space.id) { tray?.pick(space.id) }
                                     .offset(y: shift(index, list))
@@ -1932,7 +1926,7 @@ struct TrayStep: View {
         IconPicker(mark: draft.icon, space: draft.emoji, pick: { mark in
             guard let mark else { return }
             draft.pick(icon: mark)
-            tray?.pickedEmoji()
+            tray?.go(.name)
         }, close: { tray?.back() })
     }
 

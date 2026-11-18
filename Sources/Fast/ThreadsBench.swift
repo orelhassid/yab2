@@ -73,7 +73,7 @@ extension Bench {
                 browser.chooseFilter()
                 browser.query.acting = walk
             }
-            if request["closeSettings"] as? Bool == true { SettingsWindow.shared.window?.close() }
+            if request["closeSettings"] as? Bool == true { SettingsWindow.shared.hide() }
             // A day's page as text (Edit as Markdown), or its timeline again.
             if let day = request["editDay"] as? String { DaysModel.shared.editing = day.isEmpty ? nil : "episodic/\(day).md" }
             // Forget This Thread from Memory › Days, on the thread holding a page.

@@ -60,7 +60,7 @@ struct NumberedTabsMenu: View {
             ForEach(1...9, id: \.self) { number in
                 NumberedMenuButton(title: number == 9 ? "Last Tab" : "Tab \(number)",
                                    action: Shortcut.numbered("tab", number)) {
-                    browser.select(index: number == 9 ? browser.tabs.count - 1 : number - 1)
+                    browser.select(number: number)
                 }
                 .disabled(number == 9 ? available == 0 : number > available)
             }

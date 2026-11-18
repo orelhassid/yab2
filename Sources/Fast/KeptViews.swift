@@ -18,6 +18,8 @@ struct KeptLine: View {
     /// The persistent boundary cell may have no line while today's is empty.
     var visible = true
     @State private var measuredFrame: CGRect = .zero
+    @Environment(\.sidebarSpaceActions) private var scope
+    @State private var overLine = false
     @State private var onWord = false
     @State private var onTidy = false
     @Environment(\.tone) private var tone
@@ -27,6 +29,7 @@ struct KeptLine: View {
         // Lit New Tab under it too: Arc keeps it while ⌘T asks.
         // While Tidy waits for its answer the words go and the line waves,
         // as Arc's does (TidyTabs.swift).
+        let hovered = scope == nil ? browser.columnHovered : overLine
         let tidying = browser.tabsTidying
         let clears = browser.canTidyNow && !tidying
         let sorts = clears && browser.canTidyTabs
@@ -38,7 +41,7 @@ struct KeptLine: View {
             HStack(spacing: 0) {
                 if sorts {
                     // Tidy, left of Clear and as faint, as in Arc.
-                    Button { browser.tidyTabs() } label: {
+                    Button { scope.perform(stay: true) { browser.tidyTabs() } } label: {
                         HStack(spacing: 4) {
                             Broom(sweep: 0, big: 0, small: 0)
                                 .frame(width: 11, height: 11)
@@ -54,12 +57,12 @@ struct KeptLine: View {
                     .focusable(false)
                     .onHover { onTidy = $0 }
                     .keyTip("Organize Today's Tabs")
-                    .opacity(browser.columnHovered ? 1 : 0)
-                    .allowsHitTesting(browser.columnHovered)
-                    .accessibilityHidden(!browser.columnHovered)
+                    .opacity(hovered ? 1 : 0)
+                    .allowsHitTesting(hovered)
+                    .accessibilityHidden(!hovered)
                 }
                 if clears {
-                    Button { browser.tidyNow() } label: {
+                    Button { scope.perform(stay: true) { browser.tidyNow() } } label: {
                         Text("Clear")
                             .font(.system(size: 11, weight: .medium))
                         // As faint as New Tab's words under it, as Arc has it.
@@ -71,9 +74,9 @@ struct KeptLine: View {
                     .buttonStyle(.plain)
                     .focusable(false)
                     .onHover { onWord = $0 }
-                    .opacity(browser.columnHovered ? 1 : 0)
-                    .allowsHitTesting(browser.columnHovered)
-                    .accessibilityHidden(!browser.columnHovered)
+                    .opacity(hovered ? 1 : 0)
+                    .allowsHitTesting(hovered)
+                    .accessibilityHidden(!hovered)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
@@ -82,10 +85,10 @@ struct KeptLine: View {
             .background {
                 TidyWave(on: false)
                     .padding(.trailing, 6)
-                    .opacity(clears && !browser.columnHovered ? 1 : 0)
+                    .opacity(clears && !hovered ? 1 : 0)
             }
         }
-        .animation(Motion.quick, value: browser.columnHovered)
+        .animation(Motion.quick, value: hovered)
         // From the rows' icons to as far in from the other end; the word's
         // letters end there too.
         .padding(.leading, SideBar.inner)
@@ -97,6 +100,7 @@ struct KeptLine: View {
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .onHover { on in
+            if scope != nil { overLine = on }
             // The dust's shader, built under the pointer, well before the
             // word can be pressed.
             if on, browser.canTidyNow { Dust.shared.warm() }
@@ -156,6 +160,7 @@ struct KeptFolderItems: View {
 /// after puts it back as it was and names it, so a double-click renames the
 /// way Finder's does without the single click waiting to see.
 struct NestClick: ViewModifier {
+    @Environment(\.sidebarSpaceActions) private var scope
     let nest: Nest
     let naming: Bool
     /// The window's folders (Browser.folderBook).
@@ -164,8 +169,8 @@ struct NestClick: ViewModifier {
     func body(content: Content) -> some View {
         content.onTapGesture {
             guard !naming else { return }
-            folders.tap(nest)
-            folders.focused = nest.id
+            let tap = { folders.tap(nest, immediately: scope != nil); folders.focused = nest.id }
+            if let scope { scope.run(tap) } else { tap() }
         }
     }
 }
@@ -186,6 +191,7 @@ struct KeptDivider: View {
 /// A folder of yours in the column: its mark and its name.
 /// A click opens or shuts it; a double-click, or Rename…, names it.
 struct NestRow: View {
+    @Environment(\.sidebarSpaceActions) private var scope
     @ObservedObject var browser: Browser
     @ObservedObject var nest: Nest
     let count: Int
@@ -282,7 +288,10 @@ struct NestRow: View {
             // closed but put to sleep, so it has none.
             if closing {
                 Spacer(minLength: 0)
-                FolderCross { browser.glance.drop(); browser.close(browser.tabs(in: nest)) }
+                FolderCross {
+                    let close = { browser.glance.drop(); browser.close(browser.tabs(in: nest)) }
+                    if let scope { scope.run(close) } else { close() }
+                }
                     .transition(.opacity)
             }
         }

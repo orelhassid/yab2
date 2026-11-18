@@ -142,6 +142,42 @@ struct NativeControlTests {
         try test(NativeControl(file: folder.appendingPathComponent("operations.json")), browser, session)
     }
 
+    @MainActor @Test func spaceTransitionChangesPersistAndUndo() throws {
+        let previous = Store.settings.object(forKey: SpaceTransition.key)
+        let mode = SpaceTransition.current
+        defer { Store.settings.set(previous, forKey: SpaceTransition.key); SpaceTransition.current = mode }
+        try fixture { control, browser, session in
+            browser.prefs.spaceTransition = .slide
+            let applied = call(control, "apply", browser, session,
+                               ["action": "settings.set.space-transition", "target": ["kind": "application", "id": "app"],
+                                "arguments": ["value": "fade"], "requestId": "space-transition"])
+            #expect(applied["status"] as? String == "verified")
+            #expect(browser.prefs.spaceTransition == .fade)
+            #expect(Store.settings.string(forKey: SpaceTransition.key) == "fade")
+            let undone = call(control, "undo", browser, session, ["changeId": applied["operationId"]!])
+            #expect(undone["undone"] as? Bool == true)
+            #expect(browser.prefs.spaceTransition == .slide)
+        }
+    }
+
+    @MainActor @Test func aSpacePinIsANamedRowAndNativeUndoRestoresItsOpenState() throws {
+        try fixture { control, browser, session in
+            let sidebar = browser.prefs.sidebar
+            defer { browser.prefs.sidebar = sidebar }
+            browser.prefs.sidebar = true
+            let tab = try #require(browser.tabs.first)
+            tab.restore(url: URL(string: "https://native-space-pin.example/")!, title: "Space pin")
+            let request: [String: Any] = ["action": "tabs.pin", "target": ["kind": "tab", "id": tab.id.uuidString],
+                                          "arguments": ["value": true], "requestId": "space-pin"]
+            let applied = call(control, "apply", browser, session, request)
+            #expect(applied["status"] as? String == "verified")
+            #expect(tab.kept && tab.pin == nil && tab.everywhere == nil)
+            let operation = try #require(applied["operationId"] as? String)
+            #expect(call(control, "undo", browser, session, ["changeId": operation])["undone"] as? Bool == true)
+            #expect(!tab.kept && tab.pin == nil)
+        }
+    }
+
     @MainActor @Test func transparencyChangesOnlyTheTargetSpaceAndUndoes() throws {
         let spaces = Store.file("spaces.json"), data = try? Data(contentsOf: spaces)
         defer { if let data { try? data.write(to: spaces) } else { try? FileManager.default.removeItem(at: spaces) } }
@@ -714,7 +750,7 @@ struct NativeControlTests {
             #expect(all["status"] as? String == "verified", "\(all)")
             #expect(all["closed"] as? Double == 1 && all["putDown"] as? Double == 2, "\(all)")
             #expect(browser.tabs.count == 5)
-            #expect(browser.tabs.first === pin && pin.pin == "Y" && !pin.kept && pin.asleep)
+            #expect(browser.tabs.first === pin && pin.pin == nil && pin.kept && pin.asleep)
             #expect(browser.tabs[1] === keptHere && keptHere.kept && keptHere.nest === folder && keptHere.name == "Kept video" && keptHere.asleep)
             #expect(!browser.tabs.contains { $0 === loose })
             #expect(undo(all)["undone"] as? Bool == true)
@@ -727,7 +763,7 @@ struct NativeControlTests {
             let rested = close([pin], pinned: true)
             #expect(rested["status"] as? String == "verified", "\(rested)")
             #expect(rested["closed"] as? Double == 0 && (rested["undo"] as? [String: Any])?["available"] as? Bool == false, "\(rested)")
-            #expect(browser.tabs.first === pin && pin.pin == "Y" && pin.asleep)
+            #expect(browser.tabs.first === pin && pin.pin == nil && pin.kept && pin.asleep)
             #expect(browser.tabs.map { $0.address?.absoluteString ?? "" } == row)
             #expect(!browser.toaster.shown)
         }

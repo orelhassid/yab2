@@ -148,7 +148,7 @@ final class KeyNumbers: ObservableObject {
     private var counted: [ObjectIdentifier: [UUID: Int]] = [:]
 
     /// What ⌘ and a digit reach this tab by, if anything: the very tab
-    /// `Browser.select(index:)` goes to for that digit, so a number is
+    /// `Browser.select(number:)` goes to for that digit, so a number is
     /// never on a tab its key would not open.
     static func number(of tab: Tab, in browser: Browser) -> Int? {
         let key = ObjectIdentifier(browser)
@@ -160,7 +160,7 @@ final class KeyNumbers: ObservableObject {
         let digits = Set((1...9).filter { number in
             Shortcut.numbered("tab", number).flatMap { Keymap.shared.keys($0) } == Hotkey(String(number), .command)
         })
-        for (at, number) in Self.numbers(among: browser.numberable(), count: tabs.count, digits: digits) {
+        for (at, number) in Self.numbers(among: browser.numberable(), digits: digits) {
             numbers[tabs[at].id] = number
         }
         if shared.shown { shared.counted[key] = numbers }
@@ -170,11 +170,10 @@ final class KeyNumbers: ObservableObject {
     /// Row place to digit, as ⌘1 to ⌘9 land (BrowserMenuCommands): ⌘1 to
     /// ⌘8 the first eight tabs you can be on, ⌘9 the last of them. A tab two
     /// digits reach, the last of only a few, wears the lower one.
-    nonisolated static func numbers(among open: [Int], count: Int, digits: Set<Int> = Set(1...9)) -> [Int: Int] {
+    nonisolated static func numbers(among open: [Int], digits: Set<Int> = Set(1...9)) -> [Int: Int] {
         var numbers: [Int: Int] = [:]
         for number in 1...9 where digits.contains(number) {
-            let index = number == 9 ? count - 1 : number - 1
-            if let at = Browser.numbered(index, among: open, count: count), numbers[at] == nil {
+            if let at = Browser.tabIndex(for: number, among: open), numbers[at] == nil {
                 numbers[at] = number
             }
         }

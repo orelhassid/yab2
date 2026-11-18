@@ -78,15 +78,17 @@ struct SidebarSpaceContextMenuTests {
             let rowPoint = page.convert(NSPoint(x: page.bounds.midX, y: row.y + row.height / 2), from: document)
             try #require(page.item(at: rowPoint)?.id == row.id && page.holds(rowPoint))
             try #require(!page.holds(tail))
-            // The native page must still receive row/header/scrollbar hits.
+            // Rows remain native; the stationary switcher owns header hits.
             let pages = try #require(ColumnPages.of(f.browser))
             let root = try #require(f.window.contentView)
             let name = try #require(page.headItems.first { if case .name = $0.kind { return true }; return false })
             let namePoint = NSPoint(x: SideBar.margin + (name.x ?? 0) + (name.width ?? 0) / 2,
                                    y: name.y + name.height / 2)
-            try #require(page.cellAt(try f.event(.rightMouseDown, namePoint, in: page))?.itemID == name.id,
-                         "The actual header item must have a bound native cell")
-            for point in [rowPoint, namePoint] {
+            #expect(page.cellAt(try f.event(.rightMouseDown, namePoint, in: page))?.itemID != name.id,
+                    "The moving native page must not expose its hidden header cell")
+            let headerHit = try #require(root.hitTest(root.convert(namePoint, from: page)))
+            #expect(!headerHit.isDescendant(of: pages), "The fixed switcher must receive header input outside the sliding pages")
+            for point in [rowPoint] {
                 let native = pages.convert(point, from: page)
                 #expect(pages.hitTest(pages.convert(native, to: pages.superview)) != nil)
             }
@@ -319,7 +321,7 @@ struct SidebarSpaceContextMenuTests {
                          "The full native event route must actually open its owner's Space menu")
             let lines = try #require(ActionMenu.state()["lines"] as? [[String: Any]])
             let titles = lines.compactMap { $0["title"] as? String }
-            #expect(titles.contains("Rename Space…") && titles.contains("Change Space Icon…"))
+            #expect(titles.contains("Edit Space…") && !titles.contains("Rename Space…") && !titles.contains("Customize Space…"))
             #expect(titles.contains("Edit Look…") && titles.contains("Space Settings…"))
             #expect(titles.contains("Sign-Ins") == !first)
             print("SIDEBAR_SPACE_MENU owner=\(window.windowNumber) space=\(browser.spaceID) titles=\(titles)")

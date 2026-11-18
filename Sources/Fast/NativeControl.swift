@@ -45,12 +45,18 @@ final class NativeControl {
     /// The folder a live.add or live.follow_repo made or found, by operation.
     private var liveMade: [String: UUID] = [:]
     private var zoomWatch: AnyCancellable?
+    private var profileNameWatch: AnyCancellable?
 
     init(file: URL) {
         changes = NativeChanges(file: file)
         zoomWatch = NotificationCenter.default.publisher(for: PageAppearance.siteZoomChanged).sink { [weak self] note in
             MainActor.assumeIsolated {
                 if let host = note.object as? String { self?.changes.changed(Self.zoomResource(host) + ":edits") }
+            }
+        }
+        profileNameWatch = NotificationCenter.default.publisher(for: BrowserProfileIdentities.nameChanged).sink { [weak self] note in
+            MainActor.assumeIsolated {
+                if let id = note.object as? UUID { self?.changes.changed("profile:" + id.uuidString) }
             }
         }
     }
@@ -380,9 +386,13 @@ final class NativeControl {
             return ("setting:" + setting.id, setting.read(browser.prefs))
         }
         switch action {
-        case "settings.open": return ("settings-page", .object(["visible": .bool(SettingsWindow.shared.window?.isVisible == true), "page": .string(SettingsWindow.shared.page.rawValue)]))
+        case "settings.open": return ("settings-page", .object(["visible": .bool(SettingsWindow.shared.isShowing), "page": .string(SettingsWindow.shared.page.rawValue)]))
         case "space.create": return ("spaces", .object(["enabled": .bool(browser.prefs.usesSpaces), "spaces": .array(browser.spaces.map { versionedSpaceState($0, browser: browser) }), "layout": .string(changes.version("layout:" + windowID(browser), .null))]))
         case "space.switch": return ("active-space", .string(browser.spaceID.uuidString))
+        case "profile.rename":
+            let id = try space(target, browser: browser).profileID
+            let name = BrowserProfileIdentities.shared[id].name
+            return ("profile:" + id.uuidString, .object(["id": .string(id.uuidString), "name": name.map(NativeValue.string) ?? .null]))
         case "space.rename", "space.set_appearance": return ("space:" + target, spaceState(try space(target, browser: browser), browser: browser))
         case "space.delete": return ("delete-space:" + target, try deletionState(target, browser: browser))
         case "tabs.pin":
@@ -460,7 +470,9 @@ final class NativeControl {
             var url = tab.address.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
             url?.query = nil; url?.fragment = nil; url?.user = nil; url?.password = nil; url?.path = ""
             return ["id": tab.id.uuidString, "title": String(tab.label.prefix(160)), "url": url?.string ?? "", "active": browser.activeID == tab.id,
-                    "pinned": tab.pin != nil, "inEverySpace": tab.everywhere != nil,
+                    "pinned": tab.pin != nil || tab.kept,
+                    "inEverySpace": tab.everywhere != nil || TrailApps.shared.application(for: tab) != nil,
+                    "tabType": TrailApps.shared.application(for: tab) != nil ? "app" : (tab.pin != nil || tab.kept ? "pinned" : "open"),
                     "visible": browser.tabs.contains { $0 === tab }, "kept": tab.kept, "blank": tab.isBlank, "folderId": tab.nest?.id.uuidString ?? "", "folderName": tab.nest?.name ?? "",
                     // The folders it is in from the top, a folder in a folder's included.
                     "folderPath": tab.nest.map { $0.chain.map(\.name).joined(separator: " \u{203A} ") } ?? "",
@@ -522,8 +534,8 @@ final class NativeControl {
                                   ["id": $0.id, "title": $0.title, "brings": LiveFoldersSettings.what($0.id), "lists": $0.lists.map { ["id": $0.id, "title": $0.title] }]
                               },
                               "note": "Folders update with their space's sign-ins while that space is open. Change one of another space after space.switch."] as [String: Any]
-        out["surface"] = SettingsWindow.shared.window?.isVisible == true ? "settings" : browser.inMail ? "mail" : "website"
-        if SettingsWindow.shared.window?.isVisible == true { out["settingsPage"] = SettingsWindow.shared.page.rawValue }
+        out["surface"] = SettingsWindow.shared.isShowing ? "settings" : browser.inMail ? "mail" : "website"
+        if SettingsWindow.shared.isShowing { out["settingsPage"] = SettingsWindow.shared.page.rawValue }
         out["taskTargets"] = ["tabId": session.nativeOriginTab?.uuidString ?? "", "spaceId": session.nativeOriginSpace?.uuidString ?? "", "undoChangeId": session.nativeUndoChange ?? ""]
         out["activeSpaceVersion"] = changes.version("active-space", .string(browser.spaceID.uuidString))
         out["spacesVersion"] = changes.version("spaces", try snapshot(action: "space.create", target: "app", arguments: [:], browser: browser).1)
@@ -546,7 +558,7 @@ final class NativeControl {
             out["settingsCatalog"] = SettingsItem.all.filter { query.isEmpty || ($0.id + " " + $0.title).lowercased().contains(query) }.map {
                 ["id": $0.id, "title": $0.title, "page": $0.page.title, "access": NativeActions.classification($0)]
             }
-            let native: [Command: String] = [.settings: "settings.open", .pinTab: "tabs.pin", .unpinTab: "tabs.pin", .zoomIn: "site.set_zoom", .zoomOut: "site.set_zoom", .actualSize: "site.set_zoom", .showBar: "settings.set.address-bar", .hideBar: "settings.set.address-bar", .showSidebar: "settings.set.sidebar", .hideSidebar: "settings.set.sidebar", .newYork: "settings.set.sidebar", .sanFrancisco: "settings.set.sidebar"]
+            let native: [Command: String] = [.settings: "settings.open", .manageProfiles: "settings.open", .pinTab: "tabs.pin", .unpinTab: "tabs.pin", .zoomIn: "site.set_zoom", .zoomOut: "site.set_zoom", .actualSize: "site.set_zoom", .showBar: "settings.set.address-bar", .hideBar: "settings.set.address-bar", .showSidebar: "settings.set.sidebar", .hideSidebar: "settings.set.sidebar", .newYork: "settings.set.sidebar", .sanFrancisco: "settings.set.sidebar"]
             out["commandsCatalog"] = Command.allCases.filter { query.isEmpty || ($0.rawValue + " " + $0.title).lowercased().contains(query) }.map {
                 ["id": $0.rawValue, "title": $0.title, "access": native[$0] == nil ? "ui_only" : "native_action", "action": native[$0] ?? ""]
             }
@@ -891,13 +903,16 @@ final class NativeControl {
         case "settings.open":
             guard let raw = string(arguments["page"]), let page = SettingsPage(rawValue: raw) else { throw NativeFailure("invalid_arguments", "Choose a Settings page") }
             SettingsWindow.shared.show(page, for: browser)
-            guard SettingsWindow.shared.window?.isVisible == true else { throw NativeFailure("verification_failed", "Settings could not be opened") }
+            guard SettingsWindow.shared.isShowing else { throw NativeFailure("verification_failed", "Settings could not be opened") }
         case "space.create":
             let name = try nonempty(arguments["name"])
             guard !browser.spaces.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { throw NativeFailure("conflict", "A space already has this name") }
             browser.prefs.usesSpaces = true
             let id = browser.addSpace(named: name, ownSignIns: boolean(arguments["separateSignIns"]) ?? false, show: false)
             guard browser.spaces.contains(where: { $0.id == id && $0.name == name }) else { throw NativeFailure("verification_failed", "The space was not created") }
+        case "profile.rename":
+            let id = try space(target, browser: browser).profileID
+            BrowserProfileIdentities.shared.rename(id, to: string(arguments["name"]) ?? "")
         case "space.rename":
             let space = try space(target, browser: browser), name = try nonempty(arguments["name"])
             if space.name != name { browser.renameSpace(space.id, to: name) }
@@ -925,11 +940,15 @@ final class NativeControl {
         case "tabs.pin":
             let tab = try tab(target, browser: browser)
             guard browser.tabs.contains(where: { $0 === tab }), !tab.bench else { throw NativeFailure("invalid_arguments", "Pin a user tab in the current space") }
-            if (tab.pin != nil) == boolean(arguments["value"]) { return }
+            guard TrailApps.shared.application(for: tab) == nil else {
+                throw NativeFailure("invalid_arguments", "This is an App Tab shared across Spaces; use its App Tab action")
+            }
+            let isPinned = { tab.pin != nil || (browser.prefs.sidebar && tab.kept) }
+            if isPinned() == boolean(arguments["value"]) { return }
             pins[operation] = PinState(order: browser.tabs.map(\.id), pairs: browser.pairs, pin: tab.pin, kept: tab.kept, nest: tab.nest)
-            if boolean(arguments["value"]) == true { if tab.pin == nil { browser.pin(tab, apart: true) } }
-            else if tab.pin != nil { browser.unpin(tab) }
-            guard (tab.pin != nil) == boolean(arguments["value"]) else { throw NativeFailure("verification_failed", "The tab's pin state did not change") }
+            if boolean(arguments["value"]) == true { browser.pin(tab, apart: true) }
+            else { browser.unpin(tab) }
+            guard isPinned() == boolean(arguments["value"]) else { throw NativeFailure("verification_failed", "The tab's pin state did not change") }
         case "tabs.rename":
             let tab = try tab(target, browser: browser)
             let name = string(arguments["name"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -1261,6 +1280,10 @@ final class NativeControl {
         if let setting = NativeSetting.all.first(where: { "settings.set." + $0.id == receipt.action && $0.scope == "application" }) { try setting.write(browser.prefs, receipt.before) }
         else {
             switch receipt.action {
+            case "profile.rename":
+                let id = try space(receipt.target, browser: browser).profileID
+                guard case .object(let previous) = receipt.before else { throw NativeFailure("failed", "The previous name is unavailable") }
+                BrowserProfileIdentities.shared.rename(id, to: string(previous["name"]) ?? "")
             case "space.rename", "space.set_appearance", "settings.set.color", "settings.set.grain", "settings.set.transparency", "settings.set.glass":
                 guard case .object(let state) = receipt.before else { throw NativeFailure("failed", "The previous state is unavailable") }
                 let space = try space(receipt.target, browser: browser)

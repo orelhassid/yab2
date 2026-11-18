@@ -31,6 +31,7 @@ struct DropLink {
 struct DropMenu<Value: Hashable>: View {
     let title: String
     var faceTitle: String? = nil
+    var fillsField = false
     var showsCheck = false
     let options: [DropOption<Value>]
     @Binding var selection: Value
@@ -51,10 +52,11 @@ struct DropMenu<Value: Hashable>: View {
 
     init(_ title: String, options: [DropOption<Value>], selection: Binding<Value>,
          inset: CGFloat = DropFace.inset, small: NSSize? = nil, divideBefore: Value? = nil, trailing: Bool = false,
-         link: DropLink? = nil, faceTitle: String? = nil, showsCheck: Bool = false) {
+         link: DropLink? = nil, faceTitle: String? = nil, showsCheck: Bool = false, fillsField: Bool = false) {
         self.title = title
         self.faceTitle = faceTitle
         self.showsCheck = showsCheck
+        self.fillsField = fillsField
         self.options = options
         self._selection = selection
         self.inset = inset
@@ -84,6 +86,7 @@ struct DropMenu<Value: Hashable>: View {
             Text(faceTitle ?? chosen?.title ?? "")
                 .lineLimit(1)
                 .truncationMode(.tail)
+            if fillsField { Spacer(minLength: 0) }
             Symbol("chevron.down", size: 8, weight: .semibold) // design: the size of MenuCell's ⌃⌄ before it
                 .foregroundStyle(.secondary)
         }
@@ -91,7 +94,7 @@ struct DropMenu<Value: Hashable>: View {
         .frame(height: TableCell.height)
         .background(
             RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                .fill(Color.primary.opacity(shown ? 0.1 : hovering ? 0.06 : 0))
+                .fill(Color.primary.opacity(shown ? 0.1 : hovering || fillsField ? 0.06 : 0))
         )
         .overlay(DropAnchor(place: place, title: title, value: chosen?.title ?? "", press: open, hover: { hovering = $0 }))
         .animation(.easeOut(duration: 0.12), value: hovering)

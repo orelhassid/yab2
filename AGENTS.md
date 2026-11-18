@@ -16,6 +16,10 @@ CONTRIBUTING.md covers how to send a change; this file covers how to make one.
 - `./design-check --file PATH` checks a Swift file against the design
   system (shared frames, buttons, key marks). Fix what it reports.
 
+## Shared local preview
+
+All chats working in this checkout share `build/Yab Sidebar Preview.app` and its `spaces-preview` profile. Reuse the running instance for interactive review. When an update is needed, build from the shared checkout and refresh that same app after checking for another session's active build or UI test. Keep isolated automated tests in their own test profiles and close any temporary test app when the run ends.
+
 ## How much proof a change needs
 
 Pick the lowest level that fits:

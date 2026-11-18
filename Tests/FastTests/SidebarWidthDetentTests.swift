@@ -29,19 +29,19 @@ struct SidebarWidthDetentTests {
 
     @Test func fastCrossingsTickInBothDirectionsWithoutReversingTheDrag() {
         var detent = SidebarWidthDetent(width: 200)
-        let outward = detent.update(wanted: 250, maximum: Metrics.sideMax)
-        #expect(outward.width == 250 && outward.aligned)
-        #expect(!detent.update(wanted: 260, maximum: Metrics.sideMax).aligned)
-        let inward = detent.update(wanted: 210, maximum: Metrics.sideMax)
-        #expect(inward.width == 210 && inward.aligned)
+        let outward = detent.update(wanted: Metrics.side + 20, maximum: Metrics.sideMax)
+        #expect(outward.width == Metrics.side + 20 && outward.aligned)
+        #expect(!detent.update(wanted: Metrics.side + 30, maximum: Metrics.sideMax).aligned)
+        let inward = detent.update(wanted: Metrics.side - 20, maximum: Metrics.sideMax)
+        #expect(inward.width == Metrics.side - 20 && inward.aligned)
     }
 
     @Test func unavailableDefaultDoesNotTickOrExceedSplitViewRoom() {
         var detent = SidebarWidthDetent(width: 200)
-        let result = detent.update(wanted: 250, maximum: 220)
-        #expect(result.width == 220)
+        let result = detent.update(wanted: 250, maximum: Metrics.sideMin + 4)
+        #expect(result.width == Metrics.sideMin + 4)
         #expect(!result.aligned)
-        #expect(detent.update(wanted: 100, maximum: 220).width == Metrics.sideMin)
+        #expect(detent.update(wanted: 100, maximum: Metrics.sideMin + 4).width == Metrics.sideMin)
         #expect(detent.update(wanted: 600, maximum: Metrics.sideMax).width == Metrics.sideMax)
     }
 }

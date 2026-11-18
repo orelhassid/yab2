@@ -71,6 +71,10 @@ final class MailFound: ObservableObject {
         return accounts.first { $0.email == chosen } ?? accounts.first
     }
 
+    static func accounts(in store: WKWebsiteDataStore) async -> [BrowserProfileIdentities.Google] {
+        await read(store).map { BrowserProfileIdentities.Google(email: $0.email, name: $0.name, photo: $0.photo) }
+    }
+
     private static func read(_ store: WKWebsiteDataStore) async -> [(email: String, name: String, photo: URL?)] {
         await withCheckedContinuation { done in
             AgentRead.run(list, method: "GET", body: nil, type: nil, keepHTML: true, store: store) { got in

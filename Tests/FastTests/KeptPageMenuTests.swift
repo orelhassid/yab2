@@ -66,6 +66,74 @@ struct KeptPageMenuTests {
         #expect(made.allSatisfy { $0.builtPage == nil && !$0.store.isPersistent })
     }
 
+    @Test func leftTrailPinCommandsLeadHistoryAndPersist() throws {
+        try withBrowser { browser, page in
+            let path = UUID().uuidString
+            let tab = page(path), independent = page(path)
+            let url = try #require(tab.address)
+            let sidebar = browser.prefs.sidebar, spaces = browser.prefs.usesSpaces
+            defer {
+                TrailApps.shared.remove(url)
+                browser.prefs.sidebar = sidebar
+                browser.prefs.usesSpaces = spaces
+            }
+            browser.prefs.sidebar = true
+            browser.prefs.usesSpaces = true
+            browser.lay([tab])
+            browser.activeID = tab.id
+            for command in [Command.pinTrailApp, .unpinTrailApp] {
+                browser.history = History([Visit(url: "https://history.fixture.invalid/menu", key: "history.fixture.invalid/menu",
+                                                 title: command.title, count: 5, last: Date())])
+                let menu = NSHostingMenu(rootView: TabMenu(browser: browser, tab: tab, close: {}))
+                menu.update()
+                #expect(menu.items.contains { $0.title == command.title })
+                browser.replaceTyped(command.title)
+                #expect(browser.offers.first?.kind == .command(command))
+                command.run(in: browser)
+                if command == .pinTrailApp {
+                    TrailApps.shared.pin(tab)
+                    #expect(TrailApps.shared.apps.filter { $0.id == url }.count == 1)
+                }
+                #expect(TrailApps(defaults: Store.settings).contains(url) == (command == .pinTrailApp))
+                let restored = TrailApps(defaults: Store.settings)
+                let visible = restored.sidebarTabs([tab, independent])
+                #expect(visible.contains { $0 === tab } == (command == .unpinTrailApp))
+                #expect(visible.contains { $0 === independent })
+                #expect(browser.tabs.contains { $0 === tab })
+            }
+        }
+    }
+
+    @Test func legacyRailPinAdoptsOneMatchingTab() throws {
+        try withBrowser { browser, page in
+            let path = UUID().uuidString, suite = UUID().uuidString
+            let defaults = try #require(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let original = page(path), duplicate = page(path)
+            let url = try #require(original.address)
+            defaults.set(try JSONEncoder().encode([["id": url.absoluteString, "title": "App"]]), forKey: "sidebar.pinnedApps")
+            let pins = TrailApps(defaults: defaults)
+            browser.lay([original, duplicate])
+            #expect(pins.sidebarTabs(browser.tabs).map(\.id) == [duplicate.id])
+            pins.pin(original)
+            #expect(browser.tabs.count == 2)
+            #expect(TrailApps(defaults: defaults).sidebarTabs([duplicate, original]).map(\.id) == [duplicate.id])
+        }
+    }
+
+    @Test func tabOverviewLeadsExactCommandSearch() throws {
+        try withBrowser { browser, _ in
+            let command = Command.tabOverview
+            _ = try #require(LibraryPage(url: URL(string: "yab://tabs")) == .tabs)
+            for query in [command.title, "All Tabs"] {
+                browser.history = History([Visit(url: "https://history.fixture.invalid/tabs", key: "history.fixture.invalid/tabs",
+                                                 title: query, count: 5, last: Date())])
+                browser.replaceTyped(query)
+                #expect(browser.offers.first?.kind == .command(command))
+            }
+        }
+    }
+
     private func list(_ tab: Fast.Tab, in browser: Browser) -> ActionMenuList {
         ActionMenuList(menu: NSHostingMenu(rootView: TabMenu(browser: browser, tab: tab, close: {})), falls: true)
     }

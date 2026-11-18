@@ -58,6 +58,51 @@ struct ColumnLayoutTests {
         #expect(ColumnLayout.height(items) == (rows > 0 ? CGFloat(rows) * ColumnLayout.step - SideBar.gap - short : 0))
     }
 
+    @Test func libraryPagesStayAccessibleWithoutSidebarRows() {
+        let (browser, folders) = world { browser in
+            _ = browser.open(URL(string: "https://example.test/history")!, foreground: true)
+            for page: LibraryPage in [.tabs, .bookmarks, .history, .downloads, .extensions] {
+                browser.showLibrary(page)
+            }
+        }
+        defer { close(browser) }
+        let documents = browser.tabs.filter { $0.libraryPage == nil }.map(\.id)
+        #expect(documents.count == 1)
+        #expect(ColumnLayout.live(browser, folders: folders).compactMap { $0.tab?.id } == documents)
+        let row = Parked(tabs: browser.tabs, active: browser.activeID, pairs: [])
+        #expect(ColumnLayout.parked(browser, row: row, travelling: [], space: browser.space).items.compactMap { $0.tab?.id } == documents)
+        let count = browser.tabs.count
+        browser.showLibrary(.bookmarks)
+        #expect(browser.active?.libraryPage == .bookmarks)
+        #expect(browser.tabs.count == count)
+    }
+
+    @Test func spaceSwitcherPrecedesAppTabsAndNamedPinnedRows() throws {
+        let (browser, _) = world { browser in
+            browser.prefs.sidebar = true
+            browser.prefs.showLeftTrail = false
+            browser.prefs.usesSpaces = true
+            browser.prefs.spaceNames = true
+            let tab = browser.open(URL(string: "https://example.test/favorite")!, foreground: true)
+            _ = browser.pin(tab)
+            let app = browser.open(URL(string: "https://example.test/shared-app")!, foreground: false, rowNow: true)
+            TrailApps.shared.pin(app)
+        }
+        defer {
+            TrailApps.shared.remove(URL(string: "https://example.test/shared-app")!, in: browser)
+            close(browser)
+        }
+        let parked = Parked(tabs: browser.tabs, active: browser.activeID, pairs: [])
+        for head in [ColumnLayout.head(browser),
+                     ColumnLayout.parked(browser, row: parked, travelling: [], space: browser.space).head] {
+            let heading = try #require(head.first { if case .name = $0.kind { true } else { false } })
+            #expect(!head.contains { $0.isPin })
+            #expect(browser.sidebarAppsHeight > 0)
+            #expect(ColumnLayout.lead(browser, pins: 0) == heading.y + heading.height + SideBar.gap + browser.sidebarAppsHeight)
+        }
+        #expect(browser.sidebarLooseTabs.contains { $0.kept && $0.pin == nil })
+    }
+
     @Test func todaysTabsAloneAreNewTabThenTheRows() {
         let (browser, folders) = world { browser in
             for n in 0..<4 { _ = browser.open(URL(string: "https://example.test/\(n)")!, foreground: n == 0) }

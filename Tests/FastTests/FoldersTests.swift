@@ -139,14 +139,14 @@ struct FoldersTests {
     @Test func numbersCountOnlyTabsYouCanBeOn() {
         // Four of yours, then a sealed folder of three.
         let open = [0, 1, 2, 3]
-        #expect(Browser.numbered(0, among: open, count: 7) == 0)
-        #expect(Browser.numbered(3, among: open, count: 7) == 3)
+        #expect(Browser.tabIndex(for: 1, among: open) == 0)
+        #expect(Browser.tabIndex(for: 4, among: open) == 3)
         // ⌘5: there is no fifth.
-        #expect(Browser.numbered(4, among: open, count: 7) == nil)
+        #expect(Browser.tabIndex(for: 5, among: open) == nil)
         // ⌘9: the last of yours, not the folder's.
-        #expect(Browser.numbered(6, among: open, count: 7) == 3)
+        #expect(Browser.tabIndex(for: 9, among: open) == 3)
         // No sealed folder: as ever.
-        #expect(Browser.numbered(2, among: [0, 1, 2], count: 3) == 2)
+        #expect(Browser.tabIndex(for: 3, among: [0, 1, 2]) == 2)
     }
 
     // Row 384: a task's folder left open in one space is still open when

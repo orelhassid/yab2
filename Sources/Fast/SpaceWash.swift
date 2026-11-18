@@ -201,7 +201,7 @@ final class SpaceWash {
         return sited
     }
 
-    private static func painted(_ paint: SpacePaint) -> Paint {
+    static func painted(_ paint: SpacePaint) -> Paint {
         // A space's own Light or Dark before the app's: a light space in a
         // dark app took the color's deep shade under its dark words.
         let dark = LookMode(rawValue: paint.mode)?.scheme.map { $0 == .dark }

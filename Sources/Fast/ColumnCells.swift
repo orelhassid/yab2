@@ -369,74 +369,9 @@ final class ColumnCell: NSHostingView<AnyView> {
         CATransaction.commit()
     }
 
-    /// The row as SideBar draws it, in the column's words.
     private static func row(_ item: ColumnItem, browser: Browser, live: Bool, picked: Bool, hold: Hold, look: ColumnPages.Look, size: CGSize,
                             generation: Int, pointed: Bool) -> some View {
-        let prefs = browser.prefs
-        return Group {
-            switch item.kind {
-            case .tab(let tab):
-                SideRow(browser: browser, prefs: prefs, tab: tab, live: live, picked: picked, lifted: hold.lifted)
-                    // Stayed over by a held row: it turns into the folder
-                    // the two would make, drawn in its place.
-                    .opacity(hold.turn == nil && !hold.compact ? 1 : 0)
-                    .overlay(alignment: .leading) {
-                        if hold.compact {
-                            Mark(icon: tab.displayIcon, letter: tab.monogram, size: 16)
-                                .frame(width: 28, height: 28)
-                                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: Radius.control))
-                        }
-                    }
-                    .overlay {
-                        if let choice = hold.choice {
-                            TabDropChoices(choice: choice, iconsOnly: SideBar.row < 36)
-                        } else if let turn = hold.turn {
-                            FolderToBe(tab: tab, turn: turn, made: hold.made, live: live, prefs: prefs)
-                        }
-                    }
-            case .pair(let first, let second):
-                PairRow(browser: browser, prefs: prefs, first: first, second: second, lifted: hold.lifted, shown: browser.newTabLit ? false : nil)
-                    .opacity(hold.choice == nil && !hold.compact ? 1 : 0)
-                    .overlay(alignment: .leading) {
-                        if hold.compact {
-                            Mark(icon: first.displayIcon, letter: first.monogram, size: 16)
-                                .frame(width: 28, height: 28)
-                                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: Radius.control))
-                        }
-                    }
-                    .overlay { if let choice = hold.choice { TabDropChoices(choice: choice, iconsOnly: SideBar.row < 36) } }
-            case .nest(let nest, let count, let over):
-                NestRow(browser: browser, nest: nest, count: count, aimed: hold.aimed, lifted: hold.lifted, over: over)
-                    .opacity(hold.choice == nil ? 1 : 0)
-                    .overlay { if let choice = hold.choice { TabDropChoices(choice: choice) } }
-            case .task(let folder, let open):
-                FolderRow(browser: browser, folder: folder, open: open)
-            case .more(let folder, let count):
-                FolderMore(folder: folder, count: count)
-            case .line:
-                KeptLine(browser: browser, reports: false, visible: true)
-            case .lineComing:
-                KeptLine(browser: browser)
-                    .allowsHitTesting(false)
-            case .newTab:
-                Quiet(icon: "plus", title: "New tab", height: SideBar.row, news: true, lit: browser.newTabLit, prefs: prefs, browser: browser) { browser.newTab() }
-                    // It raises the field: not away and back (Browser.fieldAway).
-                    .background(ClickZone(away: browser.fieldAway))
-            case .gap:
-                ColumnGap(square: false)
-            case .pin(let tab):
-                PinSquare(browser: browser, prefs: prefs, tab: tab, live: live, width: size.width, height: size.height,
-                          lifted: hold.lifted, pressed: hold.pressed)
-            case .pinGap:
-                ColumnGap(square: true)
-            case .home(let tab):
-                PinHomeField(browser: browser, tab: tab, height: size.height)
-            case .name(let space):
-                SpaceName(space: space, browser: browser, aimed: hold.aimed)
-            case .privateName:
-                PrivateName()
-            }
-        }
+        SidebarListCell(item: item, browser: browser, live: live, picked: picked, hold: hold, size: size)
         // Reuse the graph on scroll. Row-local interaction state is keyed by
         // the model id, so a recycled graph cannot light its next row.
         .id(generation)
@@ -655,5 +590,144 @@ struct RowLocalState<Value> {
     subscript(_ id: UUID) -> Value {
         get { owner == id ? stored : initial }
         set { owner = id; stored = newValue }
+    }
+}
+
+/// The Sidebar list in a Space other than the window's active column. Its host
+/// supplies the gesture for carrying a cell between columns.
+struct SidebarSpaceTabList<Cell: View>: View {
+    let browser: Browser
+    let space: Space
+    let tabs: [Tab]
+    let grouped: Bool
+    @ViewBuilder var decorate: (ColumnItem, SidebarListCell) -> Cell
+    @ObservedObject private var folders = Folders.shared
+
+    var body: some View {
+        let current = space.id == browser.spaceID
+        let active = current ? browser.activeID : browser.parked[space.id]?.active
+        let pairs = current ? browser.pairs : browser.parked[space.id]?.pairs ?? []
+        let scope = SidebarSpaceActions(browser: browser, id: space.id)
+        let page = ColumnLayout.parked(browser, row: Parked(tabs: tabs, active: active, pairs: pairs), travelling: [], space: space)
+        let rows: [ColumnItem]
+        if !grouped {
+            rows = tabs.map { ColumnItem(id: $0.id.uuidString, kind: .tab($0), indent: 0, y: 0, height: SideBar.row) }
+        } else if current && tabs.map(\.id) == browser.sidebarTabs(browser.tabs).map(\.id) {
+            rows = ColumnLayout.live(browser).filter { $0.height > 0 }
+        } else {
+            rows = page.items
+        }
+        return VStack(alignment: .leading, spacing: SideBar.gap) {
+            let pins = page.head.filter(\.isPin)
+            if !grouped || !pins.isEmpty || rows.first?.id != "line" {
+                Divider().padding(.horizontal, SideBar.inner)
+            }
+            if grouped && !pins.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: SideBar.pinGap),
+                                         count: SideBar.pinColumns(pins.count, width: browser.sidebarContentWidth)), spacing: SideBar.pinGap) {
+                    ForEach(pins, id: \.id) { item in cell(item, scope, active: active) }
+                }
+            }
+            ForEach(rows, id: \.id) { item in
+                cell(item, scope, active: active).padding(.leading, item.indent)
+            }
+        }
+        .environment(\.columnHosted, true)
+        .environment(\.sidebarSpaceActions, scope)
+        .allowsWindowActivationEvents()
+    }
+
+    private func cell(_ item: ColumnItem, _ scope: SidebarSpaceActions, active: UUID?) -> some View {
+        let size = CGSize(width: item.width ?? browser.sidebarContentWidth, height: item.height)
+        return decorate(item, SidebarListCell(item: item, browser: browser, live: item.tab?.id == active && active != nil,
+                                       picked: item.tab.map(browser.isPicked) ?? false, size: size, scope: scope))
+            .frame(height: item.height)
+    }
+}
+
+struct SidebarListCell: View {
+    let item: ColumnItem
+    let browser: Browser
+    let live: Bool
+    let picked: Bool
+    var hold = ColumnCell.Hold()
+
+    func aimingAtFolder(_ aimed: Bool) -> Self {
+        var cell = self
+        cell.hold.aimed = aimed
+        return cell
+    }
+
+    let size: CGSize
+    var scope: SidebarSpaceActions? = nil
+
+    var body: some View {
+        let prefs = browser.prefs
+        return Group {
+            switch item.kind {
+            case .tab(let tab):
+                SideRow(browser: browser, prefs: prefs, tab: tab, live: live, picked: picked, lifted: hold.lifted)
+                    // Stayed over by a held row: it turns into the folder
+                    // the two would make, drawn in its place.
+                    .opacity(hold.turn == nil && !hold.compact ? 1 : 0)
+                    .overlay(alignment: .leading) {
+                        if hold.compact {
+                            Mark(icon: tab.displayIcon, letter: tab.monogram, size: 16)
+                                .frame(width: 28, height: 28)
+                                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: Radius.control))
+                        }
+                    }
+                    .overlay {
+                        if let choice = hold.choice {
+                            TabDropChoices(choice: choice, iconsOnly: SideBar.row < 36)
+                        } else if let turn = hold.turn {
+                            FolderToBe(tab: tab, turn: turn, made: hold.made, live: live, prefs: prefs)
+                        }
+                    }
+            case .pair(let first, let second):
+                PairRow(browser: browser, prefs: prefs, first: first, second: second, lifted: hold.lifted, shown: browser.newTabLit ? false : nil)
+                    .opacity(hold.choice == nil && !hold.compact ? 1 : 0)
+                    .overlay(alignment: .leading) {
+                        if hold.compact {
+                            Mark(icon: first.displayIcon, letter: first.monogram, size: 16)
+                                .frame(width: 28, height: 28)
+                                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: Radius.control))
+                        }
+                    }
+                    .overlay { if let choice = hold.choice { TabDropChoices(choice: choice, iconsOnly: SideBar.row < 36) } }
+            case .nest(let nest, let count, let over):
+                NestRow(browser: browser, nest: nest, count: count, aimed: hold.aimed, lifted: hold.lifted, over: over)
+                    .opacity(hold.choice == nil ? 1 : 0)
+                    .overlay { if let choice = hold.choice { TabDropChoices(choice: choice) } }
+            case .task(let folder, let open):
+                FolderRow(browser: browser, folder: folder, open: open, among: scope.flatMap { browser.parked[$0.id]?.tabs })
+            case .more(let folder, let count):
+                FolderMore(folder: folder, count: count)
+            case .line:
+                KeptLine(browser: browser, reports: false, visible: true)
+            case .lineComing:
+                KeptLine(browser: browser)
+                    .allowsHitTesting(false)
+            case .newTab:
+                Quiet(icon: "plus", title: "New tab", height: SideBar.row, news: true, lit: browser.newTabLit, prefs: prefs, browser: browser) {
+                    if let scope { scope.run({ browser.newTab() }, stay: true) } else { browser.newTab() }
+                }
+                    // It raises the field: not away and back (Browser.fieldAway).
+                    .background(ClickZone(away: browser.fieldAway))
+            case .gap:
+                ColumnGap(square: false)
+            case .pin(let tab):
+                PinSquare(browser: browser, prefs: prefs, tab: tab, live: live, width: size.width, height: size.height,
+                          lifted: hold.lifted, pressed: hold.pressed)
+            case .pinGap:
+                ColumnGap(square: true)
+            case .home(let tab):
+                PinHomeField(browser: browser, tab: tab, height: size.height)
+            case .name(let space):
+                SpaceName(space: space, browser: browser, aimed: hold.aimed)
+            case .privateName:
+                PrivateName()
+            }
+        }
     }
 }

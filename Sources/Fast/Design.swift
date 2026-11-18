@@ -520,13 +520,10 @@ enum Metrics {
     static let plusWidth: CGFloat = 30
     /// The address field, in both the places it shows up.
     static let fieldWidth: CGFloat = 750
-    /// The column of titles down the left, in the way that has one. Its
-    /// narrowest is Arc's (request #1094): Arc 1.169 holds its sidebar's
-    /// edge between 164 and 500 under the hand, read off its pan handler
-    /// (evals/side-width/arc_min.py).
-    static let side: CGFloat = 228
-    static let sideMin: CGFloat = 164
-    static let sideMax: CGFloat = 475
+    /// Total width of the desktop column, including the Left Trail on the left.
+    static let side: CGFloat = 272
+    static let sideMin: CGFloat = 240
+    static let sideMax: CGFloat = 420
     /// How far past its narrowest the column's edge has to be pulled before
     /// the column lets go and shuts, and how far out of the window's left
     /// edge a shut one has to be pulled before it catches and opens. Short

@@ -16,8 +16,8 @@ struct NativeSetting {
     /// Read only the registered persisted value, without constructing a new
     /// Preferences object (whose initializer also migrates unrelated settings).
     var saved: NativeValue? {
-        let keys = ["theme": "look", "sidebar": "sidebar", "tab-icons": "tabs.glyph", "density": Density.key, "address-bar": "addressbar",
-                    "full-url": "addressbar.full-url", "peek-address": "peek.address", "bookmarks-bar": "bookmarks.bar", "window": "backdrop",
+        let keys = ["space-transition": SpaceTransition.key, "left-trail": Preferences.leftTrailKey, "trail-space-limit": TrailSpaceLimit.key, "settings-presentation": SettingsPresentation.key, "theme": "look", "sidebar": "sidebar", "tab-icons": "tabs.glyph", "density": Density.key, "address-bar": "addressbar",
+                    "full-url": "addressbar.full-url", "space-pages": "appearance.spacePages", "peek-address": "peek.address", "bookmarks-bar": "bookmarks.bar", "window": "backdrop",
                     "page-zoom": "pages.zoom", "warn-quit": "quit.warn", "sleep": "tabs.sleep",
                     "pins-every-space": SharedPins.key, "peek": "peek", "site-learn": "scopes.learn", "site-recent": "scopes.recent", "ask-where": "downloads.ask", "upload-finder": "uploads.finder",
                     "small-links": LinkWindow.key, "mail-motion": "mail.motion", "player": "player.shown", "agents-ask-opens": "agents.askOpens", "agents-cleanup": AgentTabsAfter.key,
@@ -86,6 +86,17 @@ struct NativeSetting {
     /// Mail's and Sync's settings, the field's, the icon's and the
     /// snippets', each written the way its row in Settings writes it.
     static var kept: [Self] { [
+        flag("mouse-gestures", "Allow Gestures", key: MouseMappings.enabledKey, default: false),
+        flag("mouse-option", "Perform Gestures with Option Key", key: MouseMappings.optionKey, default: false),
+        count("trail-space-limit", "Spaces on left trail", key: TrailSpaceLimit.key, default: TrailSpaceLimit.initial, values: Array(TrailSpaceLimit.range)),
+        count("mouse-minimum", "Minimum stroke length", key: MouseMappings.minimumKey, default: 20, values: Array(MouseMappings.minimumRange)),
+        stored("settings-presentation", "Open Settings in", ["type": "string", "enum": SettingsPresentation.allCases.map(\.rawValue)],
+               read: { .string(SettingsPresentation.saved.rawValue) }) { value in
+            guard case .string(let raw) = value, let presentation = SettingsPresentation(rawValue: raw) else {
+                throw NativeFailure("invalid_arguments", "Choose tab or window")
+            }
+            Store.settings.set(presentation.rawValue, forKey: SettingsPresentation.key)
+        },
         flag("suggestions", "Suggestions under the field", key: "hints.noticing", default: true) { Hints.shared.suggesting = $0 },
         flag("site-search-space", "Space after a site's alias starts its search, as Tab does (Chrome's Space or Tab; off is Tab alone)",
              key: Scopes.spaceKey, default: true),
@@ -227,12 +238,15 @@ struct NativeSetting {
     static var all: [Self] { kept + [
         choice("theme", "Theme", \.look, values: Look.allCases.map(\.rawValue)),
         boolean("sidebar", "Tabs in a sidebar", \.sidebar),
+        boolean("left-trail", "Show Left Trail", \.showLeftTrail),
+        choice("space-transition", "Space transition", \.spaceTransition, values: SpaceTransition.allCases.map(\.rawValue)),
         choice("sidebar-side", "Sidebar side", \.sideFlank, values: ["left", "right"]),
         boolean("pins-every-space", "Pins in every space", \.pinsEverySpace),
         choice("tab-icons", "Tab icons", \.glyph, values: Glyph.allCases.map(\.rawValue)),
         choice("density", "Density", \.density, values: Density.allCases.map(\.rawValue)),
         boolean("address-bar", "Address bar", \.addressBar),
         boolean("full-url", "Show full URL", \.fullURL),
+        boolean("space-pages", "Use Space colors on library pages", \.shareSpacePages),
         boolean("peek-address", "Show address bar in Peek", \.peekAddress),
         choice("bookmarks-bar", "Bookmarks bar", \.bookmarkBar, values: BookmarkBarMode.allCases.map(\.rawValue)),
         choice("bookmarks-style", "Bookmarks show", \.bookmarkStyle, values: BookmarkStyle.allCases.map(\.rawValue)),
@@ -285,13 +299,13 @@ struct NativeSetting {
 @MainActor
 enum NativeActions {
     static let version = 1
-    static let controlled = Set(["bench", "agents-asking", "agents-pay", "agents-sites", "agents-messages", "agents-elsewhere", "agents-remember", "agents-memory",
+    static let controlled = Set(["home-photo", "bench", "agents-asking", "agents-pay", "agents-sites", "agents-messages", "agents-elsewhere", "agents-remember", "agents-memory",
                                  "mail-agents", "mail-memory", "prove", "import-passwords", "import-cards", "your-passwords", "save-passwords", "fill", "passkeys",
                                  "codes-mail", "codes-texts", "codes-archive", "your-cards", "save-cards", "fill-cards", "fill-forms", "draft-forms",
                                  "shield", "cookies", "cache", "diary-text", "extensions-private", "default-browser", "agents-routines", "memory-forget",
                                  "mail-people", "sync-passwords", "activity", "crashes",
                                  // Profile selection changes access to signed-in accounts; the person confirms it.
-                                 "space-sign-ins",
+                                 "space-sign-ins", "manage-profiles", "profile-google",
                                  // The person's consent for mail going to their AI (MailConsent): theirs alone.
                                  "mail-ahead", "mail-summaries", "mail-agents-others",
                                  // AI in Yab (AIUse): the person turns AI on or off, never an agent.
@@ -313,11 +327,12 @@ enum NativeActions {
         return NativeSetting.all.map { action("settings.set." + $0.id, $0.title, $0.scope, ["value": $0.schema], required: ["value"], undo: true) } + [
             action("settings.open", "Open a Settings page", "application", ["page": ["type": "string", "enum": SettingsPage.allCases.map(\.rawValue)]], required: ["page"]),
             action("space.create", "Create a space", "application", ["name": string, "separateSignIns": ["type": "boolean"]], required: ["name"], undo: true),
+            action("profile.rename", "Rename the profile used by a Space", "space", ["name": string], required: ["name"], undo: true),
             action("space.rename", "Rename a space", "space", ["name": string], required: ["name"], undo: true),
             action("space.set_appearance", "Set a space's background", "space", ["color": string, "colors": ["type": "array", "items": string, "minItems": 0, "maxItems": 6], "grain": ["type": "number", "minimum": 0, "maximum": 1]], required: ["color"], undo: true),
             action("space.switch", "Show a space", "space", [:], undo: true),
             action("space.delete", "Delete a space and its local data", "space", [:], permission: "confirm"),
-            action("tabs.pin", "Pin a tab", "tab", ["value": ["type": "boolean"]], required: ["value"], undo: true),
+            action("tabs.pin", "Pin a tab in this Space", "tab", ["value": ["type": "boolean"]], required: ["value"], undo: true),
             action("tabs.rename", "Rename a tab", "tab", ["name": string], required: ["name"], undo: true),
             action("tabs.move", "Move selected tabs, or a whole folder with its folders, to a space", "space",
                    ["tabs": ["type": "array", "items": string, "minItems": 1, "maxItems": 50], "folder": string], undo: true, permission: "confirm_if_sign_ins_change"),

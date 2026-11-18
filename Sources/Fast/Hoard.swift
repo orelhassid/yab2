@@ -635,12 +635,21 @@ final class Hoard: ObservableObject {
     /// The button pressed: its list opens, or closes if it was open. The
     /// column's is for all of them: its cards come with the pointer. A
     /// failure's red is held until now; this press only takes it away.
-    func press(_ place: Place) {
+    func acknowledgeFailure() {
+        if unseen, going.isEmpty { unseen = false }
+    }
+
+    func press(_ place: Place, inRail: Bool = false) {
         if unseen, going.isEmpty {
             unseen = false
             return
         }
-        place == .side ? allDownloads() : toggle(place)
+        if inRail {
+            openAt = nil
+            browser?.showLibrary(.downloads)
+        } else {
+            place == .side ? allDownloads() : toggle(place)
+        }
     }
 
     /// A button's list or cards up, or down if they were.
@@ -663,6 +672,8 @@ final class Hoard: ObservableObject {
     /// The pointer on the column's button, or off it: resting there a
     /// moment brings the cards up (HoardStack), which then go by
     /// themselves once it has left them and the button.
+    private var sideButtonVisible: Bool { (browser?.spaceRailWidth ?? 0) > 0 || browser?.column?.shown == true }
+
     func hover(_ place: Place, _ inside: Bool) {
         guard place == .side else {
             rising?.cancel()
@@ -681,7 +692,7 @@ final class Hoard: ObservableObject {
         // The column is carried past the edge by its layer, so its foot's
         // native tracking can still report a hover where it stood. Only
         // the edge should answer while it is put away, not a files stack.
-        guard inside, openAt != .side, browser?.column?.shown == true else { return }
+        guard inside, openAt != .side, sideButtonVisible else { return }
         // While departing, the panel still covers the original button.
         // Its proxy forwards reentry here so the current motion reverses.
         if stack?.isVisible == true {
@@ -691,7 +702,7 @@ final class Hoard: ObservableObject {
         let work = DispatchWorkItem { [weak self] in
             // Nothing downloaded: no stack, the tip says what a click does.
             // The column may also have gone away during the dwell.
-            guard let self, openAt != .side, anything, browser?.column?.shown == true else { return }
+            guard let self, openAt != .side, anything, sideButtonVisible else { return }
             present(.side)
         }
         rising = work
@@ -826,7 +837,7 @@ final class Hoard: ObservableObject {
     /// chip comes out for a list that is no longer there.
     func columnWent() {
         guard openAt == .side, let browser, let stack else { return }
-        let distance = -(browser.prefs.sideWidth + Metrics.floatInset + 40) * browser.flank.sign
+        let distance = -(browser.presentedSidebarWidth + Metrics.floatInset + 40) * browser.flank.sign
         let slide: CABasicAnimation
         if !browser.folding, browser.sideCard {
             slide = CardMotion.leaving()
@@ -877,11 +888,14 @@ final class Hoard: ObservableObject {
         let pages = ColumnPages.of(browser)
         pages?.moved()
         var rows = (pages?.window === window ? pages?.rowsInWindow : nil) ?? browser.rowsClip ?? .zero
-        if rows.width > 0, !(rows.minX...rows.maxX).contains(button.midX) {
+        if browser.spaceRailWidth > 0 {
+            rows.origin.x = button.minX - SideBar.margin
+            rows.size.width = browser.presentedSidebarWidth
+        } else if rows.width > 0, !(rows.minX...rows.maxX).contains(button.midX) {
             // Still not where the button is: the column it stands in.
             let content = window.contentView?.bounds.width ?? window.frame.width
             let inset = browser.prefs.sideShut ? Metrics.floatInset : 0
-            let width = browser.prefs.sideShut ? browser.prefs.sideWidth : browser.sideShown
+            let width = browser.prefs.sideShut ? browser.presentedSidebarWidth : browser.sideShown
             rows.origin.x = browser.flank == .right ? content - inset - width : inset
             rows.size.width = width
         }
@@ -889,7 +903,7 @@ final class Hoard: ObservableObject {
         let top = rows.width > 0 && rows.height > 0 ? rows.minY : Metrics.strip
         stackRoom = height - button.maxY - top
         let left = rows.width > 0 ? rows.minX + SideBar.margin : button.minX
-        let width = rows.width > 0 ? rows.width - 2 * SideBar.margin : browser.prefs.sideWidth - 2 * SideBar.margin
+        let width = rows.width > 0 ? rows.width - 2 * SideBar.margin : browser.presentedSidebarWidth - 2 * SideBar.margin
         let stack = stack ?? HoardStack(hoard: self, loot: browser.loot, browser: browser, fits: { [weak self] in
             let room = (self?.stackRoom ?? 0) - HoardStack.gap
             return Int(room / (HoardStack.card + HoardStack.between))
@@ -921,7 +935,7 @@ final class Hoard: ObservableObject {
         guard let browser, browser.prefs.tidyDownloads,
               browser.loot.kept.contains(keep), keep.stillThere else { return }
         Rename.warm()
-        guard openAt == nil, frames[.side] != nil, browser.column?.shown == true else {
+        guard openAt == nil, frames[.side] != nil, sideButtonVisible else {
             rename(keep, to: name, in: browser)
             return
         }
@@ -1192,6 +1206,8 @@ struct HoardSlot: View {
 struct HoardButton: View {
     @ObservedObject var hoard: Hoard
     let place: Hoard.Place
+    var inRail = false
+    var preview: (() -> Void)?
 
     @State private var hovering = false
     @State private var reportID = UUID()
@@ -1204,11 +1220,11 @@ struct HoardButton: View {
     /// corner; in the strip, a control's.
     private var corner: CGFloat { place == .side ? SideBar.radius : Radius.control }
 
-    var body: some View {
+    private var legacyButton: some View {
         let scale = HoardMark.scale(in: size)
         let side = HoardMark.side * scale, line = HoardMark.line * scale
 
-        Button { hoard.press(place) } label: {
+        return Button { hoard.press(place) } label: {
             ZStack {
                 // The circle is the arrow's, in its ink and at its weight.
                 // While the badge has the place both are gone; they come
@@ -1243,6 +1259,24 @@ struct HoardButton: View {
             RoundedRectangle(cornerRadius: corner, style: .continuous)
                 .fill(hoard.openAt == place ? Palette.wash(on: tone) : (hovering ? Palette.hover(on: tone) : .clear))
         )
+    }
+
+    var body: some View {
+        Group {
+            if inRail {
+                RailButton("Downloads", selected: hoard.openAt == place || hoard.browser?.active?.libraryPage == .downloads, action: {
+                    if let preview {
+                        hoard.acknowledgeFailure()
+                        preview()
+                    } else { hoard.press(place, inRail: true) }
+                }) {
+                    RailButton<Symbol>.glyph("arrow.down.circle")
+                        .opacity(hoard.badged && hoard.openAt == nil ? 0 : 1)
+                }
+            } else {
+                legacyButton
+            }
+        }
         // In the button's place and past its edges, taking no presses and no room.
         .overlay {
             HoardBadge(hoard: hoard, gauge: hoard.gauge, top: place == .strip, chip: place == .chip)
@@ -1254,11 +1288,11 @@ struct HoardButton: View {
             // Two halves' bands have one each: the one under the pointer
             // is where its list opens and files land.
             if inside, let lastFrame { claim(lastFrame) }
-            hoard.hover(place, inside)
+            if preview == nil { hoard.hover(place, inside) }
         }
         // The column's says what a click does beside it, under its cards.
         // With nothing downloaded there are no cards, and the tip is its own.
-        .keyTip(place == .side ? (hoard.anything ? "" : "All Downloads") : "Downloads", shortcut: "Show Downloads")
+        .keyTip(preview != nil ? "" : place == .side ? (hoard.anything ? "" : "All Downloads") : "Downloads", shortcut: "Show Downloads")
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
             lastFrame = frame
             if Store.testing { hoard.buttonFrames[reportID] = (place, frame) }

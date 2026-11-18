@@ -41,13 +41,9 @@ struct ColumnHeadTests {
         #expect(ColumnHead.fit(width: Metrics.sideMin, right: true, size: Self.compact, margin: 8) == .full)
     }
 
-    /// Folded, back, forward and "⋯" still fit at the narrowest, Arc's 164:
-    /// the margin, the lights' 66, the three doors and the margin, the
-    /// doors Arc's tighter ones where the header's don't fit.
-    @Test func foldedRowFitsTheNarrowest() {
-        #expect(Metrics.sideMin == 164)
+    @Test func headerFitsAtMinimumSidebarWidth() {
         let size = ColumnHead.doors(width: Metrics.sideMin, right: false, margin: 8)
-        #expect(size.side == 26 && size.gap == 2)
+        #expect(ColumnHead.fit(width: Metrics.sideMin, right: false, size: Self.comfortable, margin: 8) == .full)
         #expect(8 + Metrics.sideLights + size.helm + 8 <= Metrics.sideMin)
         #expect(ColumnHead.doors(width: 189, right: false, margin: 8).side == Door.Size.header.side)
         #expect(ColumnHead.doors(width: Metrics.sideMin, right: true, margin: 8).side == Door.Size.header.side)

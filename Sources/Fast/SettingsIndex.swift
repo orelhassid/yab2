@@ -47,6 +47,9 @@ struct SettingsItem: Identifiable, Hashable {
                                      words: "bring global shortcut hotkey")
 
     private static let fixed: [SettingsItem] = [
+        SettingsItem(id: "mouse-gestures", page: .mouse, title: "Allow Gestures", words: "right mouse navigation gesture mapping"),
+        SettingsItem(id: "mouse-option", page: .mouse, title: "Perform Gestures with Option Key", words: "alt trackpad"),
+        SettingsItem(id: "mouse-minimum", page: .mouse, title: "Minimum stroke length", words: "gesture sensitivity"),
         SettingsItem(id: "peek-click", page: .tabs, title: "Peek links with", words: "shift option click modifier preview split"),
         SettingsItem(id: "peek-address", page: .appearance, title: "Show address bar in Peek", words: "peek preview url site address bar toolbar link"),
         SettingsItem(id: "link-routes-default", page: .spaces, title: "Default Space", words: "air traffic control recent fallback external links"),
@@ -67,6 +70,9 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "while you browse arc max 5 second hover summary shift links preview summaries enable disable"),
         // General
         showYab,
+        SettingsItem(id: "left-trail", page: .appearance, title: "Show Left Trail", words: "rail sidebar app tabs enable disable show hide"),
+        SettingsItem(id: "space-transition", page: .appearance, title: "Space transition", words: "spaces animation slide fade none motion disable transitions"),
+        SettingsItem(id: "trail-space-limit", page: .spaces, title: "Spaces on left trail", words: "visible limit number order more sidebar overflow", shown: { $0.showLeftTrail }),
         SettingsItem(id: "live-folders", page: .liveFolders, title: "Live Folders",
                      words: "live folders smart tabs automatic github pull requests issues linear notion google drive figma youtube subscriptions feed turn on off enable disable"),
         SettingsItem(id: "live-folders-add", page: .liveFolders, title: "Add Live Folder",
@@ -75,7 +81,7 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "repository repo github pull requests follow watch add owner"),
         SettingsItem(id: "default-browser", page: .general, title: "Default browser",
                      words: "make default links open from other apps mail slack",
-                     within: "updates", shown: { _ in !Links.isDefault }),
+                     shown: { _ in !Links.isDefault }),
         SettingsItem(id: "search-engine", page: .search, title: "Search with",
                      words: "search engine google duckduckgo ddg bing ecosia startpage kagi brave qwant custom default"),
         SettingsItem(id: "search-suggest", page: .search, title: "Suggest searches from your search engine",
@@ -89,11 +95,17 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "quick action alias doc notion google docs create page shortcut"),
         SettingsItem(id: "quick-action:new-meeting", page: .search, title: "New meeting",
                      words: "quick action alias meet google meet create call shortcut"),
+        SettingsItem(id: "settings-presentation", page: .general, title: "Open Settings in",
+                     words: "settings preferences tab window popup presentation"),
         SettingsItem(id: "warn-quit", page: .general, title: "Warn Before Quitting",
                      words: "warn confirm ask quit quitting close closing cmd q ⌘q accidentally"),
         SettingsItem(id: "reachable", page: .general, title: "Keep Mac Awake",
                      words: "awake sleep prevent idle power always on routines assistants bots remote reachable server login"),
-        SettingsItem(id: "bring-in", page: .general, title: "Bring in from another browser",
+        SettingsItem(id: "manage-profiles", page: .profile, title: "Manage Profiles",
+                     words: "browser profile rename edit picture switch delete remove reassign spaces"),
+        SettingsItem(id: "profile-google", page: .profile, title: "Google Account",
+                     words: "sign in connect disconnect google account profile name picture"),
+        SettingsItem(id: "bring-in", page: .profile, title: "Bring in from another browser",
                      words: "import move switch chrome arc dia brave edge tabs passwords extensions"),
 
         // Small Window
@@ -287,6 +299,8 @@ struct SettingsItem: Identifiable, Hashable {
         SettingsItem(id: "bookmarks-style", page: .appearance, title: "Bookmarks show",
                      words: "bookmarks bar icons only names folders favicons compact titles labels style",
                      shown: { $0.bookmarkBar == .always }),
+        SettingsItem(id: "space-pages", page: .appearance, title: "Use Space colors on library pages", words: "theme tint tabs downloads bookmarks history extensions settings gallery"),
+        SettingsItem(id: "home-photo", page: .appearance, title: "Home background image", words: "wallpaper photo desktop pictures stock computer"),
         SettingsItem(id: "window", page: .appearance, title: "Window",
                      words: "backdrop background edge to edge card color site's match follow bar "
                          + Backdrop.allCases.map(\.title).joined(separator: " ")),
@@ -330,9 +344,6 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "reorder move drag place order control number"),
         SettingsItem(id: "add-space", page: .spaces, title: "Add Space",
                      words: "new create make space", shown: { $0.usesSpaces }),
-        SettingsItem(id: "pins", page: .spaces, title: "Pins",
-                     words: "pinned tabs pins in every space each space shared favorites essentials arc zen same everywhere",
-                     shown: { $0.usesSpaces }),
         SettingsItem(id: "link-routes", page: .spaces, title: "Air Traffic Control",
                      words: "air traffic control flight control arc route routes links from other apps slack mail open always site space rules",
                      shown: { $0.usesSpaces && (BrowserWindows.shared.activeBrowser?.spaces.count ?? 0) > 1 }),
@@ -522,7 +533,7 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "permissions mic webcam video forget allowed refused"),
 
         // About
-        SettingsItem(id: "updates", page: .general, title: "Check for updates",
+        SettingsItem(id: "updates", page: .about, title: "Check for updates",
                      words: "update version new release download restart relaunch"),
         SettingsItem(id: "feedback", page: .about, title: "Send feedback",
                      words: "feedback bug report problem contact"),
@@ -586,9 +597,15 @@ enum SettingsResult: Hashable {
             let score = max(own ?? 0, items.first?.1 ?? 0)
             groups.append((page, score, own, items))
         }
-        // Stable for a tie, so the sidebar keeps its own order.
+        // Commands can share a setting's exact name. Prefer its control
+        // before the keyboard binding when both match equally well.
         groups = groups.enumerated()
-            .sorted { $0.element.score != $1.element.score ? $0.element.score > $1.element.score : $0.offset < $1.offset }
+            .sorted { lhs, rhs in
+                if lhs.element.score != rhs.element.score { return lhs.element.score > rhs.element.score }
+                if lhs.element.page == .shortcuts { return false }
+                if rhs.element.page == .shortcuts { return true }
+                return lhs.offset < rhs.offset
+            }
             .map(\.element)
 
         var rows: [SettingsResult] = []

@@ -90,6 +90,7 @@ final class ColumnPage: NSView {
         addSubview(box)
         ends.install(in: self, over: box)
         nameView.wantsLayer = true
+        nameView.isHidden = browser.fixedSpaceSwitcher
         addSubview(nameView)
         head.wantsLayer = true
         pinsView.wantsLayer = true
@@ -681,7 +682,7 @@ final class ColumnPage: NSView {
     /// (let go past its widest, a double click putting it back) its cells
     /// keep to the width on screen, as the rows do, rather than jumping.
     private func headFrame(_ item: ColumnItem) -> CGRect {
-        let set = (browser?.prefs.sideWidth ?? bounds.width) - 2 * SideBar.margin
+        let set = (browser?.sidebarContentWidth ?? bounds.width) - 2 * SideBar.margin
         let wide = rowWidth()
         // Wider than set only while stretched past its widest and back.
         let scale = item.x != nil && set > 0 && browser?.sideStretching == true ? wide / set : 1
@@ -867,7 +868,7 @@ final class ColumnPage: NSView {
     }
 
     /// To VoiceOver as SideBar reads: the pins, the name, then the rows.
-    override func accessibilityChildren() -> [Any]? { [head, nameView, box] }
+    override func accessibilityChildren() -> [Any]? { [head, nameView, box].filter { !$0.isHidden } }
 
     /// How far the rows are scrolled under the ends, a fall's worth at most
     /// and in tenths (ColumnScrolled).
@@ -909,7 +910,7 @@ final class ColumnPage: NSView {
 
     func cellAt(_ event: NSEvent) -> ColumnCell? {
         let point = convert(event.locationInWindow, from: nil)
-        return (Array(heads.values) + Array(cells.values)).first { !$0.isHidden && $0.convert($0.bounds, to: self).contains(point) }
+        return (Array(heads.values) + Array(cells.values)).first { !$0.isHiddenOrHasHiddenAncestor && $0.convert($0.bounds, to: self).contains(point) }
     }
 
     /// The rows laid again with what the hand has done to them, moving on

@@ -124,10 +124,10 @@ struct Column: View {
         // edge is being pulled; floating, it is always its full width.
         // Changing sides, it keeps its whole width either way: it is only
         // fading, and the page makes room for it on its own.
-        let width = docked && !browser.turning ? browser.sideShown : prefs.sideWidth
+        let width = docked && !browser.turning ? browser.sideShown : browser.presentedSidebarWidth
         let flank = browser.flank
         // Past the edge by its own width, its inset and its shadow.
-        let away = -(prefs.sideWidth + Metrics.floatInset + 40) * flank.sign
+        let away = -(browser.presentedSidebarWidth + Metrics.floatInset + 40) * flank.sign
         // Its outer corners are the window's, against the window's edge,
         // docked or floating alike: flush with it (Metrics.floatInset), the
         // window server rounds them, and a cut of its own on that edge
@@ -182,7 +182,7 @@ struct Column: View {
                 .overlay(alignment: left ? .trailing : .leading) {
                     // Docked and pulled in, the column's own hairline is cut
                     // off with the rest of it; the page's edge keeps one.
-                    if docked, width < prefs.sideWidth, worn == nil {
+                    if docked, width < browser.presentedSidebarWidth, worn == nil {
                         Rectangle().fill(Palette.ink.opacity(0.05)).frame(width: 1)
                     }
                 }
@@ -291,6 +291,7 @@ struct ColumnHost: NSViewRepresentable {
 
     func updateNSView(_ view: ColumnView, context: Context) {
         let moving = context.transaction.animation != nil && !context.transaction.disablesAnimations
+        view.setRailWidth(browser.railInsideColumn)
         view.slide(out: !prefs.sideShut || browser.peek.out, animated: moving)
     }
 }
@@ -355,9 +356,26 @@ final class ColumnView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
+    private var railWidth: CGFloat = 0
+    private let columnMask = CALayer()
+
+    func setRailWidth(_ width: CGFloat) {
+        guard width != railWidth else { return }
+        railWidth = width
+        needsLayout = true
+    }
+
     override func layout() {
         super.layout()
         host.frame = bounds
+        // The column slides using sublayerTransform. Clip at its stationary
+        // parent so the rows and floating shadow pass behind the trail.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        columnMask.backgroundColor = NSColor.black.cgColor
+        columnMask.frame = bounds.divided(atDistance: railWidth, from: .minXEdge).remainder
+        layer?.mask = railWidth > 0 ? columnMask : nil
+        CATransaction.commit()
     }
 
     /// Only the column takes clicks; the rest of the window is the page's.
@@ -367,10 +385,10 @@ final class ColumnView: NSView {
         let local = convert(point, from: superview)
         let docked = !prefs.sideShut
         // Out over the page, its edge reaches half its width past it.
-        let width = (docked ? browser.sideShown : Metrics.floatInset + prefs.sideWidth) + Metrics.edgeReach / 2
+        let width = (docked ? browser.sideShown : Metrics.floatInset + browser.presentedSidebarWidth) + Metrics.edgeReach / 2
         // From the edge the column is on.
         let x = browser.flank == .left ? local.x : bounds.width - local.x
-        guard x >= 0 else { return nil }
+        guard local.x >= railWidth, x >= 0 else { return nil }
         // The island's open card may stand out over the page from the
         // column's foot: there it takes the pointer where its glass is.
         guard x <= width else {
@@ -387,7 +405,10 @@ final class ColumnView: NSView {
     /// space: nil while the column hasn't said where they are.
     func spaceBand(_ browser: Browser) -> CGRect? {
         guard let rows = browser.rowsClip, let floor = browser.spaceFloor else { return nil }
-        let top = min(browser.pinsTop ?? rows.minY, browser.nameTop ?? rows.minY, rows.minY)
+        let movingTop = min(browser.pinsTop ?? rows.minY, browser.nameTop ?? rows.minY, rows.minY)
+        let top = browser.fixedSpaceSwitcher
+            ? max(movingTop, browser.nameTop.map { $0 + SideBar.row + SideBar.gap } ?? movingTop)
+            : movingTop
         guard floor > top else { return nil }
         return CGRect(x: rows.minX, y: top, width: rows.width, height: floor - top).integral
     }
@@ -777,7 +798,7 @@ final class ColumnView: NSView {
         // stayed over the docked column, laid for the card (0.0.13).
         if let browser { SpacePager.shared.settle(browser, out: now) }
         guard let browser, let layer else { return }
-        let away = -(browser.prefs.sideWidth + Metrics.floatInset + 40) * browser.flank.sign
+        let away = -(browser.presentedSidebarWidth + Metrics.floatInset + 40) * browser.flank.sign
         let target: CGFloat = now ? 0 : away
         let carried = layer.presentation()?.sublayerTransform.m41 ?? layer.sublayerTransform.m41
         // AppKit resets a hosting view's backing transform when it first
@@ -804,7 +825,7 @@ final class ColumnView: NSView {
             // shadow, as Dia's starts, not from further, which the spring
             // spent its first frames on with nothing to see.
             if now, abs(carried - away) < 0.5 {
-                from = -(browser.prefs.sideWidth + Metrics.floatInset + CardMotion.shadow) * browser.flank.sign
+                from = -(browser.presentedSidebarWidth + Metrics.floatInset + CardMotion.shadow) * browser.flank.sign
             }
         } else {
             let pace: Reshape.Pace = browser.folding ? Reshape.pace : now ? .arrive : .depart
