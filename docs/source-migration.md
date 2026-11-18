@@ -9,15 +9,29 @@ Track the Mac app migration inside `Sources/Fast/`. Use `App/` for startup, navi
 - [x] Move `ChatComposer.swift` to `Components/Chat/ChatComposer/` (`633a283`). The preview passed 42 tests and the project flow. In the standalone composer, the first close left focus on the window. A repeat with initial page focus confirmed restored page focus.
 - [x] Move `ChatColumn.swift` and `ChatRestoration.swift` to `Components/Chat/ChatColumn/` (`bd06bcb`). The preview passed 49 tests across eight suites. Both the project field and standalone composer displayed a typed draft and returned focus to the page on close.
 - [x] Organize the Chat project components (`bd8bf98`). The card owns its folder, the pill belongs to the composer, and the project views are shared across callers. All three files moved byte-for-byte. The SDK 26.5 preview passed 49 tests across eight suites and displayed the project details card. Both drafts appeared on both runs. Project chat restored page focus twice. Standalone composer focus returned to the window on the first run and to the page on the repeat.
+- [x] Group ChatFlight, ChatMotion, and ChatZoom under `Components/Chat/ChatMotion/` and ChatMovement under `Components/Chat/ChatColumn/` (`35e3487`). Four byte-for-byte moves. One SDK 26.5 compatibility build passed, followed by 6 tests in ChatMotionTests and ChatMovementTests.
 
 ## Remaining work
 
 - [ ] Investigate intermittent page-focus restoration after closing the standalone composer. The initial page-focus check passed on both runs.
-- [ ] Inventory the remaining Chat files. Assign each to its owning screen, component, or service and record the resulting batches here.
+- [x] Inventory the remaining top-level Swift files with Chat in their names. The proposed batches below cover all 24 files present at the start of the motion batch.
 - [ ] Complete the remaining Chat batches using the checks below.
 - [ ] Verify the standard Yab Dev build with `./build.sh`, launch it, and repeat the Chat flow. Verification so far used the SDK 26.5 compatibility preview. The standard build was blocked by the missing Foundation Models compiler plug-in in Command Line Tools and pending license acceptance in full Xcode.
 - [ ] Inventory the remaining Mac app features and add a checkbox per batch before moving each feature.
 - [ ] Review remaining files at the root of `Sources/Fast/` and document any intentional exceptions.
+
+## Chat batch inventory
+
+Names below are Swift source filenames without the extension. Destinations for pending batches are proposed owners.
+
+- [ ] **File cards and previews** → `Components/Chat/ChatFileCard/`: ChatFileCard, ChatQuickLook.
+- [ ] **Transcript and status lines** → `Components/Chat/ChatTranscript/`: ChatTranscript, ChatNotes, ChatProblem, ChatSubagent.
+- [ ] **Result controls** → individual folders under `Components/Chat/`: ChatResultCard, ChatCopied, ChatWidget.
+- [ ] **Project interactions** → `Components/Chat/` for ChatNewProjectSheet and ChatProjectMoves, `App/` for ChatProjectCommands (command routing).
+- [ ] **Routine notices** → `Components/Chat/ChatRoutineBanner/`: ChatRoutineBanner.
+- [ ] **Conversation storage and item parsing** → `Services/Chat/`: Chat, ChatItem, ChatItemDetails, ChatPublished.
+- [ ] **Web tab activity** → review ChatBusy with the tab UI and website activity detection it connects.
+- [ ] **Integrations** → review MailChat with the mail feature and SyncChats with sync services.
 
 ## Checklist for each batch
 
