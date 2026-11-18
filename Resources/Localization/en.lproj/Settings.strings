@@ -281,6 +281,7 @@
 "Show it in the icon" = "Show it in the icon";
 "Show notes in Finder" = "Show notes in Finder";
 "Sidebar" = "Sidebar";
+"Sidebar Position" = "Sidebar Position";
 "Signature in replies and forwards" = "Signature in replies and forwards";
 "Sites" = "Sites";
 "Sites that have asked to send notifications." = "Sites that have asked to send notifications.";
@@ -294,6 +295,7 @@
 "Sorting" = "Sorting";
 "Sound for questions" = "Sound for questions";
 "Spaces" = "Spaces";
+"Spaces on the trail" = "Spaces on the trail";
 "Boosts" = "Boosts";
 "Split summaries" = "Split summaries";
 "Splits" = "Splits";
@@ -318,6 +320,7 @@
 "Tidy tabs" = "Tidy tabs";
 "Today's tabs in every window" = "Today's tabs in every window";
 "Top" = "Top";
+"Trail Position" = "Trail Position";
 "Tree" = "Tree";
 "Try Again" = "Try Again";
 "Turn Off" = "Turn Off";

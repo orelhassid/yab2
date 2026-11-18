@@ -3,31 +3,18 @@ import SwiftUI
 struct ProfileSettings: View {
     @ObservedObject var browser: Browser
     @ObservedObject private var identities = BrowserProfileIdentities.shared
-    @State private var editor: Editor?
-
-    private enum Editor: Identifiable {
-        case edit(BrowserProfile)
-        case delete(BrowserProfile)
-
-        var id: UUID {
-            switch self {
-            case .edit(let profile), .delete(let profile): return profile.id
-            }
-        }
-    }
-
     var body: some View {
         let current = browser.currentProfileSpace
         let profiles = browser.browserProfiles
         Section("Current profile") {
-            ProfileSettingsIdentity(profile: current.profileID, name: browser.activeProfileName)
-                .id(current.profileID)
-                .sheet(item: $editor) { editor in
-                    switch editor {
-                    case .edit(let profile): ProfileNameSheet(profile: profile)
-                    case .delete(let profile): ProfileDeletionSheet(browser: browser, profile: profile)
-                    }
-                }
+            if let profile = profiles.first(where: { $0.id == current.profileID }) {
+                HStack(spacing: CardFrame.inset) {
+                    ProfilePicture(profile: profile.id, size: 36)
+                    Text(browser.activeProfileName).font(.headline)
+                    Spacer()
+                    ProfileEditButton(browser: browser, profile: profile, name: browser.activeProfileName)
+                }.id(profile.id)
+            }
             SettingsRow("Current Space") { Text(current.name).foregroundStyle(.secondary) }
             if !browser.inMail {
                 GoogleProfileRow(browser: browser, profile: current.profileID)
@@ -59,16 +46,8 @@ struct ProfileSettings: View {
             Spacer()
             if profile.id == current {
                 Text("Current").foregroundStyle(.secondary)
-            } else if browser.prefs.usesSpaces, let space = profile.spaces.first {
-                Button("Switch") { browser.switchSpace(to: space.id) }
-                    .settingsButton().accessibilityLabel("Switch to " + name)
             }
-            Button("Edit…") { editor = .edit(profile) }
-                .settingsButton().accessibilityLabel("Edit " + name)
-            Button("Delete…") { editor = .delete(profile) }
-                .settingsButton().accessibilityLabel("Delete " + name)
-                .disabled(browser.browserProfiles.count < 2)
-                .keyTip(browser.browserProfiles.count < 2 ? "Keep at least one profile" : "Delete " + name)
+            ProfileRowActions(browser: browser, profile: profile, name: name, current: current)
         }
     }
 }
@@ -127,52 +106,150 @@ private struct GoogleProfileRow: View {
     }
 }
 
-private struct ProfileNameSheet: View {
+private struct ProfileRowActions: View {
+    @ObservedObject var browser: Browser
     let profile: BrowserProfile
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var identities = BrowserProfileIdentities.shared
-    @State private var name: String
-    @State private var picture: String
-    @State private var originalName: String
-    @State private var originalPicture: String
-
-    init(profile: BrowserProfile) {
-        self.profile = profile
-        let name = BrowserProfileIdentities.shared[profile.id].name ?? ""
-        let mark = Store.settings.string(forKey: profilePictureKey(profile.id)) ?? ""
-        _originalName = State(initialValue: name)
-        _originalPicture = State(initialValue: mark)
-        _name = State(initialValue: name)
-        _picture = State(initialValue: mark)
-    }
+    let name: String
+    let current: UUID
+    @State private var deleting = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: CardFrame.inset) {
-            Text("Edit Profile").font(.headline)
-            ProfileSettingsIdentity(profile: profile.id, name: identities[profile.id].title(fallback: profile.fallbackName), draft: $picture)
-            TextField("Profile Name", text: $name, prompt: Text(automaticName))
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }.settingsButton().keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    if Spaces.read().contains(where: { $0.profileID == profile.id }) {
-                        if name != originalName { identities.rename(profile.id, to: name) }
-                        if picture != originalPicture { Store.settings.set(picture, forKey: profilePictureKey(profile.id)) }
-                    }
-                    dismiss()
-                }.settingsButton(.primary).keyboardShortcut(.defaultAction)
+        let canDelete = browser.browserProfiles.count > 1
+        HStack(spacing: 4) {
+            if profile.id != current, browser.prefs.usesSpaces, let space = profile.spaces.first {
+                ProfileIconButton(icon: "arrow.up.right", title: "Switch to " + name) {
+                    browser.switchSpace(to: space.id)
+                }.accessibilityIdentifier("profile-open")
             }
-        }.padding(CardFrame.inset).frame(width: 400)
-    }
-
-    private var automaticName: String {
-        var automatic = identities[profile.id]
-        automatic.name = nil
-        return automatic.title(fallback: profile.fallbackName)
+            ProfileEditButton(browser: browser, profile: profile, name: name)
+            ProfileIconButton(icon: "trash", title: "Delete " + name,
+                              tip: canDelete ? nil : "Keep at least one profile") { deleting = true }
+                .accessibilityIdentifier("profile-delete")
+                .disabled(!canDelete)
+                .popover(isPresented: $deleting, arrowEdge: .bottom) {
+                    ProfileDeletionPopover(browser: browser, profile: profile)
+                }
+        }
     }
 }
 
-private struct ProfileDeletionSheet: View {
+private struct ProfileIconButton: View {
+    let icon: String
+    let title: String
+    var tip: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Symbol(icon, size: 12) }
+            .buttonStyle(.yab(.quiet, .small, icon: .square))
+            .accessibilityLabel(Text(verbatim: title))
+            .keyTip(tip ?? title)
+    }
+}
+
+private struct ProfileEditButton: View {
+    let browser: Browser
+    let profile: BrowserProfile
+    let name: String
+    @State private var editing = false
+
+    var body: some View {
+        ProfileIconButton(icon: "pencil", title: "Edit " + name) { editing = true }
+            .accessibilityIdentifier("profile-edit")
+            .popover(isPresented: $editing, arrowEdge: .bottom) {
+                ProfileCustomizer(session: ProfileCustomizeSession(browser: browser, profile: profile)) { editing = false }
+            }
+    }
+}
+
+private struct ProfileCustomizer: View {
+    @StateObject var session: ProfileCustomizeSession
+    @ObservedObject private var identities = BrowserProfileIdentities.shared
+    let close: () -> Void
+
+    var body: some View {
+        let profile = session.profile
+        IconPicker(mark: session.picture.isEmpty ? nil : session.picture, pick: session.mark, close: close,
+                   cancel: { session.cancel(); close() },
+                   chooseImage: { session.chooseImage(close: close) },
+                   profile: (profile.id, identities[profile.id].title(fallback: profile.fallbackName)),
+                   rename: session.rename)
+            .onDisappear { session.finish() }
+    }
+}
+
+@MainActor
+private final class ProfileCustomizeSession: ObservableObject {
+    let profile: BrowserProfile
+    private weak var browser: Browser?
+    @Published private(set) var picture: String
+    private let openingPicture: String
+    private var choosingImage = false
+    private var finished = false
+
+    init(browser: Browser, profile: BrowserProfile) {
+        self.browser = browser
+        self.profile = profile
+        openingPicture = Store.settings.string(forKey: profilePictureKey(profile.id)) ?? ""
+        picture = openingPicture
+    }
+
+    private var exists: Bool {
+        browser?.spaces.contains(where: { $0.profileID == profile.id }) == true
+    }
+
+    func rename(_ name: String) {
+        guard exists else { return }
+        let identities = BrowserProfileIdentities.shared
+        let id = profile.id
+        let before = identities[id].name
+        identities.rename(id, to: name)
+        let after = identities[id].name
+        guard before != after else { return }
+        browser?.did { [weak browser] in
+            guard browser?.spaces.contains(where: { $0.profileID == id }) == true,
+                  identities[id].name == after else { return }
+            identities.rename(id, to: before ?? "")
+        }
+    }
+
+    func mark(_ picked: String?) {
+        guard exists else { return }
+        picture = picked ?? ""
+        Store.settings.set(picture, forKey: profilePictureKey(profile.id))
+    }
+
+    func chooseImage(close: () -> Void) {
+        choosingImage = true
+        close()
+        CustomMarks.chooseImage { image in
+            if let image { self.mark(image) }
+            self.choosingImage = false
+            self.finish()
+        }
+    }
+
+    func cancel() {
+        guard !finished else { return }
+        finished = true
+        if picture != openingPicture { mark(openingPicture) }
+    }
+
+    func finish() {
+        guard !finished, !choosingImage else { return }
+        finished = true
+        guard picture != openingPicture else { return }
+        let id = profile.id
+        let before = openingPicture, after = picture, key = profilePictureKey(id)
+        browser?.did { [weak browser] in
+            guard browser?.spaces.contains(where: { $0.profileID == id }) == true,
+                  Store.settings.string(forKey: key) == after else { return }
+            Store.settings.set(before, forKey: key)
+        }
+    }
+}
+
+private struct ProfileDeletionPopover: View {
     @ObservedObject var browser: Browser
     let profile: BrowserProfile
     @Environment(\.dismiss) private var dismiss

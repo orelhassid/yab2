@@ -48,6 +48,9 @@ struct SettingsItem: Identifiable, Hashable {
 
     private static let fixed: [SettingsItem] = [
         SettingsItem(id: "mouse-gestures", page: .mouse, title: "Allow Gestures", words: "right mouse navigation gesture mapping"),
+        SettingsItem(id: "radial-count", page: .mouse, title: "Radial menu command count", words: "six eight slots"),
+        SettingsItem(id: "radial-layout", page: .mouse, title: "Radial menu layout", words: "wheel dropdown hold mouse"),
+        SettingsItem(id: "radial-commands", page: .mouse, title: "Radial menu commands", words: "wheel slots assignments"),
         SettingsItem(id: "mouse-option", page: .mouse, title: "Perform Gestures with Option Key", words: "alt trackpad"),
         SettingsItem(id: "mouse-minimum", page: .mouse, title: "Minimum stroke length", words: "gesture sensitivity"),
         SettingsItem(id: "peek-click", page: .tabs, title: "Peek links with", words: "shift option click modifier preview split"),
@@ -70,9 +73,9 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "while you browse arc max 5 second hover summary shift links preview summaries enable disable"),
         // General
         showYab,
-        SettingsItem(id: "left-trail", page: .appearance, title: "Show Left Trail", words: "rail sidebar app tabs enable disable show hide"),
+        SettingsItem(id: "trail-position", page: .appearance, title: "Trail Position", words: "left trail right off rail sidebar app tabs enable disable show hide"),
         SettingsItem(id: "space-transition", page: .appearance, title: "Space transition", words: "spaces animation slide fade none motion disable transitions"),
-        SettingsItem(id: "trail-space-limit", page: .spaces, title: "Spaces on left trail", words: "visible limit number order more sidebar overflow", shown: { $0.showLeftTrail }),
+        SettingsItem(id: "trail-space-limit", page: .spaces, title: "Spaces on the trail", words: "visible limit number order more sidebar overflow", shown: { $0.trailPosition != .off }),
         SettingsItem(id: "live-folders", page: .liveFolders, title: "Live Folders",
                      words: "live folders smart tabs automatic github pull requests issues linear notion google drive figma youtube subscriptions feed turn on off enable disable"),
         SettingsItem(id: "live-folders-add", page: .liveFolders, title: "Add Live Folder",
@@ -245,7 +248,7 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "appearance look light dark system mode night follow"),
         SettingsItem(id: "app-icon", page: .appearance, title: "App icon",
                      words: "dock icon default dev flat watercolor glass opal smoked chrome amber red enamel"),
-        SettingsItem(id: "sidebar", page: .appearance, title: "Sidebar",
+        SettingsItem(id: "sidebar-position", page: .appearance, title: "Sidebar Position",
                      words: "tabs in a sidebar top vertical horizontal left right column side bar layout off"),
         SettingsItem(id: "sidebar-button", page: .appearance, title: "Show sidebar button",
                      words: "hide show sidebar toggle button toolbar narrow reload overflow"),

@@ -8,7 +8,9 @@ struct RadialSelection {
     static let outer: CGFloat = 183
     var wedge: Int?
     var space: Int?
-    var showsSpaces: Bool { wedge == Self.commands.count - 1 }
+    var slots = Self.commands
+    var step: Double { 2 * .pi / Double(slots.count) }
+    var showsSpaces: Bool { wedge.map { slots[$0] == nil } ?? false }
 
     mutating func move(_ delta: CGPoint, spaceCount: Int) {
         let radius = hypot(delta.x, delta.y)
@@ -21,9 +23,9 @@ struct RadialSelection {
         if radius < Self.hub || radius > Self.outer {
             wedge = nil
         } else if radius <= Self.rim {
-            wedge = sector(Self.commands.count)
+            wedge = sector(slots.count)
         } else if showsSpaces, spaceCount > 0 {
-            space = sector(spaceCount, start: -.pi / 3)
+            space = sector(spaceCount, start: Double(wedge ?? 0) * step)
         } else {
             wedge = nil
         }
@@ -32,6 +34,15 @@ struct RadialSelection {
 
 @MainActor
 struct RadialMenu: View {
+    var paint: SpacePaint?
+    var select: ((Int) -> Void)?
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceTransparency) private var opaque
+    private var tint: LinearGradient {
+        let resolved = paint.map(SpaceWash.painted)
+        let colors = resolved.map { [$0.color] + $0.colors } ?? [Palette.NS.ground]
+        return LinearGradient(colors: colors.map(Color.init(nsColor:)), startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
     let spaces: [Space]
     let available: [Bool]
     var selection = RadialSelection()
@@ -55,7 +66,7 @@ struct RadialMenu: View {
     private var title: String {
         if let index = selection.space { return spaces[index].name }
         guard let index = selection.wedge else { return "" }
-        switch RadialSelection.commands[index] {
+        switch selection.slots[index] {
         case .reload: return "Reload"
         case .back: return "Back"
         case .forward: return "Forward"
@@ -66,31 +77,39 @@ struct RadialMenu: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(Palette.ground) // design: circular gesture target sized to the pointer hit regions.
+            Circle().fill(.regularMaterial)
+                .overlay { Circle().fill(tint.opacity(opaque ? 1 : 0.62)) } // design: circular gesture target sized to the pointer hit regions.
                 .frame(width: 272, height: 272)
-            ForEach(RadialSelection.commands.indices, id: \.self) { index in
-                let angle = Double(index) * .pi / 3
+            ForEach(selection.slots.indices, id: \.self) { index in
+                let angle = Double(index) * selection.step
                 let selected = selection.wedge == index
-                let shape = sector(62, 124, angle, .pi / 6)
-                shape.fill(selected ? Palette.wash : Palette.hover)
+                let shape = sector(62, 124, angle, selection.step / 2)
+                shape.fill(Palette.ink.opacity(selected ? 0.16 : 0.035))
                 shape.stroke(Palette.hairline, lineWidth: 0.65)
-                sector(128, RadialSelection.rim, angle, .pi / 6)
-                    .fill(selected ? Palette.faint.opacity(0.7) : Palette.hover)
-                Symbol(RadialSelection.commands[index]?.symbol ?? "square.stack.3d.up", size: 17)
+                sector(128, RadialSelection.rim, angle, selection.step / 2)
+                    .fill(selected ? Palette.faint.opacity(0.7) : Palette.ink.opacity(0.035))
+                Symbol(selection.slots[index]?.symbol ?? "square.stack.3d.up", size: 17)
                     .foregroundStyle(selected ? Palette.ink : Palette.muted)
                     .opacity(available[index] ? 1 : 0.35)
                     .position(point(94, angle))
+                if let select {
+                    Button { select(index) } label: { shape.fill(Color.clear).contentShape(shape) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(selection.slots[index]?.title ?? "Spaces")
+                }
             }
             Circle().stroke(Palette.hairline, lineWidth: 1)
                 .frame(width: 114, height: 114)
             Text(title).font(.system(size: 13.5, weight: .medium)).foregroundStyle(Palette.muted)
                 .multilineTextAlignment(.center).lineLimit(2).frame(width: 98)
-            if selection.showsSpaces && !spaces.isEmpty {
+            if select == nil && selection.showsSpaces && !spaces.isEmpty {
                 ForEach(spaces.indices, id: \.self) { index in
                     let step = 2 * Double.pi / Double(spaces.count)
-                    let angle = -.pi / 3 + Double(index) * step
+                    let angle = Double(selection.wedge ?? 0) * selection.step + Double(index) * step
                     let shape = sector(141, RadialSelection.outer, angle, step / 2)
-                    shape.fill(selection.space == index ? Palette.wash : Palette.hover)
+                    shape.fill(.regularMaterial)
+                    shape.fill(tint.opacity(opaque ? 1 : 0.62))
+                    shape.fill(Palette.ink.opacity(selection.space == index ? 0.16 : 0.035))
                     shape.stroke(Palette.hairline, lineWidth: 0.65)
                     VStack(spacing: 2) {
                         SpaceMark(icon: spaces[index].icon, size: min(16, 150 * step))
@@ -105,7 +124,8 @@ struct RadialMenu: View {
             }
         }
         .frame(width: Self.side, height: Self.side)
-        .allowsHitTesting(false)
+        .environment(\.colorScheme, paint.flatMap { LookMode(rawValue: $0.mode)?.scheme } ?? scheme)
+        .allowsHitTesting(select != nil)
     }
 }
 

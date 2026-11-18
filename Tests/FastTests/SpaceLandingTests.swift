@@ -71,6 +71,25 @@ struct SpaceLandingTests {
         }
     }
 
+    @Test func aSpaceSelectedFromHomeKeepsHomeOverItsRememberedTab() {
+        world { browser, home, away, source, destination in
+            browser.openFresh()
+            #expect(browser.showsHomeField)
+
+            browser.switchSpace(to: away, keepingHome: true)
+            #expect(browser.spaceID == away)
+            #expect(browser.showsHomeField)
+            #expect(browser.tabs.map(\.id) == destination.map(\.id))
+            #expect(browser.activeID == destination[0].id)
+
+            browser.select(destination[0])
+            #expect(!browser.showsHomeField)
+            browser.switchSpace(to: home)
+            #expect(browser.activeID == source[1].id)
+            #expect(!browser.showsHomeField)
+        }
+    }
+
     @Test func rowInTheVisitedSpaceIsInsertedAndChosenWithOneUndo() {
         world { browser, home, away, source, destination in
             browser.holdArranging()

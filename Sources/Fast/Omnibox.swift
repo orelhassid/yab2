@@ -242,9 +242,10 @@ struct Omnibox: View {
                     : Self.top(in: space.size.height))
                 .frame(maxWidth: .infinity, alignment: .top)
         }
+        .background { if homeField { GestureSurface { MouseGestureInput.shared.registerPage($0) } } }
         .modifier(SpacePageSurface(browser: browser, active: homeField))
-        .padding(.leading, homeField && browser.flank == .left ? max(inset, browser.sideShown) : inset) // design: reserve the sidebar on its chosen edge
-        .padding(.trailing, homeField && browser.flank == .right ? max(trail, browser.sideShown) : trail) // design: reserve the sidebar on its chosen edge
+        .padding(.leading, homeField ? max(inset, browser.leadingSidebarRoom) : inset) // design: reserve the sidebar and trail on their chosen edges
+        .padding(.trailing, homeField ? max(trail, browser.trailingSidebarRoom) : trail) // design: reserve the sidebar and trail on their chosen edges
         .onReceive(NSApplication.shared.publisher(for: \.effectiveAppearance)) { appAppearance = $0 }
     }
 
@@ -1965,6 +1966,8 @@ struct AddressField: NSViewRepresentable {
             doCommandBy command: Selector
         ) -> Bool {
             switch command {
+            case #selector(NSResponder.insertTab(_:)) where browser.showsHomeField && browser.typed.isEmpty:
+                return false
             case #selector(NSResponder.deleteBackward(_:)) where browser.picking,
                  #selector(NSResponder.deleteForward(_:)) where browser.picking:
                 // ⌫ with rows picked: the foot's act on all of them, before

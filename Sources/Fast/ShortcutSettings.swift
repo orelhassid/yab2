@@ -149,6 +149,7 @@ struct ShortcutsPage: View {
 /// A row of a group, the way a grouped Form draws one: the group is its
 /// rows' backgrounds laid edge to edge, so it can be built a row at a time.
 private struct ShortcutCardRow<Content: View>: View {
+    @Environment(\.tone) private var tone
     @Environment(\.settingsInLibrary) private var inLibrary
     /// The Form's own measures on each design.
     static var radius: CGFloat { if #available(macOS 26.0, *) { 12 } else { 10 } }
@@ -169,11 +170,14 @@ private struct ShortcutCardRow<Content: View>: View {
             .background {
                 UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: foot, bottomTrailingRadius: foot,
                                        topTrailingRadius: top, style: .continuous)
-                    .fill(inLibrary ? Palette.ground : Color(nsColor: .quaternarySystemFill))
+                    .fill(tone?.color ?? (inLibrary ? Palette.ground : Color(nsColor: .quaternarySystemFill)))
             }
             .overlay(alignment: .bottom) {
                 if !last {
-                    Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1).padding(.horizontal, 10)
+                    Group {
+                        if tone != nil { LibrarySeparator() }
+                        else { Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1) }
+                    }.padding(.horizontal, 10)
                 }
             }
     }

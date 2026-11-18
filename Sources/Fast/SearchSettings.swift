@@ -94,8 +94,7 @@ struct SearchPage: View {
             HStack(spacing: 8) {
                 Text(SettingsWords.text("Sites"))
                 Spacer()
-                TextField("Filter", text: $filter, prompt: Text("Filter"))
-                    .textFieldStyle(.roundedBorder)
+                ThemedSearchField("Filter", text: $filter)
                     .frame(width: 140)
                     .labelsHidden()
             }

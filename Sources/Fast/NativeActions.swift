@@ -16,7 +16,15 @@ struct NativeSetting {
     /// Read only the registered persisted value, without constructing a new
     /// Preferences object (whose initializer also migrates unrelated settings).
     var saved: NativeValue? {
-        let keys = ["space-transition": SpaceTransition.key, "left-trail": Preferences.leftTrailKey, "trail-space-limit": TrailSpaceLimit.key, "settings-presentation": SettingsPresentation.key, "theme": "look", "sidebar": "sidebar", "tab-icons": "tabs.glyph", "density": Density.key, "address-bar": "addressbar",
+        if id == "left-trail" {
+            return .bool(Preferences.savedTrailPosition(in: Store.settings) != .off)
+        }
+        if id == "sidebar-position" {
+            guard let enabled = Store.settings.object(forKey: "sidebar") as? Bool else { return nil }
+            let flank = Store.settings.string(forKey: "sidebar.flank").flatMap(Flank.init) ?? .left
+            return .string(enabled ? flank.rawValue : PanelPosition.off.rawValue)
+        }
+        let keys = ["space-transition": SpaceTransition.key, "trail-position": Preferences.trailPositionKey, "trail-space-limit": TrailSpaceLimit.key, "settings-presentation": SettingsPresentation.key, "theme": "look", "sidebar": "sidebar", "tab-icons": "tabs.glyph", "density": Density.key, "address-bar": "addressbar",
                     "full-url": "addressbar.full-url", "space-pages": "appearance.spacePages", "peek-address": "peek.address", "bookmarks-bar": "bookmarks.bar", "window": "backdrop",
                     "page-zoom": "pages.zoom", "warn-quit": "quit.warn", "sleep": "tabs.sleep",
                     "pins-every-space": SharedPins.key, "peek": "peek", "site-learn": "scopes.learn", "site-recent": "scopes.recent", "ask-where": "downloads.ask", "upload-finder": "uploads.finder",
@@ -86,9 +94,24 @@ struct NativeSetting {
     /// Mail's and Sync's settings, the field's, the icon's and the
     /// snippets', each written the way its row in Settings writes it.
     static var kept: [Self] { [
+        stored("radial-layout", "Radial menu layout", ["type": "string", "enum": ["wheel", "dropdown"]],
+               read: { .string(Store.settings.string(forKey: RadialPreferences.layoutKey) ?? "wheel") }) { value in
+            guard case .string(let layout) = value, ["wheel", "dropdown"].contains(layout) else {
+                throw NativeFailure("invalid_arguments", "Choose wheel or dropdown")
+            }
+            Store.settings.set(layout, forKey: RadialPreferences.layoutKey)
+        },
+        count("radial-count", "Radial menu command count", key: RadialPreferences.countKey, default: 6, values: [6, 8]),
+        stored("radial-commands", "Radial menu commands", ["type": "string", "description": "Command IDs for the current layout, separated by |, clockwise from the right. Use radial.spaces for Spaces."],
+               read: { .string(RadialPreferences.encode(RadialPreferences.saved)) }) { value in
+            guard case .string(let raw) = value, RadialPreferences.encode(RadialPreferences.decode(raw, defaults: RadialPreferences.saved)) == raw else {
+                throw NativeFailure("invalid_arguments", "Choose a valid command for each slot")
+            }
+            RadialPreferences.save(RadialPreferences.decode(raw, defaults: RadialPreferences.saved))
+        },
         flag("mouse-gestures", "Allow Gestures", key: MouseMappings.enabledKey, default: false),
         flag("mouse-option", "Perform Gestures with Option Key", key: MouseMappings.optionKey, default: false),
-        count("trail-space-limit", "Spaces on left trail", key: TrailSpaceLimit.key, default: TrailSpaceLimit.initial, values: Array(TrailSpaceLimit.range)),
+        count("trail-space-limit", "Spaces on the trail", key: TrailSpaceLimit.key, default: TrailSpaceLimit.initial, values: Array(TrailSpaceLimit.range)),
         count("mouse-minimum", "Minimum stroke length", key: MouseMappings.minimumKey, default: 20, values: Array(MouseMappings.minimumRange)),
         stored("settings-presentation", "Open Settings in", ["type": "string", "enum": SettingsPresentation.allCases.map(\.rawValue)],
                read: { .string(SettingsPresentation.saved.rawValue) }) { value in
@@ -237,6 +260,17 @@ struct NativeSetting {
 
     static var all: [Self] { kept + [
         choice("theme", "Theme", \.look, values: Look.allCases.map(\.rawValue)),
+        Self(id: "sidebar-position", title: "Sidebar Position", schema: ["type": "string", "enum": PanelPosition.allCases.map(\.rawValue)],
+             read: { .string($0.sidebarPosition.rawValue) }, write: { prefs, value in
+            guard case .string(let raw) = value, let position = PanelPosition(rawValue: raw) else {
+                throw NativeFailure("invalid_arguments", "Choose left, right, or off")
+            }
+            prefs.sidebarPosition = position
+        }, observe: { prefs, changed in
+            prefs.changes(\.sidebar).combineLatest(prefs.changes(\.sideFlank))
+                .map { $0 ? PanelPosition($1) : .off }.removeDuplicates().dropFirst().sink { _ in changed() }
+        }),
+        choice("trail-position", "Trail Position", \.trailPosition, values: PanelPosition.allCases.map(\.rawValue)),
         boolean("sidebar", "Tabs in a sidebar", \.sidebar),
         boolean("left-trail", "Show Left Trail", \.showLeftTrail),
         choice("space-transition", "Space transition", \.spaceTransition, values: SpaceTransition.allCases.map(\.rawValue)),

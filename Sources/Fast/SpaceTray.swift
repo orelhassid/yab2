@@ -242,7 +242,7 @@ enum SpaceAnchors {
 }
 
 struct SpaceAnchor: NSViewRepresentable {
-    enum Kind: Equatable { case plus, dot, trail, trailPins, slot(UUID), heading(UUID), overviewHeading(UUID) }
+    enum Kind: Equatable { case plus, dot, trail, trailPins, slot(UUID), heading(UUID), overviewHeading(UUID), homeTile(UUID) }
     let kind: Kind
 
     func makeNSView(context: Context) -> Mark { Mark(kind) }
@@ -266,6 +266,27 @@ struct SpaceAnchor: NSViewRepresentable {
             super.viewDidMoveToWindow()
             if window != nil { taken = CACurrentMediaTime() }
         }
+    }
+}
+
+/// The active Space's palette for floating Space controls.
+enum SpaceSurface {
+    @MainActor static func tone(in browser: Browser) -> Tone? {
+        SpaceWash.grounded(in: browser).map { tone(for: $0.color) }
+    }
+
+    static func tone(for color: NSColor) -> Tone {
+        let base = Tone(color)
+        let lift: NSColor = base.scheme == .dark ? .white : .black
+        return Tone(lift.mixed(over: base.page, 0.07), lifted: true)
+    }
+
+    static func badge(on tone: Tone, emphasized: Bool = false) -> Color {
+        Palette.pin(on: tone, dark: tone.scheme == .dark, hovering: emphasized)
+    }
+
+    static func rim(on tone: Tone) -> NSColor {
+        Palette.shades(tone).mutedNS.mixed(over: tone.page, 0.18)
     }
 }
 
@@ -317,19 +338,28 @@ final class SpaceTray: NSView {
 
     private static let customization = CustomizationPopover()
 
-    static func customize(_ space: Space, browser: Browser) {
+    static func customize(_ space: Space, browser: Browser, from source: SpaceAnchor.Kind? = nil) {
         shown?.leave()
         DispatchQueue.main.async {
-            guard let anchor = SpaceAnchors.heading(space.id) ?? SpaceAnchors.anchor(.slot(space.id)) ?? SpaceAnchors.dot ?? SpaceAnchors.plus else { return }
+            guard let anchor = source.flatMap(SpaceAnchors.anchor)
+                ?? SpaceAnchors.heading(space.id) ?? SpaceAnchors.anchor(.slot(space.id))
+                ?? SpaceAnchors.dot ?? SpaceAnchors.plus else { return }
             let popover = customization.popover
             popover.close()
             let session = SpaceCustomizeSession(browser: browser, space: space)
             customization.session = session
             let picker = SpaceCustomizer(session: session) { [weak popover] in popover?.performClose(nil) }
-            let host = NSHostingController(rootView: picker.fixedSize())
+            let tone = SpaceSurface.tone(in: browser)
+            let host = NSHostingController(rootView: picker.fixedSize()
+                .background(tone?.color ?? .clear)
+                .toned(tone))
+            popover.appearance = tone?.appearance
             popover.contentViewController = host
             popover.contentSize = host.view.fittingSize
-            let edge: NSRectEdge = browser.prefs.sidebar ? (browser.prefs.sideFlank == .right ? .minX : .maxX) : .minY
+            let center = anchor.convert(NSPoint(x: anchor.bounds.midX, y: anchor.bounds.midY), to: nil)
+            let onTrail = anchor.window.map { SpaceAnchors.overTrail(center, in: $0, pinsOnly: false) } == true
+            let flank = onTrail ? browser.trailFlank : browser.prefs.sidebarPosition.flank
+            let edge: NSRectEdge = source != nil ? .minY : flank == .right ? .minX : flank == .left ? .maxX : .minY
             popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: edge)
         }
     }
@@ -482,7 +512,8 @@ final class SpaceTray: NSView {
     private let panel = Panel()
     private var head: NSHostingView<TrayHead>!
     private var foot: NSHostingView<TrayFoot>!
-    private var body_: NSView?
+    private var body_: NSHostingView<TrayStep>?
+    private var listTone: Tone?
     private weak var headingAnchor: NSView?
     private var origin: CGRect = .zero
     /// Growing up from the column's foot, or down from the head of the strip.
@@ -618,8 +649,15 @@ final class SpaceTray: NSView {
 
     private func paintColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            panel.layer?.backgroundColor = Palette.NS.ground.cgColor
-            panel.layer?.borderColor = Palette.NS.hairline.cgColor
+            let tone = SpaceSurface.tone(in: browser)
+            listTone = tone
+            let visibleTone = draft.step == .spaces ? tone : nil
+            panel.layer?.backgroundColor = (visibleTone?.page ?? Palette.NS.ground).cgColor
+            panel.layer?.borderColor = (visibleTone.map(SpaceSurface.rim(on:)) ?? Palette.NS.hairline).cgColor
+            if head?.rootView.tone != visibleTone { head?.rootView.tone = visibleTone }
+            if body_?.rootView.step == draft.step, body_?.rootView.tone != visibleTone {
+                body_?.rootView.tone = visibleTone
+            }
         }
     }
 
@@ -685,7 +723,7 @@ final class SpaceTray: NSView {
         slide(foot, fromY: plus.height - Self.foot, toY: to.height - Self.foot, duration: 0.26)
         // What is in it comes in as it grows; the foot only on a step
         // that has a button.
-        let shown = [head, body_] + (footed(draft.step) ? [foot] : [])
+        let shown: [NSView?] = [head, body_] + (footed(draft.step) ? [foot] : [])
         dissolve(shown.compactMap { $0?.layer }, from: 0, to: 1, duration: 0.14, delay: 0.04)
         scrim.opacity = 1
         Self.run(scrim, "opacity", from: 0, to: 1, duration: 0.22, timing: .linear)
@@ -969,6 +1007,7 @@ final class SpaceTray: NSView {
         let heads = picture(of: head)
         let feet = footed(was) && footed(step) ? picture(of: foot) : nil
         draft.step = step
+        paintColors()
         let to = rect(step)
         let up = to.height > from.height
         let duration: CFTimeInterval = up ? 0.3 : 0.24
@@ -1058,7 +1097,7 @@ final class SpaceTray: NSView {
 
     /// The step's own view, over the one before until that one is gone.
     private func show(_ step: SpaceDraft.Step, fading: Bool) {
-        let view = NSHostingView(rootView: TrayStep(draft: draft, step: step, width: stepWidth(step), wheel: wheelSide, tray: self))
+        let view = NSHostingView(rootView: TrayStep(draft: draft, step: step, width: stepWidth(step), wheel: wheelSide, tray: self, tone: step == .spaces ? listTone : nil))
         view.sizingOptions = []
         view.wantsLayer = true
         panel.addSubview(view, positioned: .below, relativeTo: head)
@@ -1314,6 +1353,7 @@ struct TrayHead: View {
     @ObservedObject var draft: SpaceDraft
     let back: () -> Void
     let close: () -> Void
+    var tone: Tone? = nil
 
     /// A step behind: none on the list, nor on the first step of New Space
     /// when it didn't come from the list.
@@ -1353,7 +1393,7 @@ struct TrayHead: View {
             // the old title and the new smeared over each other.
             Text(words.1.isEmpty ? words.0 : "\(words.0) \(words.1)")
             .font(draft.step == .spaces ? CardFrame.detail : .system(size: 15, weight: .semibold))
-            .foregroundStyle(draft.step == .spaces ? Palette.muted : Palette.ink)
+            .foregroundStyle(draft.step == .spaces ? Palette.muted(on: tone) : Palette.ink)
             Spacer(minLength: 0)
             door("xmark", "Close", close)
         }
@@ -1362,6 +1402,7 @@ struct TrayHead: View {
         .padding(.leading, CardFrame.inset) // design: the title stands where a card's does on every step
         .padding(.trailing, SpaceTray.edge(draft.step)) // design: the × on the tray's own inset, a menu's or a card's
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .toned(tone)
     }
 
     private func door(_ icon: String, _ label: String, _ act: @escaping () -> Void) -> some View {
@@ -1375,16 +1416,17 @@ private struct CardDoor: View {
     let icon: String
     let label: String
     let act: () -> Void
+    @Environment(\.tone) private var tone
     @State private var hovering = false
 
     var body: some View {
         Button(action: act) {
             Symbol(icon, size: 9, weight: .semibold)
-                .foregroundStyle(hovering ? Palette.ink : Palette.muted)
+                .foregroundStyle(hovering ? Palette.strong(on: tone) : Palette.muted(on: tone))
                 .frame(width: ButtonSize.small.height, height: ButtonSize.small.height)
                 .background(
                     RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                        .fill(Palette.hover.opacity(hovering ? 1 : 0))
+                        .fill(Palette.hover(on: tone).opacity(hovering ? 1 : 0))
                 )
                 .contentShape(Rectangle())
         }
@@ -1445,13 +1487,14 @@ struct SpaceLine: View {
         case here(String)
     }
 
+    @Environment(\.tone) private var tone
     @State private var hovering = false
 
     var body: some View {
         Button(action: act) {
             SidebarTabRow {
                 SpaceMark(icon: space.icon, size: SideBar.mark)
-                    .foregroundStyle(Palette.ink)
+                    .foregroundStyle(Palette.strong(on: tone))
                     .frame(width: SideBar.mark, height: SideBar.mark)
                     .keyframeAnimator(initialValue: 1.0, trigger: landed) { well, scale in
                         well.scaleEffect(scale)
@@ -1463,21 +1506,21 @@ struct SpaceLine: View {
                     }
                 Text(space.name)
                     .font(.system(size: SidebarTypography.current, weight: .regular))
-                    .foregroundStyle(Palette.ink)
+                    .foregroundStyle(Palette.strong(on: tone))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if case .here(let note) = carry {
                     Text(note).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.accentColor).lineLimit(1)
                 } else {
                     if noisy {
-                        Circle().fill(Palette.ink).frame(width: 5, height: 5)
+                        Circle().fill(Palette.strong(on: tone)).frame(width: 5, height: 5)
                     }
                     if space.id == Space.mailID {
-                        ShortcutGlyphs(.mail, size: 12.5, tint: Palette.muted)
+                        shortcut(.mail)
                     } else if let place = browser?.turnOrder.firstIndex(where: { $0.id == space.id }) ?? Optional(index), place < 9 {
                         // Counted as ⌃1 to ⌃9 count: Mail in its place among them.
                         if let action = Shortcut.numbered("space", place + 1) {
-                            ShortcutGlyphs(action, size: 12.5, tint: Palette.muted)
+                            shortcut(action)
                         }
                     }
                 }
@@ -1494,7 +1537,7 @@ struct SpaceLine: View {
             .background {
                 if lifted {
                     let shape = RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
-                    shape.fill(Palette.ground) // design: a row lifted in the hand, as the column's pin is, not a card
+                    shape.fill(tone?.color ?? Palette.ground) // design: a row lifted in the hand, as the column's pin is, not a card
                         .castShadow(shape, color: .black.opacity(0.14), radius: 8, y: 3)
                 }
             }
@@ -1514,11 +1557,17 @@ struct SpaceLine: View {
         // in the row read as nothing in particular.
         .modifier(OwnSignInsTip(on: space.ownSignIns))
         // Its own menu at once on a right click: rename, emoji, delete.
-        .steadyMenu(actions: true) {
+        .steadyMenu(actions: true, tone: browser.flatMap { SpaceSurface.tone(in: $0) }) {
             if let browser { SpaceMenu(browser: browser, space: space) }
         }
         .accessibilityLabel(space.name)
         .accessibilityAddTraits(current ? [.isSelected] : [])
+    }
+
+    private func shortcut(_ action: Shortcut.Action) -> some View {
+        ShortcutGlyphs(action, size: 12.5, tint: Palette.muted(on: tone), plate: tone.map {
+            SpaceSurface.badge(on: $0, emphasized: current || focused || hovering)
+        })
     }
 
     private var isDropTarget: Bool {
@@ -1554,6 +1603,7 @@ private struct NewSpaceLine: View {
     /// Tabs held over it: a new space is made around them.
     var over = false
     let act: () -> Void
+    @Environment(\.tone) private var tone
     @State private var hovering = false
 
     var body: some View {
@@ -1564,7 +1614,7 @@ private struct NewSpaceLine: View {
                 Text("New Space").font(.system(size: SidebarTypography.current, weight: .regular))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(hovering || over ? Palette.ink : Palette.muted)
+            .foregroundStyle(hovering || over ? Palette.strong(on: tone) : Palette.muted(on: tone))
             .background {
                 if over || hovering { SelectionPlate(corner: SideBar.radius, state: over ? .selected : .hover) }
             }
@@ -1590,13 +1640,16 @@ private struct NewSpaceLine: View {
 struct SpaceMenu: View {
     let browser: Browser
     let space: Space
+    var fromHome = false
 
     var body: some View {
         // Mail keeps its name, its sign-ins and has no Delete of its own:
         // its emoji and its look are yours, and its settings are Settings ›
         // Mail.
         let mail = space.id == Space.mailID
-        Button("Edit Space…", mark: "pencil") { SpaceTray.customize(space, browser: browser) }
+        Button("Edit Space…", mark: "pencil") {
+            SpaceTray.customize(space, browser: browser, from: fromHome ? .homeTile(space.id) : nil)
+        }
         // Every space's name, at once. Not from a space folded under its
         // name: hidden, nothing would be left to unfold it. Back from this
         // menu on the column's empty room or a space's icon at its foot.
@@ -1611,7 +1664,7 @@ struct SpaceMenu: View {
         }
         Button("Edit Look…", mark: "paintpalette") {
             SpaceTray.shown?.leave()
-            if space.id != browser.spaceID { browser.switchSpace(to: space.id) }
+            if space.id != browser.spaceID { browser.switchSpace(to: space.id, keepingHome: fromHome) }
             LookCard.shared.show(browser)
         }
         // The first space's are everyone's: only another can have its own.
@@ -1699,6 +1752,7 @@ struct TrayStep: View {
     let width: CGFloat
     let wheel: CGFloat
     weak var tray: SpaceTray?
+    var tone: Tone? = nil
     @Environment(\.colorScheme) private var scheme
     @FocusState private var naming: Bool
     private var dark: Bool { scheme == .dark }
@@ -1706,7 +1760,8 @@ struct TrayStep: View {
     @State private var more = ScrollEdges.More()
 
     private func haze(_ edge: VerticalEdge) -> some View {
-        LinearGradient(colors: [Palette.ground, Palette.ground.opacity(0)], startPoint: edge == .top ? .top : .bottom, endPoint: edge == .top ? .bottom : .top)
+        let ground = tone?.color ?? Palette.ground
+        return LinearGradient(colors: [ground, ground.opacity(0)], startPoint: edge == .top ? .top : .bottom, endPoint: edge == .top ? .bottom : .top)
             .frame(height: 20)
             .allowsHitTesting(false)
     }
@@ -1726,6 +1781,7 @@ struct TrayStep: View {
         }
         .padding(.horizontal, SpaceTray.edge(step))
         .frame(width: width, alignment: .topLeading)
+        .toned(tone)
     }
 
     // MARK: the spaces

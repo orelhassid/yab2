@@ -76,7 +76,7 @@ struct LibraryPageFrame<Action: View, Search: View, Content: View>: View {
         .padding(LibraryPageLayout.inset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .foregroundStyle(Palette.ink)
-        .modifier(SpacePageSurface(browser: browser, library: true))
+        .modifier(SpacePageSurface(browser: browser, library: true, themedControls: page == .settings))
     }
 }
 
@@ -112,26 +112,33 @@ struct LibraryIdentityRow<Icon: View, Detail: View>: View {
 
 /// A quiet card variant for dense forms, using Yab's surface and corner tokens.
 struct LibraryCardSurface: ViewModifier {
+    @Environment(\.tone) private var tone
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-        content.background(Palette.ground.opacity(0.65), in: shape) // design: quiet library card variant retains the shared surface and corner with a softer rim.
-            .overlay(shape.strokeBorder(Palette.hairline.opacity(0.4)).allowsHitTesting(false)) // design: quieter rim for dense library forms.
+        content.background(tone?.color ?? Palette.ground.opacity(0.65), in: shape) // design: quiet library card variant retains the shared surface and corner with a softer rim.
+            .overlay(shape.strokeBorder(tone.map { Color(nsColor: SpaceSurface.rim(on: $0)) } ?? Palette.hairline.opacity(0.4)).allowsHitTesting(false)) // design: quieter rim for dense library forms.
     }
 }
 
 /// Use the existing hairline token with quieter emphasis inside library surfaces.
 struct LibrarySeparator: View {
-    var body: some View { Rectangle().fill(Palette.hairline).frame(height: 1).opacity(0.4) }
+    @Environment(\.tone) private var tone
+
+    var body: some View {
+        Rectangle().fill(tone.map { Color(nsColor: SpaceSurface.rim(on: $0)) } ?? Palette.hairline)
+            .frame(height: 1).opacity(0.4)
+    }
 }
 
 /// The same search surface around either a library field or Settings' native field.
 struct LibrarySearchWell<Content: View>: View {
+    @Environment(\.tone) private var tone
     @Binding var text: String
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         HStack(spacing: 6) {
-            Symbol("magnifyingglass", size: 12).foregroundStyle(Palette.muted)
+            Symbol("magnifyingglass", size: 12).foregroundStyle(Palette.muted(on: tone))
             content()
             if !text.isEmpty {
                 Button { text = "" } label: { Symbol("xmark.circle.fill", size: 12) }
@@ -140,8 +147,8 @@ struct LibrarySearchWell<Content: View>: View {
         }
         .padding(.horizontal, CardFrame.inset)
         .frame(height: 32)
-        .background(Palette.ground, in: Capsule())
-        .overlay(Capsule().strokeBorder(Palette.hairline).allowsHitTesting(false)) // design: shared library search bezel.
+        .background(tone?.color ?? Palette.ground, in: Capsule())
+        .overlay(Capsule().strokeBorder(tone.map { Color(nsColor: SpaceSurface.rim(on: $0)) } ?? Palette.hairline).allowsHitTesting(false)) // design: shared library search bezel.
     }
 }
 
@@ -194,16 +201,29 @@ private struct LibraryScreen<Content: View>: View {
     }
 }
 
+struct ThemedSearchField: View {
+    let placeholder: String
+    @Binding var text: String
+
+    init(_ placeholder: String, text: Binding<String>) {
+        self.placeholder = placeholder
+        _text = text
+    }
+
+    var body: some View {
+        LibrarySearchWell(text: $text) {
+            TextField(placeholder, text: $text).textFieldStyle(.plain).font(CardFrame.detail)
+        }
+    }
+}
+
 private struct LibrarySearch: View {
     let page: LibraryPage
     @Environment(LibraryControls.self) private var controls
 
     var body: some View {
         @Bindable var controls = controls
-        LibrarySearchWell(text: $controls.search) {
-            TextField("Search " + page.rawValue, text: $controls.search)
-                .textFieldStyle(.plain).font(CardFrame.detail)
-        }
+        ThemedSearchField("Search " + page.rawValue, text: $controls.search)
     }
 }
 
@@ -810,12 +830,13 @@ struct LibraryScopeRow: View {
     var expanded: Bool? = nil
     var toggleExpanded: (() -> Void)? = nil
     let action: () -> Void
+    @Environment(\.tone) private var tone
 
     var body: some View {
         HStack(spacing: 0) {
             Button(action: action) {
                 HStack(spacing: 8) {
-                    if depth == 0 { Symbol(symbol, size: 14).foregroundStyle(selected ? selectedIconTint ?? Palette.ink : Palette.ink) }
+                    if depth == 0 { Symbol(symbol, size: 14).foregroundStyle(selected && tone == nil ? selectedIconTint ?? Palette.ink : Palette.strong(on: tone)) }
                     Text(title).lineLimit(1)
                     Spacer(minLength: 0)
                 }
@@ -827,7 +848,7 @@ struct LibraryScopeRow: View {
             if let expanded, let toggleExpanded {
                 Button(action: toggleExpanded) {
                     Symbol(expanded ? "chevron.down" : "chevron.right", size: 10)
-                        .foregroundStyle(Palette.muted)
+                        .foregroundStyle(Palette.muted(on: tone))
                         .frame(width: 24, height: 32).contentShape(Rectangle())
                 }
                 .accessibilityLabel("\(expanded ? "Collapse" : "Expand") \(title)")
@@ -835,7 +856,7 @@ struct LibraryScopeRow: View {
             }
         }
         .buttonStyle(.plain).font(CardFrame.detail)
-        .background(selected ? Palette.wash : Color.clear, in: RoundedRectangle(cornerRadius: Radius.control))
+        .background(selected ? Palette.wash(on: tone) : Color.clear, in: RoundedRectangle(cornerRadius: Radius.control))
     }
 }
 
@@ -1358,7 +1379,7 @@ struct TrailLibraryPopover: ViewModifier {
             .onHover { state.hover(page, inside: $0) }
             .popover(isPresented: Binding(get: { state.page == page }, set: {
                 if !$0 { state.dismiss(page) }
-            }), arrowEdge: vertical ? (browser.flank == .right ? .leading : .trailing) : .bottom) {
+            }), arrowEdge: vertical ? (browser.trailFlank == .right ? .leading : .trailing) : .bottom) {
                 TrailPreviewContent(page: page, browser: browser, bookmarks: browser.bookmarks,
                                     history: browser.active.map(browser.history(for:)) ?? browser.history,
                                     loot: browser.loot, extensions: Extensions.of(browser)) { state.dismiss(page) }

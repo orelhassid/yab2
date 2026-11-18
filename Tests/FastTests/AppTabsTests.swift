@@ -10,8 +10,9 @@ struct AppTabsTests {
     private func withModel(_ body: (TrailApps, UserDefaults, Browser) throws -> Void) rethrows {
         let domain = "AppTabsTests." + UUID().uuidString
         let defaults = UserDefaults(suiteName: domain)!
+        let keys = ["sidebar", "sidebar.flank", "sidebar.shut", "strip.shut", "spaces", Preferences.trailPositionKey]
+        let settings = keys.map { ($0, Store.settings.object(forKey: $0)) }
         let browser = Browser(windowID: UUID())
-        let settings = ["sidebar", "spaces", Preferences.leftTrailKey].map { ($0, Store.settings.object(forKey: $0)) }
         defer {
             browser.dismiss()
             browser.letGo()
@@ -175,17 +176,73 @@ struct AppTabsTests {
         }
     }
 
-    @Test func settingIsSearchablePersistedAndAgentChangeable() throws {
-        let row = try #require(SettingsItem.all.first { $0.id == "left-trail" })
-        #expect(row.page == .appearance)
-        #expect(NativeActions.classification(row) == "read_write")
-        let descriptor = try #require(NativeActions.descriptors.first { $0["id"] as? String == "settings.set.left-trail" })
-        try NativeActions.validate(["value": .bool(false)], descriptor: descriptor)
-        #expect(throws: NativeFailure.self) { try NativeActions.validate(["value": .string("false")], descriptor: descriptor) }
-        let prefs = Preferences()
-        prefs.showLeftTrail = false
-        #expect(!Preferences().showLeftTrail)
-        prefs.showLeftTrail = true
-        #expect(Preferences().showLeftTrail)
+    @Test func positionsReserveTheCorrectEdgesIndependently() throws {
+        try withModel { _, _, browser in
+            let prefs = browser.prefs
+            prefs.usesSpaces = true
+            prefs.sideShut = false
+            let tab = page(browser)
+            browser.lay([tab])
+            browser.activeID = tab.id
+
+            for sidebar in PanelPosition.allCases {
+                let column = sidebar == .off ? 0 : prefs.sideWidth
+                for trail in PanelPosition.allCases {
+                    prefs.sidebarPosition = sidebar
+                    prefs.trailPosition = trail
+                    let rail = browser.spaceRailWidth
+                    #expect(prefs.sidebarPosition == sidebar)
+                    #expect(browser.trailFlank == trail.flank)
+                    #expect((rail > 0) == (trail != .off))
+                    #expect(browser.leadingSidebarRoom == max(sidebar == .left ? column : 0, trail == .left ? rail : 0))
+                    #expect(browser.trailingSidebarRoom == max(sidebar == .right ? column : 0, trail == .right ? rail : 0))
+                    #expect(browser.railInsideColumn == (sidebar == trail ? rail : 0))
+                }
+            }
+
+            prefs.sidebarPosition = .right
+            prefs.trailPosition = .right
+            prefs.sideShut = true
+            #expect(browser.sideShown == 0)
+            #expect(browser.trailingSidebarRoom == browser.spaceRailWidth)
+            #expect(browser.railInsideColumn == browser.spaceRailWidth)
+            #expect(browser.leadingRailInsideColumn == 0)
+        }
+    }
+
+    @Test func trailPositionMigratesLegacyDefaults() {
+        let domain = "AppTabsTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: domain)!
+        defer { defaults.removePersistentDomain(forName: domain) }
+
+        #expect(Preferences.savedTrailPosition(in: defaults) == .left)
+        defaults.set(false, forKey: Preferences.leftTrailKey)
+        #expect(Preferences.savedTrailPosition(in: defaults) == .off)
+        defaults.set(true, forKey: Preferences.leftTrailKey)
+        defaults.set(false, forKey: "sidebar")
+        #expect(Preferences.savedTrailPosition(in: defaults) == .off)
+        defaults.set(true, forKey: "sidebar")
+        #expect(Preferences.savedTrailPosition(in: defaults) == .left)
+        defaults.set("right", forKey: Preferences.trailPositionKey)
+        #expect(Preferences.savedTrailPosition(in: defaults) == .right)
+    }
+
+    @Test func positionsAreSearchablePersistedAndAgentChangeable() throws {
+        try withModel { _, _, browser in
+            for id in ["sidebar-position", "trail-position"] {
+                let row = try #require(SettingsItem.all.first { $0.id == id })
+                #expect(row.page == .appearance)
+                #expect(NativeActions.classification(row) == "read_write")
+                let descriptor = try #require(NativeActions.descriptors.first { $0["id"] as? String == "settings.set." + id })
+                let setting = try #require(NativeSetting.all.first { $0.id == id })
+                for position in PanelPosition.allCases {
+                    let value = NativeValue.string(position.rawValue)
+                    try NativeActions.validate(["value": value], descriptor: descriptor)
+                    try setting.write(browser.prefs, value)
+                    #expect(setting.read(Preferences()) == value)
+                }
+                #expect(throws: NativeFailure.self) { try NativeActions.validate(["value": .bool(false)], descriptor: descriptor) }
+            }
+        }
     }
 }

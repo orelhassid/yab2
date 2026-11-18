@@ -7,17 +7,14 @@ struct ProfilePicture: View {
     @ObservedObject private var identities = BrowserProfileIdentities.shared
     let profile: UUID
     let size: CGFloat
-    private let previewMark: String?
 
-    init(profile: UUID, size: CGFloat, previewMark: String? = nil) {
+    init(profile: UUID, size: CGFloat) {
         _mark = AppStorage(wrappedValue: "", profilePictureKey(profile), store: Store.settings)
         self.profile = profile
         self.size = size
-        self.previewMark = previewMark
     }
 
     var body: some View {
-        let mark = previewMark ?? mark
         Group {
             if let image = CustomMarks.image(mark) {
                 Image(nsImage: image).resizable().scaledToFit()
@@ -39,84 +36,118 @@ struct ProfilePicture: View {
     }
 }
 
-struct ProfileSettingsIdentity: View {
-    let profile: UUID
-    let name: String
-    var draft: Binding<String>?
-    @State private var editing = false
-
-    var body: some View {
-        HStack(spacing: CardFrame.inset) {
-            ProfilePicture(profile: profile, size: 36, previewMark: draft?.wrappedValue)
-            Text(name).font(.headline)
-            Spacer()
-            Button("Change Picture…") { editing = true }
-                .settingsButton()
-                .popover(isPresented: $editing) {
-                    ProfilePicturePicker(profile: profile, draft: draft) { editing = false }
-                }
-        }
-    }
-}
-
 struct ProfileSwitcher: View {
     @ObservedObject var browser: Browser
+    @ObservedObject var popover: ProfilePopover
     @ObservedObject private var identities = BrowserProfileIdentities.shared
-    let close: () -> Void
-    @State private var editing = false
+    @Environment(\.accessibilityReduceTransparency) private var solid
+    @Environment(\.colorScheme) private var scheme
 
-    private var profiles: [Space] {
-        guard browser.windowPurpose == .normal, !browser.blank, browser.prefs.usesSpaces else { return [browser.currentProfileSpace] }
-        var seen = Set<UUID>()
-        return ([browser.currentProfileSpace] + browser.turnOrder.filter { $0.id != Space.mailID }).filter { seen.insert($0.profileID).inserted }
+    static let width: CGFloat = 260
+    private static let pad = CardFrame.rows
+    private static let headerHeight = SideBar.row + 2 * pad
+    private static let labelHeight = SideBar.mark + pad
+    private static let dividerHeight = 1 + pad
+    private static let avatarSize: CGFloat = 22
+
+    static func fixedHeight(hasChoices: Bool) -> CGFloat {
+        2 * pad + headerHeight + 2 * SideBar.row + dividerHeight
+            + (hasChoices ? labelHeight + dividerHeight : 0)
+    }
+
+    static func height(for count: Int) -> CGFloat {
+        fixedHeight(hasChoices: count > 0) + CGFloat(min(5, count)) * SideBar.row
     }
 
     var body: some View {
-        if editing {
-            ProfilePicturePicker(profile: browser.currentProfileSpace.profileID) { editing = false }
-        } else {
+        if let placement = popover.placement {
+            let choices = popover.choices
+            let available = max(0, placement.bodySize.height - Self.fixedHeight(hasChoices: !choices.isEmpty))
+            let outline = ProfilePopoverOutline(placement: placement)
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: CardFrame.inset) {
-                    ProfilePicture(profile: browser.currentProfileSpace.profileID, size: 38)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(browser.activeProfileName).font(.headline)
-                        Text(browser.currentProfileSpace.name).foregroundStyle(.secondary)
-                    }.lineLimit(1)
-                }.padding(CardFrame.inset)
-                Divider()
-                let choices = profiles
-                if choices.count > 1 {
-                    Text("Switch Profile").font(.caption).foregroundStyle(.secondary)
-                        .padding(.horizontal, CardFrame.inset).padding(.top, 8)
-                    ThreadScrollView {
-                        VStack(spacing: 0) {
-                            ForEach(choices) { space in
-                                let current = space.profileID == browser.currentProfileSpace.profileID
-                                TrailMenuRow(title: browser.profileName(for: space), selected: current, action: {
-                                    close()
-                                    if !current { browser.switchSpace(to: space.id) }
-                                }) { ProfilePicture(profile: space.profileID, size: 22) }
-                            }
-                        }
-                    }.frame(height: min(CGFloat(choices.count), 5) * SideBar.row)
-                    Divider()
+                header
+                rule
+                if !choices.isEmpty {
+                    Text("Switch Profile")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, SideBar.inner)
+                        .frame(height: Self.labelHeight, alignment: .topLeading)
+                        .accessibilityAddTraits(.isHeader)
+                    profiles(choices, height: available)
+                    rule
                 }
-                TrailMenuRow(title: "Change Picture…", action: { editing = true }) { Symbol("photo", size: 16) }
-                TrailMenuRow(title: Command.tabOverview.title, action: {
-                    close()
-                    browser.showLibrary(.tabs)
-                }) { Symbol(LibraryPage.tabs.icon, size: 16) }
-                if Command.manageProfiles.available(in: browser) {
-                    TrailMenuRow(title: Command.manageProfiles.title, action: {
-                        close()
-                        Command.manageProfiles.run(in: browser)
-                    }) { Symbol(Command.manageProfiles.symbol, size: 16) }
+                action(.tabs, Command.tabOverview.title, icon: LibraryPage.tabs.icon)
+                action(.settings, Command.settings.title, icon: "gearshape")
+            }
+            .padding(Self.pad)
+            .frame(width: placement.bodySize.width, height: placement.bodySize.height, alignment: .topLeading)
+            .padding(placement.insets)
+            .background {
+                if solid { outline.fill(Palette.ground) } // design: the material's accessible fallback covers the entire pointer
+                else {
+                    outline.fill(.regularMaterial)
+                    outline.fill(Color(nsColor: browser.prefs.swatch.color(dark: scheme == .dark,
+                                                                          custom: browser.prefs.backdropColor)).opacity(0.22))
                 }
-                TrailMenuRow(title: Command.settings.title, action: {
-                    close()
-                    SettingsWindow.shared.show(for: browser)
-                }) { Symbol("gearshape", size: 16) }
-            }.padding(6).frame(width: 260)
+            }
+            .overlay { outline.stroke(.primary.opacity(0.18), lineWidth: 1).allowsHitTesting(false) }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Profile Switcher")
+        }
+    }
+
+    private var header: some View {
+        let current = browser.currentProfileSpace
+        return TrailMenuItem(height: Self.headerHeight, focused: popover.focused == .header,
+                             action: { popover.choose(.header) }) {
+            ProfilePicture(profile: current.profileID, size: Self.avatarSize)
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(browser.activeProfileName).font(.headline)
+                Text(current.name).font(.subheadline).foregroundStyle(.secondary)
+            }.lineLimit(1)
+        }
+        .accessibilityHint("Opens Profile Settings")
+    }
+
+    private var rule: some View {
+        Divider().frame(height: 1).padding(.vertical, Self.pad / 2)
+    }
+
+    @ViewBuilder private func profiles(_ choices: [Space], height: CGFloat) -> some View {
+        if height < CGFloat(choices.count) * SideBar.row {
+            ScrollViewReader { reader in
+                ThreadScrollView(showsIndicators: false) {
+                    profileRows(choices)
+                }
+                .frame(height: height)
+                .onChange(of: popover.focused) { _, item in
+                    if let item, case .profile = item { reader.scrollTo(item) }
+                }
+            }
+        } else {
+            profileRows(choices)
+        }
+    }
+
+    private func profileRows(_ choices: [Space]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(choices) { space in
+                let item = ProfilePopover.Item.profile(space.id)
+                TrailMenuRow(title: browser.profileName(for: space),
+                             selected: space.profileID == browser.currentProfileSpace.profileID,
+                             focused: popover.focused == item, action: { popover.choose(item) }) {
+                    ProfilePicture(profile: space.profileID, size: Self.avatarSize)
+                }.id(item)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func action(_ item: ProfilePopover.Item, _ title: String, icon: String) -> some View {
+        TrailMenuRow(title: title, focused: popover.focused == item, action: { popover.choose(item) }) {
+            Symbol(icon, size: SideBar.mark)
         }
     }
 }
@@ -124,63 +155,65 @@ struct ProfileSwitcher: View {
 struct TrailMenuRow<Icon: View>: View {
     let title: String
     var selected = false
+    var focused = false
     let action: () -> Void
     @ViewBuilder var icon: () -> Icon
+
+    var body: some View {
+        TrailMenuItem(selected: selected, focused: focused, action: action, icon: icon) {
+            Text(title).lineLimit(1)
+        }
+    }
+}
+
+private struct TrailMenuItem<Icon: View, Label: View>: View {
+    var height = SideBar.row
+    var selected = false
+    var focused = false
+    let action: () -> Void
+    @ViewBuilder var icon: () -> Icon
+    @ViewBuilder var label: () -> Label
     @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
-            SidebarTabRow {
+            HStack(spacing: SideBar.markGap) {
                 icon().frame(width: 24)
-                Text(title).lineLimit(1)
-                Spacer()
-                if selected { Symbol("checkmark", size: 12) }
+                label()
+                Spacer(minLength: 0)
+                if selected { Symbol("checkmark", size: SideBar.mark).accessibilityHidden(true) }
             }
+            .padding(.horizontal, SideBar.inner)
+            .frame(height: height)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                if hovered || selected { SelectionPlate(corner: SideBar.radius, state: selected ? .selected : .hover) }
+                if hovered || focused || selected {
+                    SelectionPlate(corner: SideBar.radius, state: selected ? .selected : .hover)
+                }
+            }
+            .overlay {
+                if focused {
+                    RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
+                        .strokeBorder(.primary.opacity(0.32), lineWidth: 1)
+                        .allowsHitTesting(false)
+                }
             }
             .contentShape(Rectangle())
-        }.buttonStyle(.plain).onHover { hovered = $0 }
-            .accessibilityAddTraits(selected ? .isSelected : [])
+        }
+        .buttonStyle(TrailMenuPress())
+        .onHover { hovered = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
-private struct ProfilePicturePicker: View {
-    let profile: UUID
-    let back: () -> Void
-    @AppStorage private var mark: String
-    private let draft: Binding<String>?
-
-    init(profile: UUID, draft: Binding<String>? = nil, back: @escaping () -> Void) {
-        self.profile = profile
-        self.back = back
-        self.draft = draft
-        _mark = AppStorage(wrappedValue: "", profilePictureKey(profile), store: Store.settings)
-    }
-
-    var body: some View {
-        let selection = draft ?? $mark
-        let mark = selection.wrappedValue
-        VStack(spacing: 0) {
-            HStack {
-                Button(action: back) { Symbol("chevron.left", size: 14) }
-                    .buttonStyle(.plain).accessibilityLabel("Back")
-                Text("Profile Picture").font(.headline)
-                Spacer()
-            }.padding(CardFrame.inset)
-            Divider()
-            ProfilePicture(profile: profile, size: 52, previewMark: mark).padding(8)
-            Button {
-                CustomMarks.chooseImage { image in
-                    if let image { selection.wrappedValue = image }
-                }
-            } label: { Label("Choose Image…", systemImage: "photo").frame(maxWidth: .infinity) }
-            .buttonStyle(.yab(.secondary, .regular)).padding(.horizontal, CardFrame.inset)
-            IconPicker(mark: mark.isEmpty ? nil : mark, pick: { selection.wrappedValue = $0 ?? "" }, close: back,
-                       profilePicture: true)
-            Divider()
-            Button("Reset to Default") { selection.wrappedValue = "" }
-                .buttonStyle(.yab(.quiet, .small)).disabled(mark.isEmpty).padding(6)
-        }.frame(width: 280)
+private struct TrailMenuPress: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.overlay {
+            if configuration.isPressed {
+                RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous)
+                    .fill(.primary.opacity(0.08))
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }

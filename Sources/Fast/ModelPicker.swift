@@ -584,7 +584,6 @@ struct PickerSearch: NSViewRepresentable {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: size)
-        field.textColor = NSColor(Palette.ink)
         field.placeholderString = placeholder
         field.cell?.isScrollable = true
         field.cell?.wraps = false
@@ -597,6 +596,7 @@ struct PickerSearch: NSViewRepresentable {
 
     func updateNSView(_ field: NSSearchField, context: Context) {
         context.coordinator.parent = self
+        field.textColor = context.environment.tone.map { Palette.shades($0).strongNS } ?? NSColor(Palette.ink)
         if field.stringValue != text { field.stringValue = text }
     }
 

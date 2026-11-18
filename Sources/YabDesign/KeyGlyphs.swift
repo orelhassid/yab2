@@ -16,12 +16,14 @@ public struct KeyGlyphs: View {
     var tint: Color? = Palette.muted
     /// How strong it stands: 0.6 beside a button's words.
     var rest: Double = 1
+    private let plate: Color?
 
-    public init(keys: String, size: CGFloat = 13, tint: Color? = Palette.muted, rest: Double = 1) {
+    public init(keys: String, size: CGFloat = 13, tint: Color? = Palette.muted, rest: Double = 1, plate: Color? = nil) {
         self.keys = keys
         self.size = size
         self.tint = tint
         self.rest = rest
+        self.plate = plate
     }
 
     /// A mark's square beside letters of `size`, as the pages have 12 to
@@ -42,6 +44,7 @@ public struct KeyGlyphs: View {
         /// A mark's plate is square, as wide as it is tall; letters (esc)
         /// take the room they need.
         let square: Bool
+        let fill: Color?
         @Environment(\.keyPlate) private var button
 
         func body(content: Content) -> some View {
@@ -49,7 +52,10 @@ public struct KeyGlyphs: View {
             content
                 .padding(.horizontal, square ? 0 : button == nil ? (size * 0.28).rounded() : ((height - KeyGlyphs.side(size)) / 2).rounded())
                 .frame(minWidth: height, maxWidth: square ? height : nil, minHeight: height)
-                .background(RoundedRectangle(cornerRadius: button?.corner ?? Radius.small, style: .continuous).fill(.quaternary))
+                .background {
+                    let shape = RoundedRectangle(cornerRadius: button?.corner ?? Radius.small, style: .continuous)
+                    if let fill { shape.fill(fill) } else { shape.fill(.quaternary) }
+                }
         }
     }
 
@@ -108,7 +114,7 @@ public struct KeyGlyphs: View {
                             .font(.system(size: size, weight: .medium))
                     }
                 }
-                .modifier(Plate(size: size, square: run.mark != nil || run.text.count == 1))
+                .modifier(Plate(size: size, square: run.mark != nil || run.text.count == 1, fill: plate))
             }
         }
         .modifier(Ink(tint: tint))

@@ -406,6 +406,19 @@ final class Preferences: ObservableObject, Relaying {
         willSet { relay.send(\.stripShut, newValue) }
         didSet { store.set(stripShut, forKey: "strip.shut") }
     }
+    var sidebarPosition: PanelPosition {
+        get { sidebar ? PanelPosition(sideFlank) : .off }
+        set {
+            if let flank = newValue.flank {
+                if sideFlank != flank { sideFlank = flank }
+                if !sidebar { sidebar = true }
+            } else if sidebar {
+                stripShut = false
+                sidebar = false
+            }
+        }
+    }
+
     /// Which edge of the window the column hangs on.
     var sideFlank: Flank {
         willSet { relay.send(\.sideFlank, newValue) }
@@ -912,6 +925,17 @@ final class Preferences: ObservableObject, Relaying {
         }
     }
     static let leftTrailKey = "sidebar.leftTrail"
+    static let trailPositionKey = "sidebar.trailPosition"
+
+    static func savedTrailPosition(in store: UserDefaults) -> PanelPosition {
+        if let position = store.string(forKey: trailPositionKey).flatMap(PanelPosition.init(rawValue:)) {
+            return position
+        }
+        if (store.object(forKey: leftTrailKey) as? Bool) == false { return .off }
+        let hadTopTabs = (store.object(forKey: "sidebar") as? Bool) == false
+            || (store.object(forKey: "sidebar") == nil && store.string(forKey: "manner") == "top")
+        return hadTopTabs ? .off : .left
+    }
     var spaceTransition: SpaceTransition {
         willSet { relay.send(\.spaceTransition, newValue) }
         didSet {
@@ -926,14 +950,26 @@ final class Preferences: ObservableObject, Relaying {
         }
     }
 
-    var showLeftTrail: Bool {
-        willSet { relay.send(\.showLeftTrail, newValue) }
+    var trailPosition: PanelPosition {
+        willSet {
+            relay.send(\.trailPosition, newValue)
+            if (newValue != .off) != showLeftTrail { relay.send(\.showLeftTrail, newValue != .off) }
+        }
         didSet {
-            guard showLeftTrail != oldValue else { return }
-            store.set(showLeftTrail, forKey: Self.leftTrailKey)
-            for browser in BrowserWindows.shared.browsers where browser.prefs.showLeftTrail != showLeftTrail {
-                browser.prefs.showLeftTrail = showLeftTrail
+            store.set(trailPosition.rawValue, forKey: Self.trailPositionKey)
+            guard trailPosition != oldValue else { return }
+            for browser in BrowserWindows.shared.browsers where browser.prefs.trailPosition != trailPosition {
+                browser.prefs.trailPosition = trailPosition
             }
+            told(\.trailPosition)
+        }
+    }
+
+    /// The boolean native setting predates choosing an edge.
+    var showLeftTrail: Bool {
+        get { trailPosition != .off }
+        set {
+            if newValue != showLeftTrail { trailPosition = newValue ? .left : .off }
         }
     }
 
@@ -1241,7 +1277,11 @@ final class Preferences: ObservableObject, Relaying {
         // In Every Space for a new Mac, In Each Space for one in use before:
         // decided once, at the first launch, and written down.
         pinsEverySpace = SharedPins.decide(settings: store, folder: Store.folder)
-        showLeftTrail = store.object(forKey: Self.leftTrailKey) as? Bool ?? true
+        let savedTrailPosition = Self.savedTrailPosition(in: store)
+        trailPosition = savedTrailPosition
+        if store.object(forKey: Self.trailPositionKey) == nil {
+            store.set(savedTrailPosition.rawValue, forKey: Self.trailPositionKey)
+        }
         spaceTransition = SpaceTransition.read(from: store)
         SpaceTransition.current = spaceTransition
         // Before the first web view exists: WebKit reads these once.

@@ -1078,8 +1078,7 @@ final class Brim {
               browser.prefs.sideShut, let column = browser.column,
               let frame = window.contentView?.superview else { return }
         let point = event.locationInWindow
-        guard point.x >= browser.spaceRailWidth,
-              let hit = frame.hitTest(frame.convert(point, from: nil)),
+        guard let hit = frame.hitTest(frame.convert(point, from: nil)),
               hit.isDescendant(of: column) else { return }
         if event.type == .leftMouseDown {
             floatingPress = point
@@ -1304,8 +1303,8 @@ final class Brim {
 
         // Full screen or not, only a column put away comes out as a card.
         if browser.prefs.sidebar, browser.prefs.sideShut {
-            let rail = browser.spaceRailWidth
-            let onRail = rail > 0 && pointer.x >= frame.minX && pointer.x < frame.minX + rail
+            let rail = browser.railInsideColumn
+            let onRail = rail > 0 && here.x >= 0 && here.x < rail
                 && fromTop >= browser.menuDown && fromTop < frame.height
             let reach = browser.presentedSidebarWidth + Metrics.floatInset + Metrics.floatSafe
             // In a window only the left edge brings the column out; its top

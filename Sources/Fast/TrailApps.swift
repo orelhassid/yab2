@@ -232,7 +232,7 @@ struct TrailAppButton: View {
                 Text(Tab.monogram(for: app.id)).font(.system(size: SideBar.mark, weight: .medium))
             }
         }
-        .keyTip(app.title, side: .right)
+        .keyTip(app.title, side: browser.trailFlank == .right ? .left : .right)
         .steadyMenu(actions: true) {
             Button(Command.unpinTrailApp.title, mark: "pin.slash") { TrailApps.shared.remove(app.id, in: browser) }
         }

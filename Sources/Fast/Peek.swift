@@ -291,7 +291,7 @@ struct ColumnHost: NSViewRepresentable {
 
     func updateNSView(_ view: ColumnView, context: Context) {
         let moving = context.transaction.animation != nil && !context.transaction.disablesAnimations
-        view.setRailWidth(browser.railInsideColumn)
+        view.setRailWidth(browser.railInsideColumn, flank: browser.flank)
         view.slide(out: !prefs.sideShut || browser.peek.out, animated: moving)
     }
 }
@@ -357,11 +357,13 @@ final class ColumnView: NSView {
     required init?(coder: NSCoder) { nil }
 
     private var railWidth: CGFloat = 0
+    private var railFlank: Flank = .left
     private let columnMask = CALayer()
 
-    func setRailWidth(_ width: CGFloat) {
-        guard width != railWidth else { return }
+    func setRailWidth(_ width: CGFloat, flank: Flank) {
+        guard width != railWidth || flank != railFlank else { return }
         railWidth = width
+        railFlank = flank
         needsLayout = true
     }
 
@@ -373,7 +375,7 @@ final class ColumnView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         columnMask.backgroundColor = NSColor.black.cgColor
-        columnMask.frame = bounds.divided(atDistance: railWidth, from: .minXEdge).remainder
+        columnMask.frame = bounds.divided(atDistance: railWidth, from: railFlank == .left ? .minXEdge : .maxXEdge).remainder
         layer?.mask = railWidth > 0 ? columnMask : nil
         CATransaction.commit()
     }
@@ -388,7 +390,7 @@ final class ColumnView: NSView {
         let width = (docked ? browser.sideShown : Metrics.floatInset + browser.presentedSidebarWidth) + Metrics.edgeReach / 2
         // From the edge the column is on.
         let x = browser.flank == .left ? local.x : bounds.width - local.x
-        guard local.x >= railWidth, x >= 0 else { return nil }
+        guard x >= railWidth else { return nil }
         // The island's open card may stand out over the page from the
         // column's foot: there it takes the pointer where its glass is.
         guard x <= width else {

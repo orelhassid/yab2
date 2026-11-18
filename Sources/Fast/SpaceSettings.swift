@@ -86,11 +86,11 @@ struct SpacesPage: View {
                 // own: a row in the hand moves over the others, and the
                 // form's cells would clip it.
                 Section {
-                    if prefs.showLeftTrail {
-                        SettingsRow("Spaces on left trail") {
+                    if prefs.trailPosition != .off {
+                        SettingsRow("Spaces on the trail") {
                             Stepper(value: $trailLimit, in: TrailSpaceLimit.range) {
                                 Text(trailLimit.formatted()).monospacedDigit()
-                            }.fixedSize().accessibilityLabel("Spaces on left trail")
+                            }.fixedSize().accessibilityLabel("Spaces on the trail")
                         }.settingsAnchor("trail-space-limit")
                     }
                     SpaceList(browser: browser, model: model)

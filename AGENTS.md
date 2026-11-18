@@ -65,9 +65,9 @@ permissions) go in `NativeActions.controlled`.
   a colon or a new sentence.
 - No explanatory captions under settings, titles or pickers; a second line
   only for data.
-- Visible changes (menus, layout, icons, colors, motion, copy) need a
-  maintainer's yes on a picture before the code: open an issue with the
-  screen as it is and your proposal.
+- For new user-facing features, get a maintainer's approval on a picture
+  before implementation. Changes to existing features, including layout,
+  styling, copy and interaction refinements, can proceed directly.
 
 ## Incremental build failures
 

@@ -93,6 +93,12 @@ final class MouseGestureInput {
     private var stroke: MouseStroke?
     private var hold: Task<Void, Never>?
     private var wheel: RadialMenuHost?
+    private let pages = NSHashTable<NSView>.weakObjects()
+    private var dropdown: RadialDropdownHost?
+    private var submenu: RadialDropdownHost?
+    private var dropdownMoved = false
+    func registerPage(_ page: NSView) { pages.add(page) }
+
     private var wheelMoved = false
     private var replaying = false
     private var trail: MouseTrailHost?
@@ -114,6 +120,11 @@ final class MouseGestureInput {
     private func clear() {
         hold?.cancel()
         hold = nil
+        dropdown?.removeFromSuperview()
+        submenu?.removeFromSuperview()
+        dropdown = nil
+        submenu = nil
+        dropdownMoved = false
         wheel?.removeFromSuperview()
         wheel = nil
         wheelMoved = false
@@ -150,10 +161,22 @@ final class MouseGestureInput {
             guard !Task.isCancelled, let self, let browser,
                   let window, window.isKeyWindow, window.attachedSheet == nil,
                   target?.window === window, let root = window.contentView, let down else { return }
-            let spaces = browser.spacesShown && !browser.blank ? browser.spaces : []
-            let menu = RadialMenu(spaces: spaces, available: RadialSelection.commands.map {
+            let spaces = browser.spacesShown ? browser.spaces : []
+            let slots = RadialPreferences.saved
+            if Store.settings.string(forKey: RadialPreferences.layoutKey) == "dropdown" {
+                dropdown = RadialDropdownHost.place(rows: RadialDropdownRow.commands(slots, browser: browser),
+                    paint: SpacePaint(browser.prefs), in: root, near: root.convert(down.locationInWindow, from: nil)) { [weak self] i in
+                        guard let self else { return }
+                        if let command = slots[i] {
+                            self.clear()
+                            RadialPreferences.run(command, in: browser)
+                        } else { self.openSpaces(in: browser, index: i) }
+                    }
+                return
+            }
+            let menu = RadialMenu(paint: SpacePaint(browser.prefs), spaces: spaces, available: slots.map {
                 $0?.available(in: browser) ?? !spaces.isEmpty
-            })
+            }, selection: RadialSelection(slots: slots))
             let host = RadialMenuHost(rootView: menu)
             host.sizingOptions = []
             let side = min(RadialMenu.side, root.bounds.width, root.bounds.height)
@@ -168,6 +191,46 @@ final class MouseGestureInput {
         }
     }
 
+    private func openSpaces(in browser: Browser, index: Int) {
+        guard let dropdown, let root = dropdown.superview, submenu == nil else { return }
+        let spaces = browser.spaces
+        let rows = spaces.map { RadialDropdownRow(title: $0.name, icon: $0.icon, spaceIcon: true, checked: $0.id == browser.spaceID) }
+        let rowOffset = RadialDropdown.inset + CGFloat(index) * RadialDropdown.rowHeight
+        let y = root.isFlipped ? dropdown.frame.minY + rowOffset : dropdown.frame.maxY - rowOffset
+        submenu = RadialDropdownHost.place(rows: rows, paint: SpacePaint(browser.prefs), in: root,
+            near: CGPoint(x: 0, y: y), parent: dropdown) { [weak self] i in
+                self?.clear()
+                if browser.spaces.contains(where: { $0.id == spaces[i].id }) { browser.switchSpace(to: spaces[i].id) }
+            }
+    }
+
+    private func trackDropdown(_ point: CGPoint, browser: Browser) -> (RadialDropdownHost, Int)? {
+        guard let dropdown else { return nil }
+        if let submenu, submenu.bounds.contains(submenu.convert(point, from: nil)) {
+            let i = submenu.row(at: point)
+            submenu.highlight(i)
+            return i.map { (submenu, $0) }
+        }
+        submenu?.highlight(nil)
+        guard let i = dropdown.row(at: point) else {
+            if submenu == nil { dropdown.highlight(nil) }
+            return nil
+        }
+        guard dropdown.rootView.rows[i].enabled else {
+            dropdown.highlight(nil)
+            submenu?.removeFromSuperview()
+            submenu = nil
+            return nil
+        }
+        if dropdown.rootView.selected != i {
+            submenu?.removeFromSuperview()
+            submenu = nil
+        }
+        dropdown.highlight(i)
+        if dropdown.rootView.rows[i].children { openSpaces(in: browser, index: i) }
+        return (dropdown, i)
+    }
+
     private func finishWheel(in browser: Browser, at location: CGPoint) {
         guard let wheel else { return }
         if wheelMoved { wheel.track(location) }
@@ -180,10 +243,8 @@ final class MouseGestureInput {
             if browser.spacesShown, browser.spaces.contains(where: { $0.id == id }) {
                 browser.switchSpace(to: id)
             }
-        } else if RadialSelection.commands[index] == .downloads {
-            browser.showLibrary(.downloads)
-        } else {
-            RadialSelection.commands[index]?.run(in: browser)
+        } else if let command = menu.selection.slots[index] {
+            RadialPreferences.run(command, in: browser)
         }
     }
 
@@ -194,7 +255,9 @@ final class MouseGestureInput {
             if current is any PageHandle { return current }
             view = current.superview
         }
-        return nil
+        return pages.allObjects.first { view in
+            view.window === window && !view.isHiddenOrHasHiddenAncestor && view.visibleRect.contains(view.convert(location, from: nil))
+        }
     }
 
     private func handle(_ event: NSEvent) -> NSEvent? {
@@ -202,6 +265,29 @@ final class MouseGestureInput {
               let w = event.window, w.isKeyWindow, w.attachedSheet == nil,
               let browser = BrowserWindows.shared.browser(for: w) else { clear(); return event }
         if w !== window { clear() }
+        if let dropdown {
+            switch event.type {
+            case .rightMouseDragged, .mouseMoved:
+                dropdownMoved = true
+                _ = trackDropdown(event.locationInWindow, browser: browser)
+                return nil
+            case .rightMouseUp:
+                down = nil
+                if dropdownMoved {
+                    if let (host, i) = trackDropdown(event.locationInWindow, browser: browser) { host.rootView.choose(i) }
+                    else { clear() }
+                }
+                return nil
+            case .leftMouseDown:
+                if [dropdown, submenu].compactMap({ $0 }).contains(where: { $0.bounds.contains($0.convert(event.locationInWindow, from: nil)) }) { return event }
+                clear()
+                return event
+            case .keyDown where event.keyCode == 53:
+                clear()
+                return nil
+            default: break
+            }
+        }
         let point = CGPoint(x: event.locationInWindow.x, y: -event.locationInWindow.y)
         let option = event.modifierFlags.intersection([.option, .command, .control, .shift]) == .option
         let gesturesEnabled = Store.settings.bool(forKey: MouseMappings.enabledKey)

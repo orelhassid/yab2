@@ -7671,6 +7671,8 @@ final class Bench {
                 "custom": browser.prefs.backdropColor.hex,
                 "sidebar": browser.prefs.sidebar,
                 "flank": browser.prefs.sideFlank.rawValue,
+                "trailPosition": browser.prefs.trailPosition.rawValue,
+                "trailFlank": browser.trailFlank?.rawValue ?? "off",
                 "appearance": NSApp.appearance?.name.rawValue ?? "system",
                 // What the app is drawn in once the Mac's has been taken in.
                 "effectiveAppearance": NSApp.effectiveAppearance.name.rawValue,
@@ -9781,7 +9783,7 @@ final class Bench {
     func spaceHead(_ browser: Browser) -> [String: [Double]] {
         guard let top = browser.nameTop, let window = Links.window, let screen = NSScreen.screens.first else { return [:] }
         let column = browser.flank == .left ? 0 : window.frame.width - browser.prefs.sideWidth
-        let local = CGRect(x: column + browser.railInsideColumn + SideBar.margin, y: top, width: browser.sidebarContentWidth - 2 * SideBar.margin, height: SideBar.row)
+        let local = CGRect(x: column + browser.leadingRailInsideColumn + SideBar.margin, y: top, width: browser.sidebarContentWidth - 2 * SideBar.margin, height: SideBar.row)
         let onScreen = local.offsetBy(dx: window.frame.minX, dy: screen.frame.maxY - window.frame.maxY)
         func values(_ r: CGRect) -> [Double] { [r.minX, r.minY, r.width, r.height].map { Double($0) } }
         return ["window": values(local), "screen": values(onScreen)]

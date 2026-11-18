@@ -602,6 +602,7 @@ final class ActionMenuList: ObservableObject {
 
 struct ActionMenuView: View {
     @ObservedObject var list: ActionMenuList
+    @Environment(\.tone) private var tone
 
     // The Mac's own menu's rhythm on yab's scale (MenuMetrics).
     static let row = MenuMetrics.row
@@ -636,7 +637,7 @@ struct ActionMenuView: View {
             }
         }
         .frame(width: list.width, height: Self.height(list))
-        .modifier(ActionMenuGlass())
+        .modifier(ActionMenuGlass(tone: tone))
         .transaction { $0.animation = nil }
     }
 
@@ -655,7 +656,7 @@ struct ActionMenuView: View {
             if list.lines.isEmpty {
                 Text("No actions")
                     .font(.system(size: MenuMetrics.words))
-                    .foregroundStyle(Palette.muted)
+                    .foregroundStyle(Palette.muted(on: tone))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, MenuMetrics.inset)
                     .frame(height: rowHeight)
@@ -673,7 +674,7 @@ struct ActionMenuView: View {
     }
 
     private func row(_ line: ActionMenuList.Line) -> some View {
-        let ink = line.enabled ? Palette.ink : Palette.faint
+        let ink = line.enabled ? Palette.strong(on: tone) : Palette.faint(on: tone)
         return HStack(spacing: MenuMetrics.iconGap) {
             // A line with no mark keeps the marks' column, so every title
             // starts in one place, as the Mac's own menus have them.
@@ -702,7 +703,7 @@ struct ActionMenuView: View {
             Spacer(minLength: 0)
             if let detail = line.detail {
                 Text(detail)
-                    .foregroundStyle(Palette.muted)
+                    .foregroundStyle(Palette.muted(on: tone))
                     .lineLimit(1)
                     .layoutPriority(1)
             }
@@ -710,16 +711,16 @@ struct ActionMenuView: View {
             if line.checked {
                 Symbol("checkmark", size: 10, weight: .semibold, side: 14).foregroundStyle(ink)
             } else if line.submenu != nil {
-                Symbol("chevron.right", size: 9, weight: .semibold, side: 12).foregroundStyle(Palette.muted)
+                Symbol("chevron.right", size: 9, weight: .semibold, side: 12).foregroundStyle(Palette.muted(on: tone))
             } else if !line.keys.isEmpty {
-                Text(line.keys).font(.system(size: 13)).foregroundStyle(Palette.muted)
+                Text(line.keys).font(.system(size: 13)).foregroundStyle(Palette.muted(on: tone))
                     .fixedSize()
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                         list.keyFrames[line.id] = frame
                     }
             } else if let from = line.from {
                 Text(from)
-                    .foregroundStyle(Palette.muted)
+                    .foregroundStyle(Palette.muted(on: tone))
                     .lineLimit(1)
             }
         }
@@ -728,7 +729,8 @@ struct ActionMenuView: View {
         .frame(height: rowHeight)
         .background(
             RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                .fill(Color.primary.opacity(line.id == list.highlighted && line.enabled ? 0.1 : 0))
+                .fill((tone == nil ? Color.primary.opacity(0.1) : Palette.wash(on: tone))
+                    .opacity(line.id == list.highlighted && line.enabled ? 1 : 0))
         )
         .contentShape(Rectangle())
         .onContinuousHover { phase in
@@ -772,11 +774,18 @@ struct ActionMenuView: View {
 /// plate, lifted by its own shadow, its window casting none (ActionMenu.room).
 struct ActionMenuGlass: ViewModifier {
     var corner: CGFloat = Radius.floating
+    var tone: Tone? = nil
     @Environment(\.accessibilityReduceTransparency) private var solid
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
-        if #available(macOS 26.0, *), !solid {
+        if let tone {
+            content
+                .clipShape(shape)
+                .background(tone.color, in: shape)
+                .overlay { shape.strokeBorder(Color(nsColor: SpaceSurface.rim(on: tone)), lineWidth: 1).allowsHitTesting(false) }
+                .shadow(color: .black.opacity(0.16), radius: 14, y: 6) // design: same lift as the neutral menu
+        } else if #available(macOS 26.0, *), !solid {
             content
                 .clipShape(shape)
                 .background(.regularMaterial, in: shape)
@@ -820,6 +829,7 @@ final class ActionMenuLayout: ObservableObject {
 
 struct ActionMenuStack: View {
     @ObservedObject var layout: ActionMenuLayout
+    let tone: Tone?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -832,6 +842,7 @@ struct ActionMenuStack: View {
             }
         }
         .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
+        .toned(tone)
     }
 }
 
@@ -868,15 +879,15 @@ enum ActionMenu {
     /// Room round the plates for their shadow, as DropPopup has.
     static let room = DropPopup.room
 
-    static func show(_ menu: NSMenu, from view: NSView, with event: NSEvent, scope: SidebarSpaceActions? = nil) {
+    static func show(_ menu: NSMenu, from view: NSView, with event: NSEvent, scope: SidebarSpaceActions? = nil, tone: Tone? = nil) {
         guard let window = view.window else { return }
-        show(menu, in: window, at: window.convertPoint(toScreen: event.locationInWindow), scope: scope)
+        show(menu, in: window, at: window.convertPoint(toScreen: event.locationInWindow), scope: scope, tone: tone)
     }
 
     /// `pointer` on the screen, where the press was. `up`: rising from it
     /// or falling whatever room there is (the column's plus, whose menu
     /// stands over it); `done`, once it is put away.
-    static func show(_ menu: NSMenu, in window: NSWindow, at pointer: NSPoint, up: Bool? = nil, scope: SidebarSpaceActions? = nil, done: (() -> Void)? = nil) {
+    static func show(_ menu: NSMenu, in window: NSWindow, at pointer: NSPoint, up: Bool? = nil, scope: SidebarSpaceActions? = nil, tone: Tone? = nil, done: (() -> Void)? = nil) {
         close()
         self.done = done
         menu.appearance = window.effectiveAppearance
@@ -900,14 +911,14 @@ enum ActionMenu {
         panel.level = window.level
         panel.isReleasedWhenClosed = false
         panel.room = room
-        panel.appearance = window.effectiveAppearance
+        panel.appearance = tone?.appearance ?? window.effectiveAppearance
         lists = [list]
         plates = [plate]
         self.panel = panel
         self.list = list
         self.menu = menu
         relayout()
-        let host = NSHostingView(rootView: ActionMenuStack(layout: layout))
+        let host = NSHostingView(rootView: ActionMenuStack(layout: layout, tone: tone))
         // Yab sets this window's frame; SwiftUI keeping it inside the content's
         // least and greatest size after each window layout can loop (crash #112).
         host.sizingOptions = []

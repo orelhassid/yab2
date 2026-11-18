@@ -852,11 +852,13 @@ struct HotkeyKeyCap: View {
     /// A cap in a settings row, where it stands beside a line of text rather
     /// than on a surface of its own, and must not tower over it.
     var snug = false
+    @Environment(\.tone) private var tone
 
     var body: some View {
         // The one way a key is drawn (KeyGlyphs), plate and all: a cap of
         // its own around it put a plate inside a plate.
-        KeyGlyphs(keys: symbol, size: fontSize, tint: nil)
+        KeyGlyphs(keys: symbol, size: fontSize, tint: tone.map { dimmed ? Palette.faint(on: $0) : Palette.strong(on: $0) },
+                  plate: tone.map { SpaceSurface.badge(on: $0) })
             .foregroundStyle(dimmed ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
     }
 }

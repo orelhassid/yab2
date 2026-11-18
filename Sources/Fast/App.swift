@@ -982,7 +982,7 @@ struct ContentView: View {
                     // lies on, as it does with no backdrop at all.
                     Palette.ground
                         .padding(.leading, browser.leadingSidebarRoom) // design: reserve the rail independently of the tab column on either side
-                        .padding(.trailing, browser.flank == .right ? browser.sideShown : 0) // design: only the right-hand tab column occupies this edge
+                        .padding(.trailing, browser.trailingSidebarRoom) // design: reserve the rail independently of the tab column on either side
                 } else {
                 // Not under the tabs: a real view takes a click before
                 // anything SwiftUI draws over it, and over the whole window
@@ -992,7 +992,7 @@ struct ContentView: View {
                 BackdropDrag(
                     strip: browser.topPeek,
                     reserved: browser.leadingSidebarRoom,
-                    trailing: browser.prefs.sidebar && browser.flank == .right ? browser.sideShown : 0,
+                    trailing: browser.trailingSidebarRoom,
                     top: !browser.prefs.sidebar, shut: browser.prefs.stripShut, shelf: shelfRoom
                 )
                 }
@@ -1020,7 +1020,7 @@ struct ContentView: View {
                 // one surface either way (see Column), and only this room
                 // is laid out, so the page makes room for it in the same
                 // beat as it changes shape.
-                if sidebar && (browser.flank == .left || browser.spaceRailWidth > 0) {
+                if browser.leadingSidebarRoom > 0 {
                     Color.clear
                         .frame(width: browser.leadingSidebarRoom)
                         .transition(.move(edge: .leading))
@@ -1211,9 +1211,9 @@ struct ContentView: View {
                 .modifier(HeadSunk(peek: browser.headPeek, band: sidebar && browser.headBand, laid: laid, shelf: shelfRoom))
 
                 // On the right, the same room after the page.
-                if sidebar && browser.flank == .right {
+                if browser.trailingSidebarRoom > 0 {
                     Color.clear
-                        .frame(width: browser.sideShown)
+                        .frame(width: browser.trailingSidebarRoom)
                         .transition(.move(edge: .trailing))
                 }
             }
@@ -1239,7 +1239,7 @@ struct ContentView: View {
                         HeadBand(browser: browser)
                     }
                 }
-                    .padding(.trailing, browser.sideShown)
+                    .padding(.trailing, browser.trailingSidebarRoom)
                     .modifier(HeadShown(peek: browser.headPeek))
                     .transition(.opacity)
             } }
@@ -1368,6 +1368,7 @@ struct ContentView: View {
             // paper are laid out there at once and drawn there by Core
             // Animation on the same one, WebKit following.
             PageContent(browser: browser, preview: browser.splitPreview, tab: tab, corner: corner, showBar: showBar, front: front)
+                .background { GestureSurface { MouseGestureInput.shared.registerPage($0) } }
                 .transaction { if browser.splitRooming { $0.animation = nil } }
                 // No bar to hold reading mode's book and Aa: they stand in
                 // the page's corner while it is read (ReadingPlate).
@@ -1503,12 +1504,11 @@ struct ContentView: View {
     private var margins: EdgeInsets {
         guard laid else { return EdgeInsets() }
         let inset = Backdrop.inset
-        let left = browser.flank == .left
         return EdgeInsets(
             top: band == 0 && shelfRoom == 0 ? inset : 0,
             leading: max(0, inset - browser.leadingSidebarRoom),
             bottom: inset,
-            trailing: left ? inset : max(0, inset - browser.sideShown)
+            trailing: max(0, inset - browser.trailingSidebarRoom)
         )
     }
 
@@ -1694,11 +1694,12 @@ struct ContentView: View {
                     // both when drawing and when receiving clicks.
                     card
                         .zIndex(browser.fieldShowing ? 0 : 2)
-                    if browser.spaceRailWidth > 0 {
+                    if let flank = browser.trailFlank {
                         Worn(browser: browser, mode: browser.prefs.backdrop, swatch: backdropTone, glassActive: glassActive) { tone in
-                            SpaceRail(browser: browser)
+                            SpaceRail(browser: browser, flank: flank)
                                 .toned(tone)
                         }
+                        .frame(maxWidth: .infinity, alignment: flank.alignment)
                         .padding(.top, browser.menuDown)
                         .ignoresSafeArea()
                         .zIndex(3)
@@ -1933,7 +1934,7 @@ struct ContentView: View {
     /// column's top band, in the same beat as the page.
     @ViewBuilder
     private var stillLights: some View {
-        if browser.stillLights || (browser.railInsideColumn > 0 && !browser.prefs.sideShut && !browser.titleLights && !browser.fullScreen && !frontImmersed) {
+        if browser.stillLights || (browser.leadingRailInsideColumn > 0 && !browser.prefs.sideShut && !browser.titleLights && !browser.fullScreen && !frontImmersed) {
             Lights()
                 .frame(width: Lights.run, height: Metrics.row)
                 .padding(.leading, Lights.first - Lights.lead)
@@ -2688,6 +2689,7 @@ struct ContentView: View {
         // Escape puts the page back. On an empty private tab there is no page
         // to put back, so it belongs to whatever else wants it.
         if event.keyCode == 53, flags.intersection([.command, .option, .control, .shift]).isEmpty {
+            if HomeTab.cancelDrag(in: event.window) { return true }
             if browser.editingTab != nil {
                 browser.cancelTabEdit()
                 return true
@@ -2781,6 +2783,8 @@ struct ContentView: View {
             // A row being written in a place: Tab goes from field to field.
             if browser.query.edit != nil { return false }
             guard browser.fieldShowing else { return false }
+            // The empty Home search and its controls use the window's focus order.
+            if browser.showsHomeField && browser.typed.isEmpty { return false }
             // A site the words name: Tab searches it (see Scopes), ahead of
             // finishing its address, which is what the site's name was for.
             // Other words: Tab asks the agent them at once (askOnTab).

@@ -2329,7 +2329,6 @@ private struct ChatHistory: View {
     @State private var words = ""
     @State private var open = ChatCards.open
     @State private var place = ScrollPosition(point: CGPoint(x: 0, y: ChatCards.offset))
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private var found: [Chat] {
         let terms = words.lowercased().split(separator: " ").map(String.init)
@@ -2442,33 +2441,8 @@ private struct ChatHistory: View {
                 ChatCards.shown = (frame.minY + Self.under)...max(frame.minY + Self.under, frame.maxY)
                 ChatCards.width = frame.width
             }
-            // Settings' search: a capsule of glass, its mark, the words and a clear.
-            HStack(spacing: 6) {
-                Symbol("magnifyingglass", size: 12)
-                    .foregroundStyle(.secondary)
-                TextField("Search chats\u{2026}", text: $words)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .onExitCommand { words = "" }
-                if !words.isEmpty {
-                    Button { words = "" } label: {
-                        Symbol("xmark.circle.fill", size: 12)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .focusable(false)
-                    .accessibilityLabel("Clear")
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background {
-                if #available(macOS 26.0, *), !reduceTransparency {
-                    Color.clear.glassEffect(.regular, in: .capsule)
-                } else {
-                    Capsule().fill(.regularMaterial)
-                }
-            }
+            ThemedSearchField("Search chats…", text: $words)
+                .onExitCommand { words = "" }
             .padding(.horizontal, 10)
             .padding(.bottom, 8)
             .padding(.top, ChatHead.listHeight)

@@ -1621,6 +1621,7 @@ struct SettingsLibrarySearch: View {
 private struct SettingsLibraryNavigation: View {
     @ObservedObject var model: SettingsModel
     let rows: [SettingsResult]
+    @Environment(\.tone) private var tone
     var body: some View {
         ThreadScrollView {
             VStack(alignment: .leading, spacing: 2) {
@@ -1629,7 +1630,7 @@ private struct SettingsLibraryNavigation: View {
                         let group = SettingsNavigation.groups[index]
                         VStack(alignment: .leading, spacing: 2) {
                             Text(SettingsWords.text(group.title))
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(Palette.muted(on: tone))
                                 .padding(.horizontal, CardFrame.inset)
                                 .padding(.bottom, 6)
                             ForEach(group.pages.filter { $0.available }) { page in
@@ -1641,12 +1642,12 @@ private struct SettingsLibraryNavigation: View {
                 } else {
                     ForEach(rows, id: \.self) { row in navigationRow(row) }
                     if rows.isEmpty {
-                        Text("No results").font(CardFrame.detail).foregroundStyle(Palette.muted)
+                        Text("No results").font(CardFrame.detail).foregroundStyle(Palette.muted(on: tone))
                     }
                 }
             }
         }
-        .foregroundStyle(Palette.ink)
+        .foregroundStyle(Palette.strong(on: tone))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     private func pageRow(_ page: SettingsPage) -> some View {
@@ -1773,6 +1774,7 @@ private struct SearchField: NSViewRepresentable {
 
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
+        field.textColor = context.environment.tone.map { Palette.shades($0).strongNS } ?? .labelColor
         if field.stringValue != text { field.stringValue = text }
     }
 }
@@ -2796,6 +2798,7 @@ struct GlassTrack<Option: Hashable>: View {
     private var inner: RoundedRectangle { RoundedRectangle(cornerRadius: button == nil ? height / 2 : Radius.small, style: .continuous) }
     private var outer: RoundedRectangle { RoundedRectangle(cornerRadius: button == nil ? height / 2 + inset : Radius.control, style: .continuous) }
 
+    @Environment(\.tone) private var tone
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -2815,7 +2818,7 @@ struct GlassTrack<Option: Hashable>: View {
                             label(other).hidden()
                         }
                         label(option)
-                            .foregroundStyle(selection == option.value ? .primary : .secondary)
+                            .foregroundStyle(selection == option.value ? Palette.strong(on: tone) : Palette.muted(on: tone))
                     }
                         .padding(.horizontal, room)
                         .frame(maxWidth: .infinity)
@@ -2835,7 +2838,7 @@ struct GlassTrack<Option: Hashable>: View {
             GeometryReader { geometry in
                 let width = geometry.size.width / CGFloat(max(options.count, 1))
                 inner
-                    .fill(scheme == .dark ? Color.white.opacity(0.15) : Color.white.opacity(0.94))
+                    .fill(tone.map { Palette.wash(on: $0) } ?? (scheme == .dark ? Color.white.opacity(0.15) : Color.white.opacity(0.94)))
                     .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.10), radius: 2, y: 1)
                     .frame(width: width)
                     .offset(x: width * CGFloat(index))
@@ -2846,7 +2849,9 @@ struct GlassTrack<Option: Hashable>: View {
         }
         .padding(inset)
         .background {
-            if #available(macOS 26.0, *), !reduceTransparency {
+            if let tone {
+                outer.fill(Palette.resting(on: tone, hovering: false))
+            } else if #available(macOS 26.0, *), !reduceTransparency {
                 Color.clear.glassEffect(.regular, in: outer)
             } else {
                 outer.fill(Color(nsColor: .controlBackgroundColor))
@@ -3211,6 +3216,7 @@ struct SettingsDetail: View {
     /// How much of the page shows under the toolbar (settingsPageHeight).
     @State private var pageHeight: CGFloat = 0
     @State private var bringsOpenTabs = false
+    @Environment(\.tone) private var tone
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -3221,9 +3227,17 @@ struct SettingsDetail: View {
             }
             let collections = SettingsNavigation.collections(for: model.page)
             if collections.contains(model.page) {
-                Picker("Section", selection: Binding(get: { model.page }, set: { model.go($0) })) {
-                    ForEach(collections) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented).labelsHidden().fixedSize().padding(.horizontal, CardFrame.inset)
+                let selection = Binding(get: { model.page }, set: { model.go($0) })
+                Group {
+                    if tone != nil {
+                        GlassTrack(title: "Section", options: collections.map { ($0.title, $0) },
+                                   button: .small, room: 9, selection: selection)
+                    } else {
+                        Picker("Section", selection: selection) {
+                            ForEach(collections) { Text($0.title).tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden()
+                    }
+                }.fixedSize().padding(.horizontal, CardFrame.inset)
             }
             if inLibrary { SettingsTabToolbar(browser: browser, model: model) }
             ScrollViewReader { scroller in
@@ -3237,7 +3251,7 @@ struct SettingsDetail: View {
             }
         }
         .environment(\.settingsInLibrary, inLibrary)
-        .foregroundStyle(inLibrary ? Palette.ink : Color.primary)
+        .foregroundStyle(inLibrary ? Palette.strong(on: tone) : Color.primary)
 
     }
 
@@ -3330,7 +3344,9 @@ struct SettingsDetail: View {
             case .autofill: AutofillPage(browser: browser, prefs: prefs)
             case .privacy: PrivacyPage(browser: browser, prefs: prefs, model: model)
                 WebsitesPage(prefs: prefs, model: model)
-            case .mouse: MouseGestureSettings()
+            case .mouse:
+                RadialSettings(browser: browser)
+                MouseGestureSettings()
             case .shortcuts: EmptyView() // Own lazy list (pageRows).
             case .about:
                 UpdateSettingsSection(browser: browser)

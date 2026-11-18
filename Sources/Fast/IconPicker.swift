@@ -233,16 +233,17 @@ struct IconPicker: View {
     var space: [String]? = nil
     let spaceName: String?
     let bookmark: Bookmark?
+    let profile: (id: UUID, name: String)?
     let rename: ((String) -> Void)?
     @State private var spacePreview: FolderTint?
-    private var customizing: Bool { folder != nil || spaceName != nil || bookmark != nil }
+    private var showsPalette: Bool { folder != nil || spaceName != nil || bookmark != nil }
+    private var customizing: Bool { showsPalette || profile != nil }
     let pick: (String?) -> Void
     let close: () -> Void
     var cancel: (() -> Void)? = nil
     var setColor: ((FolderTint) -> Void)? = nil
     var chooseImage: (() -> Void)? = nil
     /// Emoji alone, with no Icon page: a project's face.
-    var profilePicture = false
     var emojiOnly = false
 
     private enum Kind: Hashable { case emoji, icon }
@@ -266,6 +267,7 @@ struct IconPicker: View {
     @State private var onColors = false
     @State private var chosenColor: FolderTint?
     @FocusState private var typing: Bool
+    @Environment(\.tone) private var tone
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let across = 8
@@ -273,11 +275,12 @@ struct IconPicker: View {
 
     init(mark: String?, folder: Nest? = nil, space: [String]? = nil, spaceName: String? = nil, spaceTint: FolderTint? = nil, pick: @escaping (String?) -> Void, close: @escaping () -> Void,
          cancel: (() -> Void)? = nil, setColor: ((FolderTint) -> Void)? = nil, chooseImage: (() -> Void)? = nil,
-         emojiOnly: Bool = false, profilePicture: Bool = false, bookmark: Bookmark? = nil, rename: ((String) -> Void)? = nil) {
+         emojiOnly: Bool = false, bookmark: Bookmark? = nil, profile: (id: UUID, name: String)? = nil,
+         rename: ((String) -> Void)? = nil) {
         self.bookmark = bookmark
+        self.profile = profile
         self.rename = rename
         self.mark = mark
-        self.profilePicture = profilePicture
         self.emojiOnly = emojiOnly
         self.folder = folder
         self.space = space
@@ -294,7 +297,7 @@ struct IconPicker: View {
 
     /// A space's offered emoji, two rows of them.
     private var suggested: [Item] {
-        let first = profilePicture ? ["🦊", "🐻", "🐼", "🦉", "🐰", "🐱", "🐶", "🐺", "🦁", "🐨", "🐧", "🐸"] : (space ?? [])
+        let first = profile != nil ? ["🦊", "🐻", "🐼", "🦉", "🐰", "🐱", "🐶", "🐺", "🦁", "🐨", "🐧", "🐸"] : (space ?? [])
         return first.filter(Spaces.isEmoji).prefix(2 * Self.across).map { Item(id: $0, part: "suggested") }
     }
 
@@ -305,7 +308,11 @@ struct IconPicker: View {
             VStack(spacing: 0) {
                 if customizing {
                     Group {
-                        if let folder {
+                        if let profile {
+                            CustomizeHeader(name: profile.name, tint: nil, rename: rename, allowsEmptyName: true) { _ in
+                                ProfilePicture(profile: profile.id, size: 48)
+                            }
+                        } else if let folder {
                             FolderCustomizeHeader(folder: folder)
                         } else if let name = bookmark?.title ?? spaceName {
                             CustomizeHeader(name: name, tint: spacePreview ?? chosenColor, rename: rename) { _ in
@@ -314,15 +321,16 @@ struct IconPicker: View {
                         }
                     }
                     .padding(.vertical, 12)
-                    palette
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 12)
+                    if showsPalette {
+                        palette
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 12)
+                    }
                     Divider()
                 }
-                if profilePicture { kindSelector }
                 HStack(spacing: 6) {
                     field(items)
-                    if space == nil && !profilePicture {
+                    if space == nil {
                         Button {
                             if let chooseImage { chooseImage() }
                             else {
@@ -338,7 +346,7 @@ struct IconPicker: View {
                         if (folder?.customMark ?? mark) != nil {
                             Button { pick(nil) } label: { art("restore", side: 15) }
                                 .buttonStyle(.yab(.raised, .regular, icon: .square))
-                                .keyTip(folder == nil ? "Restore Site Icon" : "Restore Folder Icon")
+                                .keyTip(profile != nil ? "Reset to Default" : folder == nil ? "Restore Site Icon" : "Restore Folder Icon")
                         }
                     }
                 }
@@ -374,7 +382,7 @@ struct IconPicker: View {
                     Divider()
                     bar(proxy)
                 }
-                if !emojiOnly && !profilePicture {
+                if !emojiOnly {
                     Divider()
                     kindSelector
                 }
@@ -479,9 +487,10 @@ struct IconPicker: View {
 
     private func field(_ items: [Item]) -> some View {
         HStack(spacing: 6) {
-            Symbol("magnifyingglass", size: 10.5).foregroundStyle(Palette.muted)
-            TextField("", text: $words, prompt: Text("Search\u{2026}").foregroundStyle(Palette.muted))
+            Symbol("magnifyingglass", size: 10.5).foregroundStyle(Palette.muted(on: tone))
+            TextField("", text: $words, prompt: Text("Search\u{2026}").foregroundStyle(Palette.muted(on: tone)))
                 .textFieldStyle(.plain)
+                .foregroundStyle(Palette.strong(on: tone))
                 .font(.system(size: 13))
                 .focused($typing)
                 // Down goes into the grid and moves a row; up, left and
@@ -504,7 +513,7 @@ struct IconPicker: View {
                     case .escape:
                         if words.isEmpty { (cancel ?? close)() } else { words = "" }
                     case .tab:
-                        guard customizing else { return .ignored }
+                        guard showsPalette else { return .ignored }
                         onColors.toggle()
                         if onColors { colorAt = colorAt ?? FolderTint.allCases.firstIndex(of: chosenColor ?? .black) }
                         else { at = at ?? 0; preview(nil) }
@@ -526,8 +535,8 @@ struct IconPicker: View {
         }
         .padding(.horizontal, 10)
         .frame(height: ButtonSize.regular.height)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Palette.ground)) // design: shared picker search input follows the approved 8 pt folder field
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.hairline, lineWidth: 1)) // design: search input border, not a card
+        .background(RoundedRectangle(cornerRadius: 8).fill(tone.map { Palette.resting(on: $0, hovering: false) } ?? Palette.ground)) // design: shared picker search input follows the approved 8 pt folder field
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(tone.map { Color(nsColor: SpaceSurface.rim(on: $0)) } ?? Palette.hairline, lineWidth: 1)) // design: search input border, not a card
     }
 
     private func move(_ step: Int, in count: Int) {
@@ -594,7 +603,7 @@ struct IconPicker: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 30)
                 .contentShape(Rectangle())
-                .background(RoundedRectangle(cornerRadius: 9).fill(kind == target ? Palette.ground : Color.clear)) // design: the selected Finder-style footer button is 9 pt
+                .background(RoundedRectangle(cornerRadius: 9).fill(kind == target ? tone.map { Palette.wash(on: $0) } ?? Palette.ground : Color.clear)) // design: the selected Finder-style footer button is 9 pt
                 .shadow(color: .black.opacity(kind == target ? 0.12 : 0), radius: 3, y: 1) // design: the selected picker tab lifts by one point
         }
         .buttonStyle(.plain)
@@ -643,6 +652,7 @@ struct IconPicker: View {
         let current: Bool
         let at: Bool
         let pick: () -> Void
+        @Environment(\.tone) private var tone
         @State private var hovering = false
 
         var body: some View {
@@ -651,11 +661,11 @@ struct IconPicker: View {
                     if item.hasPrefix("icon:"), let image = IconMarks.art(String(item.dropFirst(5))) {
                         Image(nsImage: image).renderingMode(.template).resizable()
                             .frame(width: 18, height: 18)
-                            .foregroundStyle(Palette.ink)
+                            .foregroundStyle(Palette.strong(on: tone))
                     } else if item.hasPrefix("space:") || SpaceSymbols.isSymbol(item) {
                         // The same approved drawing for folders and spaces.
                         SpaceMark(icon: item.hasPrefix("space:") ? String(item.dropFirst(6)) : item, size: 15)
-                            .foregroundStyle(Palette.ink)
+                            .foregroundStyle(Palette.strong(on: tone))
                     } else {
                         Text(item).font(.system(size: 20))
                     }
@@ -663,7 +673,8 @@ struct IconPicker: View {
                 .frame(width: IconPicker.side, height: IconPicker.side)
                 .background(
                     RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                        .fill(Palette.ink.opacity(current ? 0.1 : hovering ? 0.06 : 0))
+                        .fill(tone == nil ? Palette.ink.opacity(current ? 0.1 : hovering ? 0.06 : 0)
+                            : current ? Palette.wash(on: tone) : hovering ? Palette.hover(on: tone) : .clear)
                 )
                 .overlay {
                     if at {
@@ -699,6 +710,7 @@ private struct CustomizeHeader<Mark: View>: View {
     let name: String
     let tint: FolderTint?
     var rename: ((String) -> Void)? = nil
+    var allowsEmptyName = false
     @State private var draft = ""
     @State private var editing = false
     @FocusState private var fieldFocused: Bool
@@ -706,7 +718,7 @@ private struct CustomizeHeader<Mark: View>: View {
     private func commit(_ rename: (String) -> Void) {
         editing = false
         let clean = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !clean.isEmpty && clean != name { rename(clean) }
+        if (allowsEmptyName || !clean.isEmpty) && clean != name { rename(clean) }
     }
     @ViewBuilder let mark: (Color) -> Mark
     @Environment(\.tone) private var tone

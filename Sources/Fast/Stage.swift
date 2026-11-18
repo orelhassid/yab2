@@ -2412,6 +2412,7 @@ struct DragStrip: NSViewRepresentable {
     /// What a right click or a ⌃-click on it brings, made at the press: the
     /// column's room under its rows has the space's menu (SpaceMenu).
     var menu: (@MainActor () -> NSMenu)? = nil
+    var menuTone: Tone? = nil
     /// A context press may reach the room revealed by native scrolling,
     /// even while the unscrolled rows extend below the window.
     var contextTail: (@MainActor (NSPoint, NSView, NSEvent) -> Bool)? = nil
@@ -2429,6 +2430,7 @@ struct DragStrip: NSViewRepresentable {
         (view as? Strip)?.notch = notch
         (view as? Strip)?.leadNotch = leadNotch
         (view as? Strip)?.made = menu
+        (view as? Strip)?.menuTone = menuTone
         (view as? Strip)?.contextTail = contextTail
         (view as? Strip)?.doubled = doubled
     }
@@ -2442,6 +2444,7 @@ struct DragStrip: NSViewRepresentable {
         var notch: CGRect = .zero
         var leadNotch: CGRect = .zero
         var made: (@MainActor () -> NSMenu)?
+        var menuTone: Tone?
         var contextTail: (@MainActor (NSPoint, NSView, NSEvent) -> Bool)?
         var doubled: (@MainActor () -> Void)?
 
@@ -2462,7 +2465,7 @@ struct DragStrip: NSViewRepresentable {
         // (ActionMenu.swift).
         override func rightMouseDown(with event: NSEvent) {
             guard let menu = made?() else { return super.rightMouseDown(with: event) }
-            ActionMenu.show(menu, from: self, with: event)
+            ActionMenu.show(menu, from: self, with: event, tone: menuTone)
         }
 
         override func hitTest(_ point: NSPoint) -> NSView? {
@@ -2497,7 +2500,7 @@ struct DragStrip: NSViewRepresentable {
         override func mouseDown(with event: NSEvent) {
             if event.modifierFlags.contains(.control), let menu = made?() {
                 firstClick = nil
-                ActionMenu.show(menu, from: self, with: event)
+                ActionMenu.show(menu, from: self, with: event, tone: menuTone)
                 return
             }
             if event.clickCount == 1 { firstClickAction = doubled }

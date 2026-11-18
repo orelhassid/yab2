@@ -191,24 +191,28 @@ struct SideFoot: View {
 }
 
 extension Browser {
-    var spaceRailWidth: CGFloat {
-        prefs.showLeftTrail && prefs.sidebar && spacesShown && !blank ? SideBar.row + 2 * SideBar.margin : 0
-    }
+    var trailFlank: Flank? { spacesShown && !blank ? prefs.trailPosition.flank : nil }
+    var spaceRailWidth: CGFloat { trailFlank == nil ? 0 : SideBar.row + 2 * SideBar.margin }
 
-    var railInsideColumn: CGFloat { flank == .left ? spaceRailWidth : 0 }
+    var railInsideColumn: CGFloat { prefs.sidebar && trailFlank == flank ? spaceRailWidth : 0 }
+    var leadingRailInsideColumn: CGFloat { flank == .left ? railInsideColumn : 0 }
     /// A hover preview allows a full default column of tabs beside the trail.
     /// Keep the saved docked width available when the preview closes.
     var presentedSidebarWidth: CGFloat {
-        guard prefs.sideShut, spaceRailWidth > 0 else { return prefs.sideWidth }
+        guard prefs.sideShut, railInsideColumn > 0 else { return prefs.sideWidth }
         return hoverResizeWidth ?? max(prefs.sideWidth, Metrics.side + railInsideColumn)
     }
 
     var sidebarContentWidth: CGFloat { presentedSidebarWidth - railInsideColumn }
 
-    /// The left rail always owns its strip of the window, including while
-    /// the tab column is hidden or floating over the page.
+    /// Each edge reserves room for its docked column or its trail,
+    /// including when the column is hidden or floating over the page.
     var leadingSidebarRoom: CGFloat {
-        max(spaceRailWidth, flank == .left ? sideShown : 0)
+        max(trailFlank == .left ? spaceRailWidth : 0, flank == .left ? sideShown : 0)
+    }
+
+    var trailingSidebarRoom: CGFloat {
+        max(trailFlank == .right ? spaceRailWidth : 0, flank == .right ? sideShown : 0)
     }
 }
 
@@ -218,17 +222,19 @@ struct RailButton<Mark: View>: View {
     var selected = false
     var highlighted = false
     var grid = false
+    let keyboard: Bool
     let action: () -> Void
     @ViewBuilder let mark: () -> Mark
     @Environment(\.tone) private var tone
     @State private var hovering = false
 
     init(_ title: String, selected: Bool = false, highlighted: Bool = false, grid: Bool = false,
-         action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
+         keyboard: Bool = false, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
         self.title = title
         self.selected = selected
         self.highlighted = highlighted
         self.grid = grid
+        self.keyboard = keyboard
         self.action = action
         self.mark = mark
     }
@@ -255,7 +261,7 @@ struct RailButton<Mark: View>: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .focusable(false)
+        .focusable(keyboard)
         .onHover { hovering = $0 }
         .accessibilityLabel(title)
     }
@@ -272,7 +278,7 @@ struct TrailLibraryControls: View {
     @ObservedObject var browser: Browser
     let vertical: Bool
     @State private var preview = TrailPreviewState()
-    @State private var showingProfile = false
+    @StateObject private var profilePopover = ProfilePopover()
     @ObservedObject private var profiles = BrowserProfileIdentities.shared
 
     var body: some View {
@@ -291,13 +297,15 @@ struct TrailLibraryControls: View {
             if !vertical {
                 Spacer(minLength: SideBar.gap)
             }
-            RailButton("Profile", selected: showingProfile, action: { showingProfile.toggle() }) {
+            RailButton("Profile", selected: profilePopover.shown, keyboard: true, action: {
+                profilePopover.toggle(in: browser, preferred: vertical
+                    ? (browser.trailFlank == .right ? .trailing : .leading) : .bottom)
+            }) {
                 ProfilePicture(profile: browser.currentProfileSpace.profileID, size: SideBar.mark + 3)
             }
             .accessibilityValue(browser.activeProfileName)
-            .popover(isPresented: $showingProfile, arrowEdge: vertical ? (browser.flank == .right ? .leading : .trailing) : .bottom) {
-                ProfileSwitcher(browser: browser) { showingProfile = false }
-            }
+            .background(ProfilePopoverAnchor(popover: profilePopover).allowsHitTesting(false))
+            .onDisappear { profilePopover.close(restoreFocus: false) }
         }
 
         .frame(maxWidth: vertical ? nil : .infinity)
@@ -308,10 +316,13 @@ struct SpaceRail: View {
     @ObservedObject private var drop = SpaceDrop.shared
     @ObservedObject private var pinned = TrailApps.shared
     @ObservedObject var browser: Browser
+    let flank: Flank
+
+    private var sidebarDoor: Bool { browser.prefs.sidebar && browser.prefs.sideShut }
 
     var body: some View {
         VStack(spacing: 0) {
-            if browser.prefs.sideShut {
+            if sidebarDoor {
                 RailButton(browser.columnTitle, icon: ColumnDoor.mark(browser.flank)) { browser.toggleColumn() }
                     .keyTip(browser.columnTitle, shortcut: browser.columnTitle)
                     .accessibilityHint("Keeps the sidebar open beside the page")
@@ -355,10 +366,12 @@ struct SpaceRail: View {
         }
         .frame(width: browser.spaceRailWidth)
         .background(SpaceAnchor(kind: .trail))
-        .overlay(alignment: .trailing) {
-            HStack(spacing: 0) { Divider() }
-                .padding(.top, browser.prefs.sideShut ? 0 : Metrics.strip)
-                .allowsHitTesting(false)
+        .overlay(alignment: flank == .left ? .trailing : .leading) {
+            if browser.railInsideColumn > 0 {
+                HStack(spacing: 0) { Divider() }
+                    .padding(.top, sidebarDoor ? 0 : Metrics.strip)
+                    .allowsHitTesting(false)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Spaces, pinned apps and shortcuts")
@@ -443,7 +456,7 @@ struct SpaceRow: View {
                     RailButton("More Spaces", icon: "ellipsis", selected: more || hidden.contains { $0.id == browser.spaceID }) {
                         more.toggle()
                     }
-                    .popover(isPresented: $more, arrowEdge: browser.flank == .right ? .leading : .trailing) {
+                    .popover(isPresented: $more, arrowEdge: browser.trailFlank == .right ? .leading : .trailing) {
                         VStack(alignment: .leading, spacing: 0) {
                             Text("More Spaces").font(.headline).padding(CardFrame.inset)
                             Divider()
@@ -639,10 +652,10 @@ struct SpaceSlot: View {
             if inside, !on { DispatchQueue.main.async { [browser, id = space.id] in SpacePager.shared.prepare(browser, only: id) } }
         }
         .animation(Motion.quick, value: hovering)
-        .keyTip(space.name, keys: keys, side: inRail ? .right : .above, wait: inRail ? 0 : KeyTip.dwell, bubble: inRail)
+        .keyTip(space.name, keys: keys, side: inRail ? (browser.trailFlank == .right ? .left : .right) : .above, wait: inRail ? 0 : KeyTip.dwell, bubble: inRail)
         // The space's menu, the same as from its name in the column
         // (SpaceMenu); then the whole row as dots or not (`prefs.spaceDots`).
-        .steadyMenu(actions: true) {
+        .steadyMenu(actions: true, tone: SpaceSurface.tone(in: browser)) {
             SpaceMenu(browser: browser, space: space)
             Divider()
             // The way the row is not drawn now, with that way's mark.
@@ -795,7 +808,7 @@ struct FootPlus: View {
         .onHover { hovering = $0 }
         // Beside it, clear of the menu that rises over it, and none while
         // that menu is up.
-        .keyTip(open ? "" : "New", side: .right)
+        .keyTip(open ? "" : "New", side: inRail && browser.trailFlank == .right ? .left : .right)
         .background {
             ZStack {
                 SpaceAnchor(kind: .plus)

@@ -50,8 +50,8 @@ extension EnvironmentValues {
 extension View {
     /// `actions`: the lines in ⌘K's list with a search, not AppKit's menu
     /// (ActionMenu.swift).
-    func steadyMenu<Lines: View>(actions: Bool = false, @ViewBuilder _ lines: @escaping () -> Lines) -> some View {
-        overlay { SteadyMenuSpot(make: { NSHostingMenu(rootView: lines()) }, actions: actions) }
+    func steadyMenu<Lines: View>(actions: Bool = false, tone: Tone? = nil, @ViewBuilder _ lines: @escaping () -> Lines) -> some View {
+        overlay { SteadyMenuSpot(make: { NSHostingMenu(rootView: lines()) }, actions: actions, tone: tone) }
     }
 
     /// The menu of the half the press is in, `true` for the left: a split
@@ -65,6 +65,7 @@ private struct SteadyMenuSpot: NSViewRepresentable {
     let make: @MainActor () -> NSMenu
     var half: (@MainActor (Bool) -> NSMenu)? = nil
     var actions = false
+    var tone: Tone?
 
     func makeNSView(context: Context) -> SteadyMenuView {
         let view = SteadyMenuView()
@@ -72,6 +73,7 @@ private struct SteadyMenuSpot: NSViewRepresentable {
         view.half = half
         view.scope = context.environment.sidebarSpaceActions
         view.actions = actions
+        view.tone = tone
         return view
     }
 
@@ -80,6 +82,7 @@ private struct SteadyMenuSpot: NSViewRepresentable {
         view.half = half
         view.scope = context.environment.sidebarSpaceActions
         view.actions = actions
+        view.tone = tone
     }
 }
 
@@ -91,6 +94,7 @@ final class SteadyMenuView: NSView {
     /// Made for the half pressed in, left or not, when there are halves.
     var half: (@MainActor (Bool) -> NSMenu)?
     var actions = false
+    var tone: Tone?
     /// Stepped aside while looking for a menu under this one.
     private var aside = false
 
@@ -162,7 +166,7 @@ final class SteadyMenuView: NSView {
 
     private func pop(_ menu: NSMenu, with event: NSEvent) {
         if actions {
-            ActionMenu.show(menu, from: self, with: event, scope: scope)
+            ActionMenu.show(menu, from: self, with: event, scope: scope, tone: tone)
         } else {
             NSMenu.popUpContextMenu(menu, with: event, for: self)
         }

@@ -278,32 +278,17 @@ struct AppearancePage: View {
                 .settingsAnchor("app-icon")
         }
         Section("Sidebar") {
-            // Where the sidebar is, or that there is none: then the tabs
-            // go across the top.
-            ChoiceRow(
-                title: "Position",
-                options: [("Left", Flank.left.rawValue), ("Right", Flank.right.rawValue), ("Off", "top")],
-                width: 210,
-                selection: Binding(
-                    get: { prefs.sidebar ? prefs.sideFlank.rawValue : "top" },
-                    set: { picked in
-                        withAnimation(Motion.glide) {
-                            if let flank = Flank(rawValue: picked) {
-                                prefs.sideFlank = flank
-                                prefs.sidebar = true
-                            } else {
-                                // Asked for the tabs across the top: the
-                                // strip, not one put away (⌘S).
-                                if prefs.sidebar { prefs.stripShut = false }
-                                prefs.sidebar = false
-                            }
-                        }
-                    }
-                )
-            )
-            .settingsAnchor("sidebar")
-            SettingsSwitch("Show Left Trail", isOn: $prefs.showLeftTrail)
-                .settingsAnchor("left-trail")
+            let positions = PanelPosition.allCases.map { (title: $0.title, value: $0) }
+            ChoiceRow(title: "Sidebar Position", options: positions, width: 210, selection: Binding(
+                get: { prefs.sidebarPosition },
+                set: { position in withAnimation(Motion.glide) { prefs.sidebarPosition = position } }
+            ))
+            .settingsAnchor("sidebar-position")
+            ChoiceRow(title: "Trail Position", options: positions, width: 210, selection: Binding(
+                get: { prefs.trailPosition },
+                set: { position in withAnimation(Motion.glide) { prefs.trailPosition = position } }
+            ))
+            .settingsAnchor("trail-position")
             MenuRow("Space transition", options: SpaceTransition.allCases.map { ($0.title, $0) }, selection: $prefs.spaceTransition)
                 .settingsAnchor("space-transition")
             SettingsSwitch("Show sidebar button", isOn: $prefs.sidebarButton)

@@ -174,9 +174,7 @@ struct HistoryPanelView: View {
     var body: some View {
         let found = found
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Symbol("magnifyingglass", size: 11)
-                    .foregroundStyle(Palette.muted)
+            LibrarySearchWell(text: $words) {
                 TextField("Search this tab's history", text: $words)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12.5))
@@ -195,9 +193,6 @@ struct HistoryPanelView: View {
                     .onExitCommand { close() }
                     .onChange(of: words) { _, _ in lit = 0 }
             }
-            .padding(.horizontal, 8)
-            .frame(height: 30)
-            .background(Palette.ink.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
             ScrollViewReader { scroller in
                 ThreadScrollView {
                     VStack(alignment: .leading, spacing: 0) {

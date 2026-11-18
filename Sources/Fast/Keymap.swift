@@ -2035,15 +2035,17 @@ struct ShortcutGlyphs: View {
     @ObservedObject private var slot: KeySlot
     let size: CGFloat
     let tint: Color?
+    let plate: Color?
 
-    init(_ action: Shortcut.Action, size: CGFloat, tint: Color?) {
+    init(_ action: Shortcut.Action, size: CGFloat, tint: Color?, plate: Color? = nil) {
         slot = Keymap.shared.slot(action)
         self.size = size
         self.tint = tint
+        self.plate = plate
     }
 
     var body: some View {
-        if let keys = slot.keys?.text { KeyGlyphs(keys: keys, size: size, tint: tint) }
+        if let keys = slot.keys?.text { KeyGlyphs(keys: keys, size: size, tint: tint, plate: plate) }
     }
 }
 

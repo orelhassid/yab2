@@ -759,7 +759,7 @@ extension Browser {
     /// ⌃1 to ⌃9, the menu, a swipe.
     /// `washed`: the fingers already have the new color over the window
     /// (SpacePull), and hand it over themselves.
-    func switchSpace(to id: UUID, washed: Bool = false) {
+    func switchSpace(to id: UUID, washed: Bool = false, keepingHome: Bool = false) {
         guard windowPurpose == .normal else { return }
         // Mail's space is gone in and out of with spaces off too (MailSpace).
         let mail = id == Space.mailID || spaceID == Space.mailID
@@ -785,7 +785,7 @@ extension Browser {
         // The page in front there on screen now, from its last frame,
         // before anything of the switch is written for SwiftUI (PageStills).
         let visit = carryHome.map { $0 != id && id != Space.mailID } ?? false
-        if !visit, let row = parked[id], let front = row.tabs.first(where: { $0.id == row.active }),
+        if !visit, !keepingHome, let row = parked[id], let front = row.tabs.first(where: { $0.id == row.active }),
            !row.pairs.contains(where: { $0.contains(front.id) }) {
             showEarly(front)
         }
@@ -930,7 +930,8 @@ extension Browser {
             // whole window out for the new space there and then to keep the
             // two apart, then again for the frame, 40 ms of a switch with
             // the tabs across the top.
-            askFocus()
+            if keepingHome, !intoMail, active != nil { openFresh() }
+            else { askFocus() }
             // Drawn from the next frame on: the capsule, the strip's lead and
             // the rows' arrival start once this frame's work is done. The
             // strip's turn is begun here (StripTurns), in this transaction:
@@ -940,7 +941,10 @@ extension Browser {
             SpaceShown.shared.follow(id)
         }
         SwitchMeter.mark("written")
-        if intoMail { mailCame() } else if outOfMail { mailLeft() }
+        if intoMail {
+            mailCame()
+            if keepingHome, active != nil { openFresh() }
+        } else if outOfMail { mailLeft() }
         SwitchMeter.mark(intoMail ? "mail came" : outOfMail ? "mail left" : "arrived")
         // Back in the space whose tab in front has its video or its call
         // out: home.

@@ -465,6 +465,15 @@ enum Flank: String {
     var sign: CGFloat { self == .left ? 1 : -1 }
 }
 
+enum PanelPosition: String, CaseIterable {
+    case left, right, off
+
+    init(_ flank: Flank) { self = flank == .left ? .left : .right }
+
+    var flank: Flank? { Flank(rawValue: rawValue) }
+    var title: String { rawValue.capitalized }
+}
+
 enum Metrics {
     /// The tab strip. The window's title bar is grown to match it so the
     /// traffic lights come down with the tabs, otherwise giving the row room

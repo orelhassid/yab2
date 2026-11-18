@@ -1,14 +1,19 @@
+import QuartzCore
 import SwiftUI
 
 private struct HomeDropArea: NSViewRepresentable {
     var tabKey: String?
     var reorder: ((String) -> Void)?
     var source: HomeShortcut?
+    var spaceID: UUID?
+    var slot: HomeReorderSlot?
+    var moveSpace: ((UUID, CGFloat) -> Void)?
     var begin: (() -> Void)?
     var end: (() -> Void)?
     var hover: ((CGFloat) -> Void)?
     let activate: () -> Void
-    let drop: (HomeShortcut, CGFloat) -> Bool
+    var drop: ((HomeShortcut, CGFloat) -> Bool)? = nil
+    var pointerChanged: ((Bool) -> Void)? = nil
 
     func makeNSView(context: Context) -> Handle {
         Handle()
@@ -23,8 +28,18 @@ private struct HomeDropArea: NSViewRepresentable {
         private var pressed = false
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let window { HomeGridHand.install(in: window) }
+            if let window { HomeGridHand.install(self, in: window) }
         }
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(rect: .zero,
+                                          options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
+                                          owner: self))
+        }
+        override func mouseEntered(with event: NSEvent) { area?.pointerChanged?(true) }
+        override func mouseMoved(with event: NSEvent) { area?.pointerChanged?(true) }
+        override func mouseExited(with event: NSEvent) { area?.pointerChanged?(false) }
         override func hitTest(_ point: NSPoint) -> NSView? {
             if NSApp.currentEvent?.type == .rightMouseDown || NSApp.currentEvent?.modifierFlags.contains(.control) == true { return nil }
             return super.hitTest(point)
@@ -38,15 +53,58 @@ private struct HomeDropArea: NSViewRepresentable {
     }
 }
 
-/// The column's press threshold, Escape handling and mouse-up suppression, shared
-/// by every shortcut in a window. Drop targets stay still as their tiles move.
+private struct HomeDropHoverKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private extension EnvironmentValues {
+    var homeDropHovered: Bool {
+        get { self[HomeDropHoverKey.self] }
+        set { self[HomeDropHoverKey.self] = newValue }
+    }
+}
+
+/// The AppKit drop target is above the button and receives its pointer events.
+private struct HomeDropTarget: ViewModifier {
+    var area: HomeDropArea
+    @State private var hovered = false
+
+    func body(content: Content) -> some View {
+        var target = area
+        target.pointerChanged = { if hovered != $0 { hovered = $0 } }
+        return content
+            .environment(\.homeDropHovered, hovered)
+            .overlay { target }
+    }
+}
+
+private struct HomeReorderSlot {
+    enum Collection { case spaces, shortcuts }
+
+    let collection: Collection
+    let index: Int
+    var end = false
+
+    func insertion(at x: CGFloat) -> Int {
+        index + (!end && x >= HomeColumns.width / 2 ? 1 : 0)
+    }
+
+    static func destination(from index: Int, at insertion: Int) -> Int {
+        insertion > index ? insertion - 1 : insertion
+    }
+}
+
+/// Home uses the column's press threshold and springs. The native handles
+/// stay in their original slots while the SwiftUI cards make room.
 @MainActor
 private final class HomeGridHand {
     private static let hands = NSMapTable<NSWindow, HomeGridHand>.weakToStrongObjects()
     private let grip = ColumnGrip()
     private weak var origin: HomeDropArea.Handle?
-    private var source: HomeShortcut?
+    private let handles = NSHashTable<HomeDropArea.Handle>.weakObjects()
+    private var targets: [Target] = []
     private var finish: (() -> Void)?
+    private var landing: (() -> Void)?
     private var picture: Lift?
     private var grab = CGPoint.zero
 
@@ -54,20 +112,45 @@ private final class HomeGridHand {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
-    static func install(in window: NSWindow) {
+    private struct Target {
+        let area: HomeDropArea
+        let slot: HomeReorderSlot
+        let frame: CGRect
+    }
+
+    static func install(_ handle: HomeDropArea.Handle, in window: NSWindow) {
         guard let root = window.contentView else { return }
-        if let hand = hands.object(forKey: window) { hand.grip.view = root; return }
+        if let hand = hands.object(forKey: window) {
+            hand.grip.view = root
+            hand.handles.add(handle)
+            return
+        }
         let hand = HomeGridHand()
+        hand.handles.add(handle)
         hands.setObject(hand, forKey: window)
         hand.grip.view = root
-        hand.grip.attempt = { [weak hand] event in
-            guard !event.modifierFlags.contains(.control), let target = hand?.target(event.locationInWindow),
-                  target.area?.source != nil || target.area?.tabKey != nil else { return false }
-            hand?.origin = target
-            return true
-        }
+        hand.grip.attempt = { [weak hand] event in hand?.press(event) ?? false }
         hand.grip.changed = { [weak hand] grip in hand?.update(grip) }
         hand.grip.watch(true)
+    }
+
+    static func cancel(in window: NSWindow?) -> Bool {
+        guard let window, let hand = hands.object(forKey: window),
+              hand.grip.state == .began || hand.grip.state == .changed else { return false }
+        hand.grip.state = .cancelled
+        return true
+    }
+
+    private func press(_ event: NSEvent) -> Bool {
+        if landing != nil {
+            // Snap the last drop into place before accepting another press.
+            finishLanding()
+            return false
+        }
+        guard !event.modifierFlags.contains(.control), let target = target(event.locationInWindow),
+              let area = target.area, area.source != nil || area.tabKey != nil || area.spaceID != nil else { return false }
+        origin = target
+        return true
     }
 
     private func target(_ location: CGPoint) -> HomeDropArea.Handle? {
@@ -75,18 +158,34 @@ private final class HomeGridHand {
         return parent.hitTest(parent.convert(location, from: nil)) as? HomeDropArea.Handle
     }
 
+    private func tiles(in collection: HomeReorderSlot.Collection) -> [Target] {
+        handles.allObjects.compactMap { handle in
+            guard handle.window === grip.view?.window, !handle.isHiddenOrHasHiddenAncestor,
+                  let area = handle.area, let slot = area.slot, slot.collection == collection,
+                  !handle.visibleRect.isEmpty else { return nil }
+            return Target(area: area, slot: slot, frame: handle.convert(handle.bounds, to: nil))
+        }
+    }
+
+    private func tile(at point: CGPoint) -> Target? {
+        targets.first { $0.frame.contains(point) } ?? targets.first {
+            let rowGap: CGFloat = $0.slot.collection == .shortcuts ? HomeColumns.rowGap / 2 : 0
+            return $0.frame.insetBy(dx: -HomeColumns.gap / 2, dy: -rowGap).contains(point)
+        }
+    }
+
     private func update(_ grip: ColumnGrip) {
+        guard let origin, let area = origin.area else { clear(); return }
+        if grip.state == .cancelled { returnToOrigin(origin, area: area); return }
         guard let event = grip.event, let root = grip.view else { clear(); return }
         let location = event.locationInWindow
         let point = root.convert(location, from: nil)
         switch grip.state {
         case .began:
-            guard let origin, let area = origin.area else { return }
             origin.takePress()
-            source = area.source
             finish = area.end
-            let tile = CGRect(x: origin.bounds.midX - 28, y: origin.isFlipped ? 0 : origin.bounds.maxY - 56, width: 56, height: 56)
-            let frame = origin.convert(area.tabKey == nil ? tile : origin.bounds, to: root)
+            if let slot = area.slot { targets = tiles(in: slot.collection) }
+            let frame = origin.convert(origin.bounds, to: root)
             if let rep = root.bitmapImageRepForCachingDisplay(in: frame) {
                 root.cacheDisplay(in: frame, to: rep)
                 let image = NSImage(size: frame.size)
@@ -101,19 +200,75 @@ private final class HomeGridHand {
                 picture = lifted
                 grab = CGPoint(x: grip.start.x - frame.minX, y: grip.start.y - frame.minY)
             }
+            area.pointerChanged?(false)
             area.begin?()
             fallthrough
         case .changed:
             picture?.setFrameOrigin(CGPoint(x: point.x - grab.x, y: point.y - grab.y))
-            if source != nil, let target = target(location) { target.area?.hover?(target.convert(location, from: nil).x) }
-        case .ended:
-            if let key = origin?.area?.tabKey { target(location)?.area?.reorder?(key) }
-            else if let source, let target = target(location) {
-                _ = target.area?.drop(source, target.convert(location, from: nil).x)
+            if area.slot != nil {
+                if let target = tile(at: location) {
+                    target.area.hover?(location.x - target.frame.minX)
+                } else {
+                    area.hover?(0)
+                }
             }
-            clear()
-        case .cancelled: clear()
+        case .ended:
+            if let slot = area.slot {
+                if let target = tile(at: location) {
+                    let x = location.x - target.frame.minX
+                    let index = HomeReorderSlot.destination(from: slot.index, at: target.slot.insertion(at: x))
+                    target.area.hover?(x)
+                    settle(at: targets.first { $0.slot.index == index }?.frame) {
+                        guard index != slot.index else { return }
+                        if let id = area.spaceID { target.area.moveSpace?(id, x) }
+                        else if let source = area.source { _ = target.area.drop?(source, x) }
+                    }
+                } else if let source = area.source, let target = target(location), let drop = target.area?.drop,
+                          drop(source, target.convert(location, from: nil).x) {
+                    clear()
+                } else {
+                    returnToOrigin(origin, area: area)
+                }
+            } else {
+                if let key = area.tabKey { target(location)?.area?.reorder?(key) }
+                clear()
+            }
         default: break
+        }
+    }
+
+    private func returnToOrigin(_ origin: HomeDropArea.Handle, area: HomeDropArea) {
+        area.hover?(0)
+        settle(at: origin.visibleRect.isEmpty ? nil : origin.convert(origin.bounds, to: nil)) {}
+    }
+
+    private func settle(at frame: CGRect?, change: @escaping () -> Void) {
+        landing = change
+        guard let frame, let root = grip.view, let picture, let layer = picture.layer,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return finishLanding() }
+        let target = root.convert(frame, from: nil).origin
+        let start = picture.frame.origin
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock { [weak self, weak picture] in
+            MainActor.assumeIsolated {
+                guard let self, let picture, self.picture === picture else { return }
+                self.finishLanding()
+            }
+        }
+        picture.setFrameOrigin(target)
+        ColumnMotion.slide(layer, by: target.y - start.y, dx: target.x - start.x, ColumnMotion.settle)
+        CATransaction.commit()
+    }
+
+    private func finishLanding() {
+        let commit = landing
+        landing = nil
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            commit?()
+            clear()
         }
     }
 
@@ -122,8 +277,42 @@ private final class HomeGridHand {
         picture = nil
         finish?()
         finish = nil
+        targets = []
         origin = nil
-        source = nil
+    }
+}
+
+/// Positions stay measured in the unshifted row so the pointer can cross
+/// between tiles without changing the insertion slot under it.
+private struct HomeTileDrag<Key: Hashable> {
+    var held: Key?
+    var order: [Key] = []
+    var positions: [Key: CGPoint] = [:]
+
+    static func destination(for source: Key, at slot: Int, in keys: [Key]) -> Int? {
+        guard let from = keys.firstIndex(of: source) else { return nil }
+        return HomeReorderSlot.destination(from: from, at: slot)
+    }
+
+    mutating func preview(at slot: Int, in keys: [Key]) {
+        guard let held, let index = Self.destination(for: held, at: slot, in: keys) else { return }
+        var next = keys.filter { $0 != held }
+        next.insert(held, at: index)
+        if next != order {
+            let motion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : Motion.settle
+            withAnimation(motion) { order = next }
+        }
+    }
+
+    func displacement(of key: Key, in keys: [Key]) -> CGSize {
+        guard let index = order.firstIndex(of: key), keys.indices.contains(index),
+              let from = positions[key], let to = positions[keys[index]] else { return .zero }
+        return CGSize(width: to.x - from.x, height: to.y - from.y)
+    }
+
+    mutating func finish() {
+        held = nil
+        order = []
     }
 }
 
@@ -182,6 +371,7 @@ private struct SpacePageLook<Content: View>: View {
 struct SpacePageSurface: ViewModifier {
     let browser: Browser
     var library = false
+    var themedControls = false
     var active = true
     @Environment(\.colorScheme) private var scheme
     @AppStorage("appearance.spacePages", store: Store.settings) private var share = true
@@ -201,11 +391,58 @@ struct SpacePageSurface: ViewModifier {
                         if !library { HomePhoto(space: browser.spaceID) }
                     }.allowsHitTesting(false)
                 }
+                .environment(\.tone, themedControls ? paint.map { SpaceSurface.tone(for: $0.color) } : nil)
                 .environment(\.colorScheme, paint != nil ? LookMode(rawValue: look.mode)?.scheme ?? scheme : scheme)
             }
         } else {
             content
         }
+    }
+}
+
+/// Home's buttons share a hover target and a focus ring around the whole label.
+private struct HomeControl<Outline: InsettableShape, Label: View>: View {
+    let outline: Outline
+    var selected = false
+    var muted = false
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.homeDropHovered) private var dropHovered
+    @FocusState private var focused: Bool
+    @State private var buttonHovered = false
+
+    private var hovered: Bool { buttonHovered || dropHovered }
+
+    var body: some View {
+        Button(action: action) {
+            label()
+                .foregroundStyle(muted && !hovered && !focused ? Palette.muted : Palette.ink)
+                .background(Palette.ink.opacity(fill), in: outline)
+                .contentShape(outline)
+        }
+        .buttonStyle(.plain)
+        .onHover { buttonHovered = $0 }
+        .animation(reduceMotion ? nil : Motion.quick, value: hovered)
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .overlay {
+            if focused {
+                outline.strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onKeyPress(keys: [.return, .space], phases: .down) { press in
+            guard press.modifiers.isEmpty else { return .ignored }
+            action()
+            return .handled
+        }
+    }
+
+    private var fill: Double {
+        if selected { return hovered ? 0.22 : 0.14 }
+        return hovered ? 0.10 : 0
     }
 }
 
@@ -278,14 +515,14 @@ struct HomeNavigation: View {
                                 }
                         } else { tab(key.capitalized, key: key).contextMenu { libraryOptions(key) } }
                     }
-                    Button { adding = HomeGroup() } label: { navigationIcon("plus") }
+                    HomeControl(outline: navigationIconOutline, action: { adding = HomeGroup() }) { navigationIcon("plus") }
                         .accessibilityLabel("Add Home tab")
                         .popover(item: $adding, arrowEdge: .bottom) { group in
                             HomeGroupEditor(group: group, title: "New tab", save: save)
                         }
                 }
             }.scrollIndicators(.hidden)
-            Button { customizing = true } label: { navigationIcon("gearshape") }
+            HomeControl(outline: navigationIconOutline, action: { customizing = true }) { navigationIcon("gearshape") }
                 .accessibilityLabel("Customize Home")
                 .pointerTip("Customize Home")
                 .popover(isPresented: $customizing) {
@@ -302,12 +539,13 @@ struct HomeNavigation: View {
         .onChange(of: keys) { _, _ in
             if !keys.contains(selected) { selected = "overview" }
         }
-        .buttonStyle(.plain)
         .padding(.bottom, 8)
     }
 
+    private var navigationIconOutline: RoundedRectangle { RoundedRectangle(cornerRadius: Radius.control) }
+
     private func navigationIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol).font(.system(size: 15)).frame(width: 32, height: 32).contentShape(Rectangle())
+        Image(systemName: symbol).font(.system(size: 15)).frame(width: 32, height: 32)
     }
 
     private func save(_ value: HomeGroup) {
@@ -330,19 +568,16 @@ struct HomeNavigation: View {
     }
 
     private func tab(_ title: String, key: String) -> some View {
-        Button { selected = key } label: {
+        HomeControl(outline: Capsule(), selected: selected == key, action: { selected = key }) {
             HStack(spacing: 6) {
                 if let page = LibraryPage(rawValue: key), display != "Text only" { Image(systemName: page.icon) }
                 if !standard.contains(key) || display != "Icon only" { Text(title) }
             }.font(CardFrame.title).padding(.horizontal, 12).padding(.vertical, 8)
-                .background(selected == key ? Palette.ink.opacity(0.14) : .clear, in: Capsule())
         }.accessibilityLabel(title + " Home tab").accessibilityAddTraits(selected == key ? .isSelected : [])
-        .overlay {
-            HomeDropArea(tabKey: UUID(uuidString: key) == nil ? nil : key, reorder: { reorder($0, onto: key) }, activate: { selected = key }) { source, _ in
-                guard key == "overview" || UUID(uuidString: key) != nil else { return false }
-                return moveShortcut(source, data: &savedShortcuts, to: UUID(uuidString: key))
-            }
-        }
+        .modifier(HomeDropTarget(area: HomeDropArea(tabKey: UUID(uuidString: key) == nil ? nil : key, reorder: { reorder($0, onto: key) }, activate: { selected = key }) { source, _ in
+            guard key == "overview" || UUID(uuidString: key) != nil else { return false }
+            return moveShortcut(source, data: &savedShortcuts, to: UUID(uuidString: key))
+        }))
     }
 }
 
@@ -369,25 +604,49 @@ private struct HomeGroupEditor: View {
     }
 }
 
+private enum HomeColumns {
+    static let width: CGFloat = 96
+    static let gap: CGFloat = 16
+    static let rowGap: CGFloat = 24
+
+    static func grid(in available: CGFloat) -> [GridItem] {
+        let count = max(1, Int((available + gap) / (width + gap)))
+        return Array(repeating: GridItem(.fixed(width), spacing: gap), count: count)
+    }
+}
+
 private struct HomeTile<Mark: View>: View {
     let title: String
     let action: () -> Void
     @ViewBuilder let mark: () -> Mark
-    @State private var hovered = false
-
     var body: some View {
-        Button(action: action) {
+        HomeControl(outline: RoundedRectangle(cornerRadius: Radius.surface), action: action) {
             VStack(spacing: 8) {
                 mark().frame(width: 32, height: 32)
                     .frame(width: 56, height: 56)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Radius.surface))
                     .overlay {
                         RoundedRectangle(cornerRadius: Radius.surface)
-                            .strokeBorder(Palette.ink.opacity(hovered ? 0.30 : 0.12))
+                            .strokeBorder(Palette.ink.opacity(0.12))
                     }
                 Text(title).font(CardFrame.detail).lineLimit(1).truncationMode(.middle)
-            }.frame(width: 96).contentShape(Rectangle())
-        }.buttonStyle(.plain).onHover { hovered = $0 }.accessibilityLabel(title)
+            }.padding(.vertical, 4).frame(width: HomeColumns.width)
+        }.accessibilityLabel(title)
+    }
+}
+
+private struct HomeDraggedTile: ViewModifier {
+    let held: Bool
+    let shift: CGSize
+
+    func body(content: Content) -> some View {
+        ZStack {
+            content.opacity(held ? 0 : 1)
+                .overlay {
+                    if held { ColumnGap(square: true).allowsHitTesting(false) }
+                }
+                .offset(shift)
+        }
     }
 }
 
@@ -397,13 +656,14 @@ struct HomeTab: View {
     @ObservedObject var downloads: Loot
     @ObservedObject var bookmarks: Bookmarks
     @Binding var selection: String
+    static func cancelDrag(in window: NSWindow?) -> Bool { HomeGridHand.cancel(in: window) }
+
     private var group: UUID? { UUID(uuidString: selection) }
     @AppStorage("home.shortcuts", store: Store.settings) private var saved = Data()
     @State private var adding: HomeShortcut?
     @State private var editKey: String?
-    @State private var held: String?
-    @State private var dragOrder: [String] = []
-    @State private var tilePositions: [String: CGPoint] = [:]
+    @State private var shortcutDrag = HomeTileDrag<String>()
+    @State private var spaceDrag = HomeTileDrag<UUID>()
     @State private var folderPath: [UUID] = []
 
     private var shortcuts: [HomeShortcut] {
@@ -411,23 +671,28 @@ struct HomeTab: View {
     }
 
     var body: some View {
-        ScrollView {
+        GeometryReader { geometry in
+            overview(width: geometry.size.width)
+        }
+    }
+
+    private func overview(width: CGFloat) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 56) { // design: extra separation between distinct Home collections
                 if group == nil && !browser.turnOrder.isEmpty {
                     section("Spaces") {
+                        let spaces = browser.turnOrder
+                        let ids = spaces.map(\.id)
                         HomeSectionStrip(title: "Spaces", hovered: hoveredSection == "Spaces") {
-                            ForEach(browser.turnOrder) { space in
-                                HomeTile(title: space.name, action: { browser.switchSpace(to: space.id) }) {
-                                    SpaceMark(icon: space.icon, size: 28)
-                                }.contextMenu {
-                                    Button("Switch Space") { browser.switchSpace(to: space.id) }
-                                }
+                            ForEach(Array(spaces.enumerated()), id: \.element.id) { index, space in
+                                spaceTile(space, index: index, ids: ids)
                             }
                         }
+                        .coordinateSpace(name: "home-spaces")
                     }
                 }
                 section("Shortcuts") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 16, alignment: .leading)], alignment: .leading, spacing: 24) {
+                    LazyVGrid(columns: HomeColumns.grid(in: width), alignment: .leading, spacing: HomeColumns.rowGap) {
                         let sites = gridSites
                         ForEach(Array(sites.enumerated()), id: \.element.id) { index, site in
                             gridTile(site, index: index, sites: sites)
@@ -439,26 +704,24 @@ struct HomeTab: View {
                         }.popover(item: $adding, arrowEdge: .bottom) { item in
                             HomeShortcutPicker(browser: browser, history: history, bookmarks: bookmarks, group: item.group, excluded: Set((shortcuts + automaticSites).compactMap { $0.url.map(HomeShortcutPicker.key) }), save: saveShortcut)
                         }
-                        .overlay {
-                            HomeDropArea(hover: { _ in
-                                if let held { preview(held, at: sites.count, sites: sites) }
-                            }, activate: { adding = HomeShortcut(group: group) }) { source, _ in
-                                moveShortcut(source, data: &saved, to: group, following: group == nil ? automaticSites : [])
-                            }
-                        }
+                        .modifier(HomeDropTarget(area: HomeDropArea(slot: HomeReorderSlot(collection: .shortcuts, index: sites.count, end: true), hover: { _ in
+                            shortcutDrag.preview(at: sites.count, in: sites.map(\.id))
+                        }, activate: { adding = HomeShortcut(group: group) }) { source, _ in
+                            moveShortcut(source, data: &saved, to: group, following: group == nil ? automaticSites : [])
+                        }))
                     }
                     .coordinateSpace(name: "home-shortcuts")
                 }
                 if group == nil {
                     if !history.recent().isEmpty {
-                        section("Recent history", all: "All history", page: .history) {
+                        section("Recent history", page: .history) {
                             HomeSectionStrip(title: "Recent history", hovered: hoveredSection == "Recent history") {
                                 ForEach(history.recent()) { row in link(row.url, row.title.isEmpty ? row.url.absoluteString : row.title) }
                             }
                         }
                     }
                     if !downloads.kept.isEmpty {
-                        section("Downloads", all: "All downloads", page: .downloads) {
+                        section("Downloads", page: .downloads) {
                             HomeSectionStrip(title: "Downloads", hovered: hoveredSection == "Downloads") {
                                 ForEach(downloads.kept.prefix(20)) { file in
                                     HomeTile(title: file.name, action: { downloads.reveal(file) }) {
@@ -472,13 +735,14 @@ struct HomeTab: View {
                     }
                     let roots = bookmarks.barRoots(in: browser.spaceID, profile: browser.space.signedInAs ?? browser.space.origin)
                     if !roots.isEmpty {
-                        section("Bookmarks", all: "All bookmarks", page: .bookmarks) {
+                        section("Bookmarks", page: .bookmarks) {
                             let path = resolvedFolders(in: roots)
                             let entries = path.last.map { $0.children ?? [] } ?? roots
                             if let folder = path.last {
-                                Button { folderPath = path.dropLast().map(\.id) } label: {
+                                HomeControl(outline: headingOutline, action: { folderPath = path.dropLast().map(\.id) }) {
                                     Label(folder.title, systemImage: "chevron.left")
-                                }.buttonStyle(.plain).accessibilityLabel("Back from " + folder.title)
+                                        .padding(.horizontal, 8).padding(.vertical, 4)
+                                }.accessibilityLabel("Back from " + folder.title)
                             }
                             if entries.isEmpty {
                                 Text(path.isEmpty ? "No bookmarks" : "Empty folder").foregroundStyle(.secondary)
@@ -513,18 +777,33 @@ struct HomeTab: View {
         return group == nil ? kept + automaticSites.map { GridSite(shortcut: $0, saved: false) } : kept
     }
 
-    private func preview(_ source: String, at slot: Int, sites: [GridSite]) {
-        var keys = sites.map(\.id)
-        guard let from = keys.firstIndex(of: source) else { return }
-        keys.remove(at: from)
-        keys.insert(source, at: slot > from ? slot - 1 : slot)
-        if keys != dragOrder { withAnimation(Motion.settle) { dragOrder = keys } }
-    }
-
-    private func displacement(_ key: String, sites: [GridSite]) -> CGSize {
-        guard let index = dragOrder.firstIndex(of: key), sites.indices.contains(index),
-              let from = tilePositions[key], let to = tilePositions[sites[index].id] else { return .zero }
-        return CGSize(width: to.x - from.x, height: to.y - from.y)
+    private func spaceTile(_ space: Space, index: Int, ids: [UUID]) -> some View {
+        let select = { browser.switchSpace(to: space.id, keepingHome: true) }
+        let slot = HomeReorderSlot(collection: .spaces, index: index)
+        return HomeTile(title: space.name, action: select) {
+            SpaceMark(icon: space.icon, size: 28)
+        }
+        .modifier(HomeDraggedTile(held: spaceDrag.held == space.id, shift: spaceDrag.displacement(of: space.id, in: ids)))
+        .onGeometryChange(for: CGPoint.self) { $0.frame(in: .named("home-spaces")).origin } action: {
+            spaceDrag.positions[space.id] = $0
+        }
+        .background(SpaceAnchor(kind: .homeTile(space.id)))
+        .modifier(HomeDropTarget(area: HomeDropArea(spaceID: space.id, slot: slot, moveSpace: { source, x in
+            // Resolve against the current order, including Mail when shown.
+            let order = browser.turnOrder.map(\.id)
+            guard order.indices.contains(index), order[index] == space.id,
+                  let to = HomeTileDrag<UUID>.destination(for: source, at: slot.insertion(at: x), in: order) else { return }
+            browser.moveInOrder(source, to: to)
+        }, begin: { spaceDrag.held = space.id }, end: {
+            spaceDrag.finish()
+        }, hover: { x in
+            spaceDrag.preview(at: slot.insertion(at: x), in: ids)
+        }, activate: select)))
+        .steadyMenu(actions: true, tone: SpaceSurface.tone(in: browser)) {
+            Button("Switch Space", mark: "yab.chevupdown", action: select)
+            Divider()
+            SpaceMenu(browser: browser, space: space, fromHome: true)
+        }
     }
 
     private func gridTile(_ site: GridSite, index: Int, sites: [GridSite]) -> some View {
@@ -535,34 +814,27 @@ struct HomeTab: View {
                 browser.select(tab)
             } else if let url = shortcut.url { browser.send(url, .here) }
         }
-        let shift = displacement(site.id, sites: sites)
-        return ZStack {
-            if held == site.id {
-                ColumnGap(square: true).frame(width: 56, height: 56)
-                    .offset(y: -12).offset(shift)
-            }
-            HomeTile(title: shortcut.name, action: open) {
-                if let url = shortcut.url { PlacePageMark(url: url, side: 28) }
-            }
-            .opacity(held == site.id ? 0 : 1).offset(shift)
+        let ids = sites.map(\.id)
+        let slot = HomeReorderSlot(collection: .shortcuts, index: index)
+        return HomeTile(title: shortcut.name, action: open) {
+            if let url = shortcut.url { PlacePageMark(url: url, side: 28) }
         }
+        .modifier(HomeDraggedTile(held: shortcutDrag.held == site.id, shift: shortcutDrag.displacement(of: site.id, in: ids)))
         .onGeometryChange(for: CGPoint.self) { $0.frame(in: .named("home-shortcuts")).origin } action: {
-            tilePositions[site.id] = $0
+            shortcutDrag.positions[site.id] = $0
         }
-        .overlay {
-            HomeDropArea(source: shortcut, begin: {
-                held = site.id
-            }, end: {
-                withAnimation(Motion.settle) { held = nil; dragOrder = [] }
-            }, hover: { x in
-                if let held { preview(held, at: index + (x < 48 ? 0 : 1), sites: sites) }
-            }, activate: open) { source, x in
-                let slot = index + (x < 48 ? 0 : 1)
-                let target = sites.dropFirst(slot).first
-                let prefix = sites.prefix(slot).filter { !$0.saved }.map(\.shortcut)
-                return moveShortcut(source, data: &saved, to: group, before: target.flatMap { $0.saved ? $0.shortcut.id : nil }, following: prefix)
-            }
-        }
+        .modifier(HomeDropTarget(area: HomeDropArea(source: shortcut, slot: slot, begin: {
+            shortcutDrag.held = site.id
+        }, end: {
+            shortcutDrag.finish()
+        }, hover: { x in
+            shortcutDrag.preview(at: slot.insertion(at: x), in: ids)
+        }, activate: open) { source, x in
+            let insertion = slot.insertion(at: x)
+            let target = sites.dropFirst(insertion).first
+            let prefix = sites.prefix(insertion).filter { !$0.saved }.map(\.shortcut)
+            return moveShortcut(source, data: &saved, to: group, before: target.flatMap { $0.saved ? $0.shortcut.id : nil }, following: prefix)
+        }))
         .contextMenu {
             Button("Open", action: open)
             if let url = shortcut.url { Button("Copy Link") { browser.put(url.absoluteString) } }
@@ -633,16 +905,27 @@ struct HomeTab: View {
 
     @State private var hoveredSection: String?
 
-    private func section<Content: View>(_ title: String, all: String? = nil, page: LibraryPage? = nil,
+    private var headingOutline: RoundedRectangle { RoundedRectangle(cornerRadius: Radius.control) }
+
+    private func section<Content: View>(_ title: String, page: LibraryPage? = nil,
                                         @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 24) {
-            HStack {
-                Text(title).font(.headline).foregroundStyle(.secondary)
-                Spacer()
-                if let all, let page { Button(all) { selection = page.rawValue }.buttonStyle(.plain).font(CardFrame.detail) }
-            }
+            Group {
+                if let page {
+                    HomeControl(outline: headingOutline, muted: true, action: { selection = page.rawValue }) {
+                        HStack(spacing: 4) {
+                            Text(title)
+                            Image(systemName: "arrow.up.right").imageScale(.small).accessibilityHidden(true)
+                        }.padding(.horizontal, 8).padding(.vertical, 4)
+                    }
+                    .padding(.leading, -8)
+                    .padding(.vertical, -4)
+                } else {
+                    Text(title).foregroundStyle(.secondary)
+                }
+            }.font(.headline).accessibilityAddTraits(.isHeader)
             content()
-        }.frame(minHeight: 120, alignment: .topLeading)
+        }.frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .contentShape(Rectangle())
         .onHover { inside in
             if inside { hoveredSection = title }
@@ -705,7 +988,7 @@ private struct HomeSectionStrip<Content: View>: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 16) { content() }
+            HStack(alignment: .top, spacing: HomeColumns.gap) { content() }
                 .background {
                     BookmarkWheel { lines in
                         let next = max(0, min(width - visible.width, visible.minX - lines * 32))
@@ -732,12 +1015,13 @@ private struct HomeSectionStrip<Content: View>: View {
     }
 
     private func arrow(_ icon: String, forward: Bool) -> some View {
-        Button {
+        HomeControl(outline: Circle(), action: {
             let offset = visible.minX + (forward ? visible.width : -visible.width)
             withAnimation { position.scrollTo(x: max(0, min(width - visible.width, offset))) }
-        } label: { Image(systemName: icon).font(.body.weight(.semibold)).frame(width: 34, height: 34)
-                .background(.regularMaterial, in: Circle()).contentShape(Circle()) }
-        .buttonStyle(.plain)
+        }) {
+            Image(systemName: icon).font(.body.weight(.semibold)).frame(width: 34, height: 34)
+        }
+        .background(.regularMaterial, in: Circle())
         .accessibilityLabel((forward ? "Next " : "Previous ") + title.lowercased())
     }
 }

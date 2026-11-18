@@ -273,7 +273,7 @@ struct SideBar: View {
         ZStack(alignment: .top) {
             // Under the last row the window is dragged by, and a right
             // click there brings the space's menu, as Arc's sidebar does.
-            DragStrip(reserved: 0, below: rowsEnd, menu: roomMenu,
+            DragStrip(reserved: 0, below: rowsEnd, menu: roomMenu, menuTone: SpaceSurface.tone(in: browser),
                       contextTail: { [browser] point, view, event in
                           ColumnPages.of(browser)?.spaceMenuTail(at: point, from: view, event: event) == true
                       },
@@ -334,7 +334,7 @@ struct SideBar: View {
                     }
                 }
                 .frame(height: Metrics.strip)
-                .padding(.leading, -browser.railInsideColumn)
+                .padding(.leading, -browser.leadingRailInsideColumn)
                 // Over the rows going on under it to the window's top, and
                 // still the window's title bar there.
                 .background { band.padding(.horizontal, -SideBar.margin) }
@@ -510,7 +510,7 @@ struct SideBar: View {
                     .modifier(HoardHush(hoard: browser.hoard))
             }
         }
-        .padding(.leading, browser.railInsideColumn)
+        .padding(browser.flank == .left ? .leading : .trailing, browser.railInsideColumn)
         .modifier(SidebarTypography())
         .frame(width: browser.presentedSidebarWidth)
         .frame(maxHeight: .infinity)
@@ -3183,7 +3183,7 @@ struct SpaceName: View {
         }
         .contentShape(RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous))
         .onHover { hovering = live && $0 }
-        .steadyMenu(actions: true) {
+        .steadyMenu(actions: true, tone: browser.flatMap { SpaceSurface.tone(in: $0) }) {
             if let browser { SpaceMenu(browser: browser, space: space) }
         }
     }
@@ -3231,7 +3231,7 @@ struct SpaceName: View {
         Button {
             guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
             let at = NSApp.currentEvent.map { window.convertPoint(toScreen: $0.locationInWindow) } ?? NSEvent.mouseLocation
-            ActionMenu.show(NSHostingMenu(rootView: SpaceMenu(browser: browser, space: space)), in: window, at: at)
+            ActionMenu.show(NSHostingMenu(rootView: SpaceMenu(browser: browser, space: space)), in: window, at: at, tone: SpaceSurface.tone(in: browser))
         } label: {
             HStack(spacing: 2) {
                 ForEach(0..<3, id: \.self) { _ in Circle().frame(width: 3, height: 3) }

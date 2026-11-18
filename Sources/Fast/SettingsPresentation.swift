@@ -238,6 +238,7 @@ struct SettingsTabToolbar: View {
 
 /// Restyles the existing Form sections and rows with the library's card surfaces.
 struct LibrarySettingsFormStyle: FormStyle {
+    @Environment(\.tone) private var tone
     func makeBody(configuration: Configuration) -> some View {
         ThreadScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -245,7 +246,7 @@ struct LibrarySettingsFormStyle: FormStyle {
                     VStack(alignment: .leading, spacing: 8) {
                         if !section.header.isEmpty {
                             VStack(alignment: .leading, spacing: 0) { ForEach(section.header) { $0 } }
-                                .font(CardFrame.detail).foregroundStyle(Palette.muted)
+                                .font(CardFrame.detail).foregroundStyle(Palette.muted(on: tone))
                         }
                         if !section.content.isEmpty {
                             VStack(spacing: 0) {
@@ -261,7 +262,7 @@ struct LibrarySettingsFormStyle: FormStyle {
                         }
                         if !section.footer.isEmpty {
                             VStack(alignment: .leading, spacing: 0) { ForEach(section.footer) { $0 } }
-                                .font(CardFrame.detail).foregroundStyle(Palette.muted)
+                                .font(CardFrame.detail).foregroundStyle(Palette.muted(on: tone))
                         }
                     }
                 }
@@ -344,10 +345,28 @@ private struct SettingsExtensionTools: View {
     }
 }
 
-private struct SettingsTabSearch: NSViewRepresentable {
+private struct SettingsTabSearch: View {
     let prompt: String
     @Binding var text: String
     var capturesShortcuts = false
+    @Environment(\.tone) private var tone
+
+    var body: some View {
+        if tone != nil {
+            LibrarySearchWell(text: $text) {
+                SettingsTabSearchField(prompt: prompt, text: $text, capturesShortcuts: capturesShortcuts, bare: true)
+            }
+        } else {
+            SettingsTabSearchField(prompt: prompt, text: $text, capturesShortcuts: capturesShortcuts, bare: false)
+        }
+    }
+}
+
+private struct SettingsTabSearchField: NSViewRepresentable {
+    let prompt: String
+    @Binding var text: String
+    let capturesShortcuts: Bool
+    let bare: Bool
 
     func makeNSView(context: Context) -> Field {
         let field = Field()
@@ -356,17 +375,27 @@ private struct SettingsTabSearch: NSViewRepresentable {
         field.focusRingType = .none
         field.sendsSearchStringImmediately = true
         field.delegate = context.coordinator
+        if bare {
+            field.isBordered = false
+            field.isBezeled = false
+            field.drawsBackground = false
+            if let cell = field.cell as? NSSearchFieldCell {
+                cell.searchButtonCell = nil
+                cell.cancelButtonCell = nil
+            }
+        }
         return field
     }
     func updateNSView(_ field: Field, context: Context) {
         context.coordinator.parent = self
         field.capturesShortcuts = capturesShortcuts
+        field.textColor = context.environment.tone.map { Palette.shades($0).strongNS } ?? .labelColor
         if field.stringValue != text { field.stringValue = text }
     }
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
     final class Coordinator: NSObject, NSSearchFieldDelegate {
-        var parent: SettingsTabSearch
-        init(parent: SettingsTabSearch) { self.parent = parent }
+        var parent: SettingsTabSearchField
+        init(parent: SettingsTabSearchField) { self.parent = parent }
         func controlTextDidChange(_ notification: Notification) {
             if let field = notification.object as? NSSearchField { parent.text = field.stringValue }
         }
