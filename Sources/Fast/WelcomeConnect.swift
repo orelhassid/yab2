@@ -394,7 +394,7 @@ enum WelcomeConnect: WelcomeChapter {
     }
 
     /// What is typed in the Terminal: the skill named as the agent takes it.
-    private static func terminalLine(_ cli: String) -> String {
+    static func terminalLine(_ cli: String) -> String {
         "> use \(AgentSetupModel.mention(cli)) to catch me up on my pull requests"
     }
 
@@ -440,8 +440,8 @@ enum WelcomeConnect: WelcomeChapter {
         RunLoop.main.perform(inModes: [.common]) {
             MainActor.assumeIsolated {
                 guard stage.beat == .connect else { return }
-                if ring, let layer = stage.view.layer(for: "mark-\(cli)-ring") { close(layer) }
-                if !reduce { stage.view.press("mark-" + cli, to: 0.96) }
+                if ring, let layer = stage.inputs.layer(for: "mark-\(cli)-ring") { close(layer) }
+                if !reduce { stage.inputs.press("mark-" + cli, to: 0.96) }
                 NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
             }
         }

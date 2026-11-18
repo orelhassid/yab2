@@ -956,6 +956,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate, NSToolbarDelegate {
         RoutineEditing.shared.edit(routine, fresh: fresh)
     }
 
+    func openOnboarding() {
+        guard let browser else { return }
+        if browser.tuning { browser.tuning = false } else { hide() }
+        BrowserWindows.shared.window(for: browser)?.makeKeyAndOrderFront(nil)
+        Command.welcome.run(in: browser)
+    }
+
     func hide() {
         guard !closing else { return }
         if let settingsTab, let browser, browser.tabs.contains(where: { $0 === settingsTab }) {
@@ -1626,7 +1633,7 @@ private struct SettingsLibraryNavigation: View {
         ThreadScrollView {
             VStack(alignment: .leading, spacing: 2) {
                 if model.search.isEmpty {
-                    ForEach(SettingsNavigation.groups.indices, id: \.self) { index in
+                    ForEach(0..<SettingsNavigation.groups.count, id: \.self) { index in
                         let group = SettingsNavigation.groups[index]
                         VStack(alignment: .leading, spacing: 2) {
                             Text(SettingsWords.text(group.title))
@@ -1635,6 +1642,12 @@ private struct SettingsLibraryNavigation: View {
                                 .padding(.bottom, 6)
                             ForEach(group.pages.filter { $0.available }) { page in
                                 pageRow(page)
+                            }
+                            if group.title == "Other" {
+                                LibraryScopeRow(title: "Open Onboarding", symbol: Command.welcome.symbol,
+                                                selected: false, selectedIconTint: .accentColor) {
+                                    SettingsWindow.shared.openOnboarding()
+                                }
                             }
                         }
                         .padding(.top, index == 0 ? 0 : 20)

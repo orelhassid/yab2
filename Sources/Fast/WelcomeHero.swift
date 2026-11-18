@@ -76,7 +76,7 @@ enum HeroLayout {
         let font = font(headerFont)
         let k = headerMark / mark.height
         let markW = mark.width * k
-        let left = size.width / 2 - (markW + headerGap + Title.headerWidth) / 2
+        let left: CGFloat = 88
         return Place(
             markCenter: CGPoint(x: left + markW / 2, y: headerY), markScale: k,
             nameLeft: left + markW + headerGap,
@@ -400,9 +400,11 @@ final class HeroView: NSView {
         ((window?.backingScaleFactor ?? 2) * StageSpace.scale(for: size) * 4).rounded(.up) / 4
     }
 
+    var contentWidth: CGFloat? { didSet { if oldValue != contentWidth { needsLayout = true } } }
+
     override func layout() {
         super.layout()
-        let size = bounds.size
+        let size = CGSize(width: contentWidth ?? bounds.width, height: bounds.height)
         guard size.width > 0, size.height > 0 else { return }
         let density = nameDensity(size)
         guard size != laidOut || density != laidDensity else { return }

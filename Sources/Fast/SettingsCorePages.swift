@@ -1020,9 +1020,7 @@ struct AboutPage: View {
                 // Over the browser window, from the first frame: the
                 // settings step aside so the intro has the screen.
                 Button("Show Again") {
-                    browser.tuning = false
-                    browser.welcoming = true
-                    LaunchArrival.shared.replay(browser)
+                    SettingsWindow.shared.openOnboarding()
                 }
                 .settingsButton()
             }

@@ -369,6 +369,9 @@ final class WelcomeStageView: NSView {
     /// The 1180 × 780 space, scaled by its bounds so the pointer finds
     /// what it's over.
     let canvas = WelcomeFlippedView()
+    /// Portion of a chapter's artwork to fit in this column.
+    var viewport: CGRect? { didSet { if viewport != oldValue { needsLayout = true } } }
+    var alignsLeading = false
     private var nodes: [String: WelcomePartView] = [:]
 
     override init(frame: NSRect) {
@@ -390,6 +393,16 @@ final class WelcomeStageView: NSView {
 
     override func layout() {
         super.layout()
+        if let rect = viewport, rect.width > 0, rect.height > 0 {
+            let scale = min(bounds.width / rect.width, bounds.height / rect.height, alignsLeading ? 1 : 1.3)
+            guard scale > 0 else { return }
+            let x = alignsLeading ? CGFloat.zero : (bounds.width - rect.width * scale) / 2
+            let y = alignsLeading ? CGFloat.zero : (bounds.height - rect.height * scale) / 2
+            canvas.frame = CGRect(x: x - rect.minX * scale, y: y - rect.minY * scale,
+                                  width: StageSpace.size.width * scale, height: StageSpace.size.height * scale)
+            canvas.bounds = CGRect(origin: .zero, size: StageSpace.size)
+            return
+        }
         let s = StageSpace.scale(for: bounds.size)
         let frame = CGRect(x: bounds.midX - StageSpace.pivot.x * s, y: StageSpace.pivot.y - StageSpace.pivot.y * s,
                            width: StageSpace.size.width * s, height: StageSpace.size.height * s)

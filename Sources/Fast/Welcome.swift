@@ -81,6 +81,12 @@ final class WelcomeOverlayView: NSView {
     private weak var stage: WelcomeStage?
     private let hero: HeroView
     private let chrome = WelcomeChromeView()
+    private let panel = WelcomeFlippedView()
+    private let wash = CAGradientLayer()
+    private let headingHost = NSHostingController(rootView: WelcomeHeading(words: WelcomeWords()))
+    private var heading: NSView { headingHost.view }
+    private var shown = WelcomeWords()
+
     private var arrived = false
     /// Bumped by each wait for the button, so an old one lets it be.
     private var clock = 0
@@ -94,7 +100,19 @@ final class WelcomeOverlayView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         addSubview(hero)
-        addSubview(stage.view)
+        panel.wantsLayer = true
+        panel.layer?.cornerRadius = Radius.window
+        panel.layer?.cornerCurve = .continuous
+        panel.layer?.masksToBounds = true
+        wash.startPoint = CGPoint(x: 0, y: 1)
+        wash.endPoint = CGPoint(x: 1, y: 0)
+        panel.layer?.addSublayer(wash)
+        addSubview(panel)
+        panel.addSubview(stage.view)
+        stage.inputs.alignsLeading = true
+        addSubview(stage.inputs)
+        headingHost.sizingOptions = []
+        addSubview(heading)
         addSubview(chrome)
         chrome.actions.back = { [weak stage] in stage?.back() }
         chrome.actions.primary = { [weak stage] in stage?.pressPrimary() }
@@ -135,8 +153,30 @@ final class WelcomeOverlayView: NSView {
     override func layout() {
         super.layout()
         guard let stage else { return }
+        let width = WelcomeColumns.leftWidth(bounds.width)
+        let finish = shown.frame == .finish
+        let intro = shown.frame == .welcome
+        let inset = min(48, width * 0.085)
         hero.frame = bounds
-        stage.view.frame = bounds
+        hero.contentWidth = width
+        panel.frame = finish ? bounds : CGRect(x: width, y: 8, width: max(1, bounds.width - width - 8), height: max(1, bounds.height - 16))
+        wash.frame = panel.bounds
+        wash.isHidden = finish
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        wash.colors = [Swatch.lavender, .sky, .paper].map { $0.color(dark: dark, custom: .clear).cgColor }
+        stage.view.frame = finish ? panel.bounds : panel.bounds.insetBy(dx: 16, dy: 24)
+        heading.isHidden = intro || finish
+        let formWidth = max(1, width - 2 * inset)
+        let textHeight = headingHost.sizeThatFits(in: CGSize(width: formWidth, height: 1000)).height
+        let area = max(1, bounds.height - 152)
+        let rect = stage.inputs.viewport ?? .null
+        let formScale = rect.isNull ? 0 : min(1, formWidth / max(1, rect.width), max(1, area - textHeight - 24) / max(1, rect.height))
+        let formHeight = rect.isNull ? 0 : rect.height * formScale
+        let block = textHeight + (formHeight > 0 ? 24 + formHeight : 0)
+        let top = 76 + max(0, (area - block) / 2)
+        heading.frame = CGRect(x: inset, y: top, width: formWidth, height: textHeight)
+        stage.inputs.frame = intro ? CGRect(x: 0, y: 0, width: width, height: bounds.height)
+            : CGRect(x: inset, y: heading.frame.maxY + 24, width: formWidth, height: formHeight)
         chrome.frame = bounds
         if !arrived, bounds.width > 0, bounds.height > 0 {
             arrived = true
@@ -153,6 +193,11 @@ final class WelcomeOverlayView: NSView {
     var dashState: [String: Any] { chrome.dashState }
 
     func show(_ state: WelcomeChrome) {
+        if shown != state.words {
+            shown = state.words
+            headingHost.rootView = WelcomeHeading(words: shown)
+            needsLayout = true
+        }
         hero.animated = !state.reduceMotion
         hero.set(risen: state.words.frame != .welcome)
         hero.set(finished: state.words.frame == .finish)
@@ -234,6 +279,28 @@ final class WelcomeOverlayView: NSView {
         layer.add(WelcomeMotion.animation("transform", from: NSValue(caTransform3D: smaller), to: NSValue(caTransform3D: CATransform3DIdentity),
                                           curve: .settle, duration: 0.3, on: layer), forKey: "back.transform")
         layer.add(WelcomeMotion.animation("opacity", from: 0, to: 1, curve: .settle, duration: 0.3, on: layer), forKey: "back.opacity")
+    }
+}
+
+private enum WelcomeColumns {
+    static func leftWidth(_ width: CGFloat) -> CGFloat { width * 0.44 }
+}
+
+private struct WelcomeHeading: View {
+    let words: WelcomeWords
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(words.title).font(.system(size: WelcomeType.title, weight: .medium))
+                .tracking(WelcomeType.title * WelcomeType.tracking)
+                .foregroundStyle(Palette.ink).accessibilityAddTraits(.isHeader)
+            Text(words.sub).font(.system(size: WelcomeType.sub)).foregroundStyle(Palette.muted)
+            if words.marker {
+                Text("A recorded run on sample data. Nothing is connected yet.")
+                    .font(.caption).foregroundStyle(Palette.muted)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -378,7 +445,7 @@ final class WelcomeChromeView: NSView {
         back.frame = CGRect(x: corner, y: size.height - corner - side, width: side, height: side)
         // 12 right of Back, on the footer's line.
         let dash = dashes.intrinsicContentSize
-        dashes.frame = CGRect(x: corner + side + 12, y: size.height - corner - side / 2 - dash.height / 2, width: dash.width, height: dash.height)
+        dashes.frame = CGRect(x: WelcomeColumns.leftWidth(size.width) - corner - dash.width, y: shown.menuDown + HeroLayout.headerY - dash.height / 2, width: dash.width, height: dash.height)
         let skipSize = skip.fittingSize
         skip.frame = CGRect(x: size.width - (Self.lightsAt - Lights.lead) - skipSize.width,
                             y: shown.menuDown + Metrics.strip / 2 - skipSize.height / 2,
@@ -500,14 +567,14 @@ final class WelcomeChromeView: NSView {
         guard size.width > 0, size.height > 0 else { return }
         let room = Self.room, side = Self.side
         let welcome = shown.words.frame == .welcome
-        let s = welcome ? StageSpace.scale(for: size) : 1
+        let s = welcome ? StageSpace.scale(for: CGSize(width: WelcomeColumns.leftWidth(size.width), height: size.height)) : 1
         let middle = buttonMiddle
         let frame: CGRect
         if welcome {
-            let c = StageSpace.toWindow(CGPoint(x: StageSpace.pivot.x, y: Self.welcomeTop + side / 2), in: size)
+            let c = StageSpace.toWindow(CGPoint(x: StageSpace.pivot.x, y: Self.welcomeTop + side / 2), in: CGSize(width: WelcomeColumns.leftWidth(size.width), height: size.height))
             frame = CGRect(x: c.x - middle.x * s, y: c.y - middle.y * s, width: room * s, height: side * s)
         } else {
-            frame = CGRect(x: size.width - Self.corner - room, y: size.height - Self.corner - side, width: room, height: side)
+            frame = CGRect(x: WelcomeColumns.leftWidth(size.width) - Self.corner - room, y: size.height - Self.corner - side, width: room, height: side)
         }
         let was = placed
         placed = (CGPoint(x: frame.minX + middle.x * s, y: frame.minY + middle.y * s), s)

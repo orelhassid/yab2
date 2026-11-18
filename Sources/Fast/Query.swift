@@ -1038,6 +1038,7 @@ enum Command: String, CaseIterable {
         case .closeTab: aliases += ["archive tab", "closetab"]
         case .reader: aliases += ["reader"]
         case .floatVideo: aliases += ["picture in picture", "pip"]
+        case .welcome: aliases += ["open onboarding", "onboarding"]
         case .extensions: aliases += ["extensions", "manage extensions"]
         case .inspector: aliases += ["devtools", "web inspector", "elements", "open elements panel"]
         case .console: aliases += ["console", "open console panel"]

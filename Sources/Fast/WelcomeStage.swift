@@ -324,6 +324,7 @@ final class WelcomeStage: ObservableObject {
     /// The one stage the parts are laid out on, kept for the app's life so
     /// the welcome comes back from a sign-in as it was.
     let view = WelcomeStageView()
+    let inputs = WelcomeStageView()
     /// Bringing things over: found while the intro plays.
     let bringing = Bringing()
 
@@ -513,6 +514,7 @@ final class WelcomeStage: ObservableObject {
         toast = nil
         WelcomeTyping.shared.clear()
         view.show(WelcomeBoard(), animated: false, reduceMotion: true)
+        inputs.show(WelcomeBoard(), animated: false, reduceMotion: true)
     }
 
     /// The window is handed over: welcomed, the overlay gone in a 0.12
@@ -688,13 +690,56 @@ final class WelcomeStage: ObservableObject {
         let said = chapter.words(moment, self)
         if said != words { words = said }
         WelcomeTyping.shared.clear()
-        let board = chapter.board(moment, self) + wording(said, moment)
-        view.show(board, animated: animated, reduceMotion: reduceMotion)
+        let board = chapter.board(moment, self)
+        var visual = board
+        var form = WelcomeBoard()
+        let workspace = CGRect(x: 0, y: 0, width: 752, height: 526)
+        switch moment.beat {
+        case .look, .color:
+            form.parts = board.parts.filter { ["editor", "lookcard"].contains($0.key) }
+            visual.parts.removeAll { ["editor", "lookcard"].contains($0.key) }
+            view.viewport = visual.parts.first?.frame
+        case .welcome, .connect, .move, .vault, .access, .accessB:
+            form = board
+            // Full-width notes belong to the form. Give them a readable measure
+            // before fitting the group to the column.
+            for i in form.parts.indices where form.parts[i].frame.width == StageSpace.size.width && moment.beat != .welcome {
+                form.parts[i].frame.size.width = 440
+                form.parts[i].frame.origin.x = StageSpace.pivot.x - 220
+            }
+            if moment.beat == .access, form.parts.count == 2 {
+                form.parts[1].frame.origin = CGPoint(x: form.parts[0].frame.minX, y: form.parts[0].frame.maxY + 12)
+            }
+            visual = WelcomeBoard([WelcomeParts.windowToBe("wtb", workspace, look: WelcomeYours.windowLook(self),
+                                    yours: WelcomeYours.yours(self), page: .newTab, samples: true, field: held.compactField)])
+            view.viewport = workspace
+            switch moment.beat {
+            case .connect:
+                visual.parts.append(WelcomeParts.terminal("agent-example", CGRect(x: 100, y: 210, width: 552, height: 100),
+                                                          who: agent, line: WelcomeConnect.terminalLine(agent)))
+            case .vault, .accessB:
+                let key = moment.beat == .vault ? "vault-card" : "g-gains"
+                if let index = form.parts.firstIndex(where: { $0.key == key }) {
+                    var detail = form.parts.remove(at: index)
+                    detail.frame.origin = CGPoint(x: workspace.midX - detail.frame.width / 2, y: workspace.midY - detail.frame.height / 2)
+                    visual = WelcomeBoard([detail])
+                }
+            default: break
+            }
+        case .finish:
+            view.viewport = nil
+        default:
+            view.viewport = CGRect(x: 0, y: 135, width: 1180, height: 570)
+        }
+        inputs.viewport = moment.beat == .welcome ? nil : form.parts.reduce(CGRect.null) { $0.union($1.frame) }
+        inputs.show(form, animated: animated, reduceMotion: reduceMotion)
+        view.show(visual, animated: animated, reduceMotion: reduceMotion)
+        overlay?.needsLayout = true
     }
 
     /// The window's size now.
     var window: CGSize {
-        let size = view.bounds.size
+        let size = overlay?.bounds.size ?? view.bounds.size
         return size.width > 0 && size.height > 0 ? size : StageSpace.size
     }
 
@@ -743,31 +788,6 @@ final class WelcomeStage: ObservableObject {
 
     /// The title, the sub and the marker: parts of the stage, keyed by what
     /// they say, so a change of words crossfades at their fixed height.
-    private func wording(_ words: WelcomeWords, _ moment: WelcomeMoment) -> WelcomeBoard {
-        guard words.frame == .chapter else { return WelcomeBoard() }
-        let later = moment.turn ? 0.30 : 0
-        var parts: [StagePart] = []
-        if !words.title.isEmpty {
-            parts.append(.view("title:" + words.title, CGRect(x: 0, y: 62, width: 1180, height: WelcomeType.titleLine), enter: .words, delay: later) {
-                WelcomeTitle(text: words.title)
-            })
-        }
-        if !words.sub.isEmpty {
-            parts.append(.view("sub:" + words.sub, CGRect(x: 230, y: 104, width: 720, height: WelcomeType.subLine), enter: .words, delay: later + 0.06) {
-                WelcomeSub(text: words.sub)
-            })
-        }
-        if words.marker {
-            parts.append(.view("marker", CGRect(x: 0, y: 702, width: 1180, height: 16), enter: .crossfade, delay: 0.42) {
-                Text("A recorded run on sample data. Nothing is connected yet.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
-                    .frame(maxWidth: .infinity)
-            })
-        }
-        return WelcomeBoard(parts)
-    }
-
     // MARK: watching
 
     /// While Connect signs an agent in, its page is a tab of yours: the
@@ -1071,7 +1091,7 @@ extension WelcomeStage {
                 "suggesting": self.suggesting,
                 "coming": self.coming.rawValue, "back": self.canGoBack, "buttonIn": self.buttonIn,
                 "toast": self.toast ?? "", "reduce": self.reduceMotion, "pace": WelcomeMotion.pace,
-                "parts": self.view.keys, "keep": self.keepSpaces, "shift": self.held.shift, "seen": self.benchSeen(),
+                "parts": self.view.keys + self.inputs.keys, "keep": self.keepSpaces, "shift": self.held.shift, "seen": self.benchSeen(),
             ])
         }
     }
@@ -1085,13 +1105,16 @@ extension WelcomeStage {
             return [r.minX, content.isFlipped ? r.minY : content.bounds.height - r.maxY, r.width, r.height].map(Double.init)
         }
         var parts: [String: [Double]] = [:]
-        for key in view.keys { if let frame = view.visualFrame(for: key) { parts[key] = place(frame, from: view.canvas) } }
+        for column in [view, inputs] {
+            for key in column.keys { if let frame = column.visualFrame(for: key) { parts[key] = place(frame, from: column.canvas) } }
+        }
         var controls: [[String: Any]] = []
         func walk(_ node: NSView) {
             if node is NSControl { controls.append(["class": "\(type(of: node))", "frame": place(node.bounds, from: node)]) }
             node.subviews.forEach(walk)
         }
         walk(view)
+        walk(inputs)
         let button = overlay.map { place($0.cluster(in: $0), from: $0) } ?? []
         return ["parts": parts, "controls": controls, "button": button, "scale": Double(StageSpace.scale(for: view.bounds.size))]
     }
@@ -1139,36 +1162,5 @@ extension WelcomeStage {
             if pretend.defaultBrowser == .already { pretend.defaultBrowser = .not }
         default: break
         }
-    }
-}
-
-// MARK: - the words' faces
-
-/// A chapter's title: SF Pro Display 28 on 34, medium, the welcome's one
-/// display tracking, centered on one line.
-struct WelcomeTitle: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: WelcomeType.title, weight: .medium))
-            .tracking(WelcomeType.title * WelcomeType.tracking)
-            .foregroundStyle(Palette.ink)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
-/// The line under the title: 15 on 20, muted, one line, centered.
-struct WelcomeSub: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: WelcomeType.sub))
-            .foregroundStyle(Palette.muted)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

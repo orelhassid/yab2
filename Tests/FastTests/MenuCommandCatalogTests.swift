@@ -63,6 +63,15 @@ struct MenuCommandCatalogTests {
         }
     }
 
+    @Test func openOnboardingLeadsComposedOffers() {
+        withPage { browser, _ in
+            let address = "https://welcome.example/"
+            browser.history = History([Visit(url: address, key: address, title: "Open Onboarding", count: 5, last: Date(), typed: 5)])
+            browser.replaceTyped("Open Onboarding")
+            #expect(browser.offers.first?.kind == .command(.welcome))
+        }
+    }
+
     @Test func manageProfilesLeadsComposedOffers() {
         withPage { browser, _ in
             browser.prefs.menuCommands = false
