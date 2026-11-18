@@ -21,8 +21,10 @@ Track the Mac app migration inside `Sources/Fast/`. Use `App/` for startup, navi
 
 ## Checklist for each batch
 
+For folder-only work, group related moves within the same Swift target into one batch. Use `git mv`, check for old paths with `rg`, and confirm pure renames with `git diff --cached --summary` (100% similarity). Build once for the whole batch and run the suites that exercise the moved files. Repeat the interactive flow once per batch when requested or when the change affects visible behavior.
+
 - [ ] Record the files, destination, and baseline commit. Identify a working flow to repeat. Capture a fresh baseline when the flow changes.
 - [ ] Move the files within the same target. Check source-path references in scripts, docs, and build tooling.
 - [ ] Run the design check on moved Swift files, build the app, and run the affected test suites.
-- [ ] Launch the rebuilt app in an isolated test profile. For Chat, start with keyboard focus on the page, open the project, type and verify a visible draft, close chat, and verify focus returns to the page. Repeat with the standalone composer when affected.
+- [ ] When verifying a UI flow, launch the rebuilt app in an isolated test profile. For Chat, start with keyboard focus on the page, open the project, type and verify a visible draft, close chat, and verify focus returns to the page. Repeat with the standalone composer when affected.
 - [ ] Record the build configuration, test count, runtime result, and any outstanding issue. Commit the scoped changes locally and add the commit hash to Completed batches.
