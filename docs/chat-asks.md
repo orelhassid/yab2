@@ -112,7 +112,7 @@ allowed before it reaches `askOnce`, so switching tabs in between doesn't
 matter.
 
 The column shows `root.permit` in the field's place (`ChatPermitCard` in
-[ChatComposer.swift](../Sources/Fast/ChatComposer.swift), fed by
+[ChatComposer.swift](../Sources/Fast/Components/Chat/ChatComposer/ChatComposer.swift), fed by
 `ChatFeed.permit`), with Return for the yes and Escape for Not Now (App.take).
 An answer in either place closes both.
 

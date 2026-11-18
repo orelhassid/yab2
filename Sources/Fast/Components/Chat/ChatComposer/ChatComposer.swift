@@ -259,10 +259,8 @@ struct ChatComposer: View {
                 .padding(.leading, -6) // design: the +'s stroke on the words' line, its circle hanging out past them
             }
         }
-        // Words 16 in; the + and the button 8 from the corner they stand
-        // in, their circles concentric with the field's curve.
         .padding(.leading, long ? 16 : 8)
-        .padding(.trailing, 8)
+        .padding(.trailing, 8) // design: long text sits 16 points in while the round send button sits 8 points from the corner
         .padding(.top, !shelf.isEmpty ? 10 : long ? 12 : 8)
         .padding(.bottom, 8)
         .frame(minHeight: 40)

@@ -43,7 +43,7 @@ final class OnDeviceModel: ChatBackend {
 
     /// Three requests about `page` for a new chat, or nil without the model
     /// or when it gives fewer than two plain lines. The Mac's prompt
-    /// (ChatIdeas in Sources/Fast/ChatComposer.swift), shortened for the
+    /// (ChatIdeas in Sources/Fast/Components/Chat/ChatComposer/ChatComposer.swift), shortened for the
     /// smaller window.
     func ideas(about page: PageContext) async -> [String]? {
         guard isAvailable else { return nil }
