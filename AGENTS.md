@@ -3,6 +3,15 @@
 Rules for everyone who changes Yab, people and coding agents alike.
 CONTRIBUTING.md covers how to send a change; this file covers how to make one.
 
+## Commits in Yab2
+
+For work in the `orelhassid/yab2` fork, make a local commit automatically
+after completing the requested changes and running the checks they need.
+Stage only changes that belong to the task, including individual hunks when
+a file contains unrelated edits. Leave existing staged changes out of the
+commit. Report the commit hash when handing back the task. Push only when
+the user asks.
+
 ## Build and test
 
 - `./build.sh` builds Yab Dev, ad hoc signed, with no update feed, no
