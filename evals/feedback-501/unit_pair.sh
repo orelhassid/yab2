@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 base="${1:?committed main base}"
 out="${YAB_FARM_OUT:?}/chat-toggle-501"
 mkdir -p "$out/candidate-source"
-paths=(Sources/Fast/App.swift Sources/Fast/ChatColumn.swift Sources/Fast/Keymap.swift)
+paths=(Sources/Fast/App.swift Sources/Fast/Components/Chat/ChatColumn/ChatColumn.swift Sources/Fast/Keymap.swift)
 git rev-parse "$base" > "$out/main-commit"
 for path in "${paths[@]}"; do
   mkdir -p "$out/candidate-source/$(dirname "$path")"
