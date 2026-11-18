@@ -9,7 +9,7 @@ screens deep in Settings › AI › Routines.
 
 ## Model
 
-- `Project` (Sources/Fast/Projects.swift): `id` (`prj-` and eight letters),
+- `Project` (Sources/Fast/Services/Chat/Projects.swift): `id` (`prj-` and eight letters),
   `name`, `emoji`, `tint` (one of `Project.tints`), `instructions`,
   `memoryOn`, `pinned`, `archived`, `created`, `updated`, `order`. One file a
   project in `projects/`, written a second after a change, as chats are.

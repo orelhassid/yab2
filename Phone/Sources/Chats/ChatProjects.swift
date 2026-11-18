@@ -5,7 +5,7 @@ import SwiftUI
 import SyncKit
 #endif
 
-/// A project of chats, as the Mac keeps it (Sources/Fast/Projects.swift,
+/// A project of chats, as the Mac keeps it (Sources/Fast/Services/Chat/Projects.swift,
 /// docs/chat-projects.md): a circle with an emoji, a name, its color, the
 /// instructions its chats are told. The iPhone reads projects from sync and
 /// writes none in v1: instructions and memory are edited on the Mac.

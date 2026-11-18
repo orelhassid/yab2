@@ -20,18 +20,21 @@ mkdir -p "$baseline/Tests/FastTests"
 git archive "$base" Package.swift Sources Resources Tests/MailCoreFakes Tests/MailCoreTests \
   Tests/FastTests/ChatMotionTests.swift Tests/FastTests/ChatLiveTests.swift Tests/FastTests/ChatTests.swift \
   Tests/FastTests/ChatProblemTests.swift Tests/FastTests/ResultCardTests.swift | tar -x -C "$baseline"
+candidate=Sources/Fast/Components/Chat/ChatTranscript/ChatTranscript.swift
+base_transcript="$baseline/$candidate"
+[ -f "$base_transcript" ] || base_transcript="$baseline/Sources/Fast/ChatTranscript.swift"
 cp Tests/FastTests/ChatStreamStabilityTests.swift Tests/FastTests/TestScreen.swift "$baseline/Tests/FastTests/"
 git rev-parse "$base" > "$out/main-commit.txt"
-cp Sources/Fast/ChatTranscript.swift "$out/candidate-ChatTranscript.swift"
-cp "$baseline/Sources/Fast/ChatTranscript.swift" "$out/main-ChatTranscript.swift"
+cp "$candidate" "$out/candidate-ChatTranscript.swift"
+cp "$base_transcript" "$out/main-ChatTranscript.swift"
 shasum -a 256 "$out/candidate-ChatTranscript.swift" Tests/FastTests/ChatStreamStabilityTests.swift > "$out/source-sha256.txt"
-trap 'cp "$out/main-ChatTranscript.swift" "$baseline/Sources/Fast/ChatTranscript.swift"' EXIT
+trap 'cp "$out/main-ChatTranscript.swift" "$base_transcript"' EXIT
 set +e
 (cd "$baseline" && CHAT_STABILITY_PHASE=before YAB_PROBE=chat-stability-before YAB_HISTORY=own swift test --jobs 2 --filter ChatStreamStabilityTests) 2>&1 | tee "$out/before-tests.log"
 before=${PIPESTATUS[0]}
 set -e
 grep -q 'Test run with' "$out/before-tests.log" || { echo 'baseline did not run; stop before candidate' >&2; exit 1; }
-cp "$out/candidate-ChatTranscript.swift" "$baseline/Sources/Fast/ChatTranscript.swift"
+cp "$out/candidate-ChatTranscript.swift" "$base_transcript"
 (cd "$baseline" && CHAT_STABILITY_PHASE=after YAB_PROBE=chat-stability-after YAB_HISTORY=own swift test --jobs 2 --filter 'ChatStreamStabilityTests|ChatMotionTests|ChatLiveTests|ChatTests|ChatProblemTests|ResultCardTests') 2>&1 | tee "$out/after-tests.log"
 python3 - "$out" "$before" <<'PY'
 import json, pathlib, sys

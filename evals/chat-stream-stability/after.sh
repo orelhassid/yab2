@@ -22,10 +22,13 @@ if [ ! -f "$projection/Package.swift" ]; then
     Tests/FastTests/ChatProblemTests.swift Tests/FastTests/ResultCardTests.swift | tar -x -C "$projection"
 fi
 mkdir -p "$projection/Tests/FastTests"
+candidate=Sources/Fast/Components/Chat/ChatTranscript/ChatTranscript.swift
+base_transcript="$projection/$candidate"
+[ -f "$base_transcript" ] || base_transcript="$projection/Sources/Fast/ChatTranscript.swift"
 cp Tests/FastTests/ChatStreamStabilityTests.swift Tests/FastTests/TestScreen.swift "$projection/Tests/FastTests/"
-cp Sources/Fast/ChatTranscript.swift "$projection/Sources/Fast/ChatTranscript.swift"
+cp "$candidate" "$base_transcript"
 git rev-parse "$base" > "$out/main-commit.txt"
-shasum -a 256 Sources/Fast/ChatTranscript.swift Tests/FastTests/ChatStreamStabilityTests.swift > "$out/source-sha256.txt"
+shasum -a 256 "$candidate" Tests/FastTests/ChatStreamStabilityTests.swift > "$out/source-sha256.txt"
 (cd "$projection" && CHAT_STABILITY_PHASE=after YAB_PROBE=chat-stability-after YAB_HISTORY=own swift test --jobs 2 --filter 'ChatStreamStabilityTests|ChatMotionTests|ChatLiveTests|ChatTests|ChatProblemTests|ResultCardTests') 2>&1 | tee "$out/after-tests.log"
 python3 - "$out" <<'PY'
 import json, pathlib, sys
