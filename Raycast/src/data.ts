@@ -177,7 +177,7 @@ export function pictureFile(key: string): string | undefined {
   return undefined;
 }
 
-// MARK: - history (diary.sqlite, Sources/Fast/Diary.swift)
+// MARK: - history (diary.sqlite, Sources/Fast/Services/History/Diary.swift)
 
 export type HistoryPage = {
   key: string;

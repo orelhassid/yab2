@@ -12,6 +12,7 @@ Track the Mac app migration inside `Sources/Fast/`. Use `App/` for startup, navi
 - [x] Group ChatFlight, ChatMotion, and ChatZoom under `Components/Chat/ChatMotion/` and ChatMovement under `Components/Chat/ChatColumn/` (`35e3487`). Four byte-for-byte moves. One SDK 26.5 compatibility build passed, followed by 6 tests in ChatMotionTests and ChatMovementTests.
 - [x] Finish Chat from baseline `a95f6bd`: 19 byte-for-byte moves in one SDK 26.5 compatibility preview build. 74 tests across 8 relevant suites passed. Project chat and the standalone composer displayed their drafts and restored page focus on close.
 - [x] Migrate Bookmarks from baseline `bef1e7f`. Five byte-for-byte moves. One SDK 26.5 compatibility build passed, followed by 32 tests across five bookmark suites covering the bar, field, dates, suggestions, and Spotlight.
+- [x] Migrate Library and discovery from baseline `70d6d0c`. Sixteen byte-for-byte moves and one SDK 26.5 compatibility preview build. Of 40 focused tests, the seeded-month day-thread timing check failed on the first run. It passed in isolation and all 40 passed on repeat using the same build.
 
 ## Remaining work
 
@@ -40,7 +41,7 @@ Names below are Swift source filenames without the extension. The final ownershi
 At baseline `bef1e7f`, 1,089 Swift files were directly under `Sources/Fast/`. This is a feature-level inventory of that target. Each row names representative entry points to check for callers and shared ownership before moving a feature. Large areas can have several independently verified batches.
 
 - [x] **Bookmarks** — bookmark storage and Spotlight, bookmarks bar, native menu, and command-field destination. Agent tools and browser import adapters stay with their respective owners.
-- [ ] **Library and discovery** — History, LibraryPage, HomeTab, HomeLibraryList, Diary, DayThreads, Recall, and suggestions.
+- [x] **Library and discovery** — Home and Library screens, history panel and formatting, diary storage, day threads, and habit-based discovery. Provider autocomplete stays with the command field and LiveSuggest with Live Folders.
 - [ ] **Files and downloads** — DownloadRequest, DownloadFile, Hoard, FileShelf, DockProgress, SaveFile, and download notifications.
 - [ ] **Reading and documents** — Reader, PageTranslation, PDFDesk, PDFFill, PageSave, Capture, Find, and selection controls.
 - [ ] **Navigation and command field** — AddressBar, Omnibox, Query, FieldViews, Places, MenuCommands, Calculator, and search providers.
