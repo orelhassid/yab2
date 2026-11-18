@@ -246,7 +246,7 @@ enum WelcomeConnect: WelcomeChapter {
             // A stop says why under the marks, as Settings does beside its
             // button: the footer's one line only names the step.
             let access = troubleWords(cli, now) ?? WelcomeConnect.needs(cli)
-            var said = StagePart.view("access:" + cli, CGRect(x: 0, y: marksTop + 204, width: 1180, height: 16), enter: .fade, delay: 0.18) {
+            var said = StagePart.view("access:" + cli, CGRect(x: 0, y: marksTop + 276, width: 1180, height: 16), enter: .fade, delay: 0.18) {
                 Text(access).font(.system(size: 12)).foregroundStyle(Palette.muted).frame(maxWidth: .infinity)
             }
             said.version = access
@@ -261,7 +261,7 @@ enum WelcomeConnect: WelcomeChapter {
         if now == .codexTerminal {
             let command = AgentSetupModel.install(cli)
             var part = StagePart.view("install-command-" + cli,
-                                      CGRect(x: 230, y: marksTop + 244, width: 720, height: 44),
+                                      CGRect(x: 230, y: marksTop + 306, width: 720, height: 44),
                                       enter: .fade, delay: 0.18, takesClicks: true) {
                 CommandSlot(text: command, fits: true, kind: .glass)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -281,7 +281,7 @@ enum WelcomeConnect: WelcomeChapter {
             // The connected mark a moment longer, where it stood.
             parts.append(WelcomeParts.mark("mark-" + cli, CGRect(x: center(cli) - 56, y: marksTop, width: 112, height: 112), .agent(cli),
                                            tick: true, tickEnters: false, enter: .drop))
-            parts.append(name(cli, center: center(cli), chosen: true, aside: false, delay: 0.1))
+            parts.append(name(cli, center: center(cli), top: marksTop + 120, chosen: true, aside: false, delay: 0.1))
             return WelcomeBoard(parts)
         }
         parts.append(WelcomeParts.terminal("term", CGRect(x: 310, y: 352, width: 560, height: 96), who: cli, line: terminalLine(cli), enter: .rise))
@@ -309,12 +309,14 @@ enum WelcomeConnect: WelcomeChapter {
         let reduce = stage.reduceMotion
         var parts: [StagePart] = []
         for (index, cli) in order.enumerated() {
-            let x = center(cli) - 56
+            let middle = 590 + (CGFloat(index % 2) - 0.5) * 210
+            let top = marksTop + CGFloat(index / 2) * 138
+            let x = middle - 38
             let chosen = cli == stage.agent
             // The other one, while the chosen one waits: at 0.5.
             let aside = !chosen && waiting
             let ring = chosen && !reduce && (waiting || closing == cli)
-            let frame = CGRect(x: x, y: marksTop, width: 112, height: 112)
+            let frame = CGRect(x: x, y: top, width: 76, height: 76)
             parts.append(WelcomeParts.mark("mark-" + cli, frame, .agent(cli),
                                            ring: ring, tick: chosen && connects(now), tickEnters: now == .just || landing,
                                            dim: aside || now == .looking, enter: .drop, delay: Double(index) * 0.04) {
@@ -326,9 +328,9 @@ enum WelcomeConnect: WelcomeChapter {
             if chosen, !ring, now != .looking {
                 parts.append(WelcomeParts.pick("pick-" + cli, frame, .agent(cli), delay: Double(index) * 0.04))
             }
-            parts.append(name(cli, center: x + 56, chosen: chosen, aside: aside, delay: 0.1 + Double(index) * 0.04))
+            parts.append(name(cli, center: middle, top: frame.maxY, chosen: chosen, aside: aside, delay: 0.1 + Double(index) * 0.04))
             if let words = line(cli, now, stage) {
-                var part = StagePart.view("state-" + cli, CGRect(x: x + 56 - lineWidth / 2, y: marksTop + 154, width: lineWidth, height: 16),
+                var part = StagePart.view("state-" + cli, CGRect(x: middle - lineWidth / 2, y: frame.maxY + 34, width: lineWidth, height: 16),
                                           enter: .fade, delay: 0.14 + Double(index) * 0.04) {
                     Text(words).font(.system(size: 12.5)).foregroundStyle(Palette.muted).opacity(aside ? 0.5 : 1)
                         .lineLimit(1).multilineTextAlignment(.center)
@@ -343,8 +345,8 @@ enum WelcomeConnect: WelcomeChapter {
 
     /// An agent's name under its mark, 15 medium; the chosen one's in ink
     /// on a wash pill, the others muted.
-    private static func name(_ cli: String, center: CGFloat, chosen: Bool, aside: Bool, delay: Double) -> StagePart {
-        var part = StagePart.view("name-" + cli, CGRect(x: center - lineWidth / 2, y: marksTop + 120, width: lineWidth, height: 28), enter: .fade, delay: delay) {
+    private static func name(_ cli: String, center: CGFloat, top: CGFloat, chosen: Bool, aside: Bool, delay: Double) -> StagePart {
+        var part = StagePart.view("name-" + cli, CGRect(x: center - lineWidth / 2, y: top, width: lineWidth, height: 28), enter: .fade, delay: delay) {
             Text(AgentSetupModel.name(cli))
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(chosen ? Palette.ink : Palette.muted)

@@ -21,34 +21,29 @@ import AppKit
 
 @MainActor
 enum WelcomeSample: WelcomeChapter {
-    static let firstTitle = "Everything you\u{2019}re used to. Only fast."
-    static let secondTitle = "Your agent, in tabs you can see."
-    /// The sample task, typed into the box.
     static let task = "Catch me up on my pull requests"
 
+    static let scenes: [(beat: WelcomeStage.Beat, label: String)] = [
+        (.pins, "Organize tabs in folders"),
+        (.peek, "Peek at a link in Split View"),
+        (.find, "Find a page or command"),
+        (.task, "Give your agent a task"),
+        (.watch, "Follow its work in tabs"),
+        (.results, "Review what needs you"),
+    ]
+
     static func beats(_ stage: WelcomeStage) -> [WelcomeStage.Beat] {
-        WelcomeStage.foldsFirstChapter ? [.task, .watch, .results] : [.pins, .peek, .find, .task, .watch, .results]
+        scenes.map(\.beat)
     }
 
     static func words(_ moment: WelcomeMoment, _ stage: WelcomeStage) -> WelcomeWords {
-        switch moment.beat {
-        case .pins: return WelcomeWords(title: firstTitle, sub: "Pinned tabs, and folders that open right where they sit.")
-        case .peek: return WelcomeWords(title: firstTitle, sub: "Peek at a link, then keep it beside the page in Split View.")
-        case .find: return WelcomeWords(title: firstTitle, sub: "One box finds any tab, any page you\u{2019}ve seen, any setting.")
-        case .task:
-            return WelcomeWords(title: secondTitle, sub: "Ask in the box, and your own Claude or ChatGPT does it.", marker: true, quiet: "Skip")
-        case .watch:
-            return WelcomeWords(title: secondTitle, sub: "It opens its own tabs. Take Over whenever you like.", marker: true, quiet: "Skip")
-        default:
-            let connected = WelcomeConnect.connected(stage) != nil
-            return WelcomeWords(title: secondTitle, sub: "It tells you what each one needs. It never merges or replies for you.",
-                                marker: true, primary: connected ? "Continue" : "I Want This", quiet: "Skip")
-        }
+        var words = WelcomeWords(title: "A tour of Yab.", sub: "Explore a sample workspace. Select any step to play its preview.")
+        words.scene = moment.beat
+        return words
     }
 
-    /// Continue walks the beats; Skip goes on to Connect.
     static func press(_ button: WelcomeButton, _ moment: WelcomeMoment, _ stage: WelcomeStage) -> WelcomeTurn {
-        button == .quiet ? .chapter(3) : .next
+        .chapter(3)
     }
 
     // MARK: - playing
@@ -63,7 +58,7 @@ enum WelcomeSample: WelcomeChapter {
             player.show()
             await player.runOn()
         case .peek:
-            if moment.from == .pins {
+            if moment.from != nil {
                 // The link pressed, the Peek out of it, a hold, then Split
                 // View pressed and the Peek on to the right half.
                 player.show("press")
@@ -92,6 +87,7 @@ enum WelcomeSample: WelcomeChapter {
             player.show("type")
             guard await player.wait(box ? 0.06 : 0.3), await player.type(task, in: "box") else { return }
             player.show()
+            await player.runOn()
         case .watch:
             if moment.from == .task, player.frame(of: "tr-ask") != nil {
                 player.press("tr-ask", to: 0.98)
@@ -103,6 +99,7 @@ enum WelcomeSample: WelcomeChapter {
                 guard await player.wait(1.1) else { return }
                 player.show("run", index: step)
             }
+            await player.runOn()
         case .results:
             guard moment.from == .watch else { player.show(); return }
             player.show("done")
@@ -130,7 +127,7 @@ enum WelcomeSample: WelcomeChapter {
         case .find:
             return pinned(sample(.split, at) + WelcomeBoard([findBox(at, typing: moment.phase == "type")]))
         case .task:
-            let world = WelcomeStage.foldsFirstChapter ? sample(.open, at, grow: grow) : sample(.split, at)
+            let world = sample(.split, at)
             return pinned(world + WelcomeBoard([taskBox(at, typing: moment.phase == "type", delay: grow ? 0.26 : nil)]))
         case .watch:
             // At rest (Back, the bench) it is on its second step, reading.
@@ -225,7 +222,7 @@ enum WelcomeSample: WelcomeChapter {
     private static func sample(_ folder: Folder, _ at: Layout, grow: Bool = false) -> WelcomeBoard {
         let enter: StagePart.Enter = grow ? .grow(from: "wmark") : .fade
         var parts = [at.side
-            ? WelcomeParts.column("col", Layout.column, pins: columnPins, rows: sampleRows(folder), enter: enter)
+            ? WelcomeParts.column("col", Layout.column, pins: columnPins, rows: sampleRows(folder), enter: enter, plate: true)
             : WelcomeParts.row("row", Layout.row, sampleRow(folder), enter: enter)]
         if folder == .split {
             parts.append(WelcomeParts.page("pg-y214", at.left, .tracker, enter: enter, delay: 0.04))
@@ -336,7 +333,7 @@ enum WelcomeSample: WelcomeChapter {
     /// `done`: the answer in place of the steps, the dock gone.
     private static func agentBoard(_ at: Layout, step: Int?, dock: String?, done: Bool) -> WelcomeBoard {
         var parts = [at.side
-            ? WelcomeParts.column("col", Layout.column, pins: columnPins, rows: agentRows(done: done))
+            ? WelcomeParts.column("col", Layout.column, pins: columnPins, rows: agentRows(done: done), plate: true)
             : WelcomeParts.row("row", Layout.row, agentRow(done: done))]
         let page = at.pullRequest
         parts.append(WelcomeParts.page("pg-pr", page, .pullRequest(narrow: at.side), enter: .crossfade))

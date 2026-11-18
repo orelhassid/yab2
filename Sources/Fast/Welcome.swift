@@ -83,6 +83,7 @@ final class WelcomeOverlayView: NSView {
     private let chrome = WelcomeChromeView()
     private let panel = WelcomeFlippedView()
     private let wash = CAGradientLayer()
+    private let inputScroll = NSScrollView()
     private let headingHost = NSHostingController(rootView: WelcomeHeading(words: WelcomeWords()))
     private var heading: NSView { headingHost.view }
     private var shown = WelcomeWords()
@@ -104,13 +105,19 @@ final class WelcomeOverlayView: NSView {
         panel.layer?.cornerRadius = Radius.window
         panel.layer?.cornerCurve = .continuous
         panel.layer?.masksToBounds = true
-        wash.startPoint = CGPoint(x: 0, y: 1)
-        wash.endPoint = CGPoint(x: 1, y: 0)
+        wash.type = .radial
+        wash.startPoint = CGPoint(x: 0.18, y: 0.78)
+        wash.endPoint = CGPoint(x: 1.2, y: -0.15)
         panel.layer?.addSublayer(wash)
         addSubview(panel)
         panel.addSubview(stage.view)
         stage.inputs.alignsLeading = true
-        addSubview(stage.inputs)
+        inputScroll.drawsBackground = false
+        inputScroll.hasVerticalScroller = true
+        inputScroll.scrollerStyle = .overlay
+        inputScroll.autohidesScrollers = true
+        inputScroll.documentView = stage.inputs
+        addSubview(inputScroll)
         headingHost.sizingOptions = []
         addSubview(heading)
         addSubview(chrome)
@@ -163,20 +170,23 @@ final class WelcomeOverlayView: NSView {
         wash.frame = panel.bounds
         wash.isHidden = finish
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        wash.colors = [Swatch.lavender, .sky, .paper].map { $0.color(dark: dark, custom: .clear).cgColor }
+        wash.colors = [Swatch.peach, .rose, .lavender, .sky].map { $0.color(dark: dark, custom: .clear).cgColor }
         stage.view.frame = finish ? panel.bounds : panel.bounds.insetBy(dx: 16, dy: 24)
         heading.isHidden = intro || finish
         let formWidth = max(1, width - 2 * inset)
         let textHeight = headingHost.sizeThatFits(in: CGSize(width: formWidth, height: 1000)).height
         let area = max(1, bounds.height - 152)
         let rect = stage.inputs.viewport ?? .null
-        let formScale = rect.isNull ? 0 : min(1, formWidth / max(1, rect.width), max(1, area - textHeight - 24) / max(1, rect.height))
+        let formScale = rect.isNull ? 0 : min(1, formWidth / max(1, rect.width))
         let formHeight = rect.isNull ? 0 : rect.height * formScale
-        let block = textHeight + (formHeight > 0 ? 24 + formHeight : 0)
+        let visibleHeight = min(formHeight, max(1, area - textHeight - 24))
+        let block = textHeight + (formHeight > 0 ? 24 + visibleHeight : 0)
         let top = 76 + max(0, (area - block) / 2)
         heading.frame = CGRect(x: inset, y: top, width: formWidth, height: textHeight)
-        stage.inputs.frame = intro ? CGRect(x: 0, y: 0, width: width, height: bounds.height)
-            : CGRect(x: inset, y: heading.frame.maxY + 24, width: formWidth, height: formHeight)
+        inputScroll.frame = intro ? CGRect(x: 0, y: HeroLayout.openingOffset(in: CGSize(width: width, height: bounds.height)), width: width, height: bounds.height)
+            : CGRect(x: inset, y: heading.frame.maxY + 24, width: formWidth, height: visibleHeight)
+        stage.inputs.frame = CGRect(origin: .zero, size: CGSize(width: inputScroll.contentSize.width, height: intro ? bounds.height : formHeight))
+        inputScroll.isHidden = !intro && formHeight == 0
         chrome.frame = bounds
         if !arrived, bounds.width > 0, bounds.height > 0 {
             arrived = true
@@ -194,8 +204,9 @@ final class WelcomeOverlayView: NSView {
 
     func show(_ state: WelcomeChrome) {
         if shown != state.words {
+            if shown.title != state.words.title { inputScroll.contentView.scroll(to: .zero) }
             shown = state.words
-            headingHost.rootView = WelcomeHeading(words: shown)
+            headingHost.rootView = WelcomeHeading(words: shown) { [weak stage] in stage?.selectScene($0) }
             needsLayout = true
         }
         hero.animated = !state.reduceMotion
@@ -288,15 +299,36 @@ private enum WelcomeColumns {
 
 private struct WelcomeHeading: View {
     let words: WelcomeWords
+    var select: (WelcomeStage.Beat) -> Void = { _ in }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(words.title).font(.system(size: WelcomeType.title, weight: .medium))
+            Text(words.title).font(.system(size: WelcomeType.title, weight: .bold, design: .rounded))
                 .tracking(WelcomeType.title * WelcomeType.tracking)
                 .foregroundStyle(Palette.ink).accessibilityAddTraits(.isHeader)
             Text(words.sub).font(.system(size: WelcomeType.sub)).foregroundStyle(Palette.muted)
-            if words.marker {
-                Text("A recorded run on sample data. Nothing is connected yet.")
-                    .font(.caption).foregroundStyle(Palette.muted)
+            if let scene = words.scene {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(WelcomeSample.scenes, id: \.beat) { step in
+                        Button { select(step.beat) } label: {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Rectangle().fill(Palette.hairline).frame(width: 2)
+                                    Circle().fill(Palette.ground).frame(width: 18, height: 18) // design: masks the timeline behind its marker
+                                    Circle().strokeBorder(Palette.muted, lineWidth: 1).frame(width: 12, height: 12)
+                                    if scene == step.beat { Circle().fill(Palette.ink).frame(width: 8, height: 8) }
+                                }
+                                .frame(width: 20, height: 40)
+                                Text(step.label).font(.system(size: 17, weight: scene == step.beat ? .semibold : .regular))
+                            }
+                            .foregroundStyle(scene == step.beat ? Palette.ink : Palette.muted)
+                            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(scene == step.beat ? .isSelected : [])
+                    }
+                }
+                .padding(.top, 10)
             }
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -567,12 +599,13 @@ final class WelcomeChromeView: NSView {
         guard size.width > 0, size.height > 0 else { return }
         let room = Self.room, side = Self.side
         let welcome = shown.words.frame == .welcome
-        let s = welcome ? StageSpace.scale(for: CGSize(width: WelcomeColumns.leftWidth(size.width), height: size.height)) : 1
+        let s: CGFloat = welcome ? 1.15 : 1
         let middle = buttonMiddle
         let frame: CGRect
         if welcome {
             let c = StageSpace.toWindow(CGPoint(x: StageSpace.pivot.x, y: Self.welcomeTop + side / 2), in: CGSize(width: WelcomeColumns.leftWidth(size.width), height: size.height))
-            frame = CGRect(x: c.x - middle.x * s, y: c.y - middle.y * s, width: room * s, height: side * s)
+            let offset = HeroLayout.openingOffset(in: CGSize(width: WelcomeColumns.leftWidth(size.width), height: size.height))
+            frame = CGRect(x: c.x - middle.x * s, y: c.y + offset - middle.y * s, width: room * s, height: side * s)
         } else {
             frame = CGRect(x: WelcomeColumns.leftWidth(size.width) - Self.corner - room, y: size.height - Self.corner - side, width: room, height: side)
         }
@@ -941,7 +974,7 @@ struct WelcomeLede: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text("Everything Arc had. Your agent, in your tabs. And fast.")
+            Text("Your tabs, your spaces, and your own AI agent.")
                 .font(.system(size: WelcomeType.lede))
                 .foregroundStyle(Palette.muted)
                 .lineLimit(1)

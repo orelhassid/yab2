@@ -65,16 +65,12 @@ struct WelcomePickTests {
     }
 
     @Test func nineAndTenBrowsersFitWithRoomForTheirNamesAndRings() {
-        #expect(WelcomeYours.browserPitch(1) == 140)
-        #expect(WelcomeYours.browserPitch(8) == 140)
-        for count in 2...10 {
-            let pitch = WelcomeYours.browserPitch(count)
-            let left = 590 - CGFloat(count - 1) / 2 * pitch - 48
-            let right = left + CGFloat(count - 1) * pitch + 96
-            #expect(left >= 40 && right <= 1140)
-            #expect(pitch - 8 > 96)
-            let ring = WelcomeParts.ringFrame(.letter("Comet"), side: 96).0
-            #expect(left + ring.minX >= 40 && right - 96 + ring.maxX <= 1140)
+        for count in [9, 10] {
+            let frames = (0..<count).map { WelcomeYours.browserFrame($0, count: count) }
+            #expect(Set(frames.map(\.midX)).count == 3)
+            #expect(Set(frames.map(\.midY)).count == (count + 2) / 3)
+            #expect(frames[1].midX - frames[0].midX >= 154)
+            #expect(frames[3].minY - frames[0].maxY >= 44)
         }
     }
 

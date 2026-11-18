@@ -59,6 +59,11 @@ enum HeroLayout {
 
     /// Welcome: the mark in the middle and the name under it, in the
     /// stage's points brought into the window's.
+    static func openingOffset(in size: CGSize) -> CGFloat {
+        let middle = StageSpace.toWindow(CGPoint(x: 590, y: 336), in: size).y
+        return size.height / 2 - middle
+    }
+
     static func welcome(in size: CGSize) -> Place {
         let s = StageSpace.scale(for: size)
         let font = font(WelcomeType.name)
@@ -66,8 +71,8 @@ enum HeroLayout {
         let baseline = nameTop + (nameLine - (font.ascender - font.descender)) / 2 + font.ascender
         let start = StageSpace.toWindow(CGPoint(x: StageSpace.pivot.x - Title.nameWidth / 2, y: baseline), in: size)
         return Place(
-            markCenter: StageSpace.toWindow(CGPoint(x: mark.midX, y: mark.midY), in: size), markScale: s,
-            nameLeft: (start.x * 2).rounded() / 2, baseline: (start.y * 2).rounded() / 2, nameScale: s
+            markCenter: StageSpace.toWindow(CGPoint(x: mark.midX, y: mark.midY), in: size).applying(CGAffineTransform(translationX: 0, y: openingOffset(in: size))), markScale: s,
+            nameLeft: (start.x * 2).rounded() / 2, baseline: (start.y * 2).rounded() / 2 + openingOffset(in: size), nameScale: s
         )
     }
 

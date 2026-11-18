@@ -5,6 +5,16 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct WelcomeAgentTests {
+    @Test func everyTourSceneContinuesToSetup() {
+        let stage = WelcomeStage.shared
+        for beat in WelcomeSample.beats(stage) {
+            let moment = WelcomeMoment(beat: beat)
+            #expect(beat.chapter == 1)
+            #expect(WelcomeSample.words(moment, stage).scene == beat)
+            #expect(WelcomeSample.press(.primary, moment, stage) == .chapter(3))
+        }
+    }
+
     @Test func aFreshWelcomeStartsInTheDefaultBrowsersLayout() {
         for bundle in [TabImport.arc, TabImport.dia] {
             var look = WelcomeHeldLook(sidebar: false)
@@ -69,7 +79,7 @@ struct WelcomeAgentTests {
                 #expect(chat.frame.maxY <= 676)
                 if side {
                     let column = try #require(board.parts.first { $0.key == "col" })
-                    #expect(column.plate == nil)
+                    #expect(column.plate != nil)
                     #expect(column.frame.width == 230)
                     for child in column.children {
                         #expect(child.frame.minX >= 0 && child.frame.maxX <= column.frame.width)

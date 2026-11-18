@@ -132,15 +132,15 @@ enum WelcomeVault: WelcomeChapter {
     }
 
     static func words(_ moment: WelcomeMoment, _ stage: WelcomeStage) -> WelcomeWords {
-        guard let offer = chosen(stage) else { return WelcomeWords(title: WelcomeYours.title) }
+        guard let offer = chosen(stage) else { return WelcomeWords(title: "Fill your logins.") }
         let several = offers(stage).count > 1
         let sub = several ? "Pick the one you use. Yab fills from it, and so does your agent."
             : "Fill from \(offer.name) here, and let your agent sign in with it."
-        if connected == offer.id { return WelcomeWords(title: WelcomeYours.title, sub: sub, primary: "Continue") }
+        if connected == offer.id { return WelcomeWords(title: "Fill your logins.", sub: sub, primary: "Continue") }
         if connecting {
-            return WelcomeWords(title: WelcomeYours.title, sub: sub, primary: "Connect \(offer.name)", busy: true)
+            return WelcomeWords(title: "Fill your logins.", sub: sub, primary: "Connect \(offer.name)", busy: true)
         }
-        return WelcomeWords(title: WelcomeYours.title, sub: sub, primary: "Connect \(offer.name)", quiet: "Not Now")
+        return WelcomeWords(title: "Fill your logins.", sub: sub, primary: "Connect \(offer.name)", quiet: "Not Now")
     }
 
     static func arrive(_ moment: WelcomeMoment, _ stage: WelcomeStage) {

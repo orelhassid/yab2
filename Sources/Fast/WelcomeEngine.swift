@@ -54,18 +54,13 @@ enum StageSpace {
 /// The welcome's own sizes of type, where they are off the app's scale:
 /// its words are display words, set once per screen.
 enum WelcomeType {
-    /// A chapter's title: SF Pro Display 28 on a 34 line, medium.
-    static let title: CGFloat = 28
-    static let titleLine: CGFloat = 34
+    static let title: CGFloat = 42
     /// The welcome's one display tracking, in ems.
     static let tracking: CGFloat = -0.015
-    /// The line under the title: 15 on 20, muted.
-    static let sub: CGFloat = 15
-    static let subLine: CGFloat = 20
+    static let sub: CGFloat = 18
     /// "yet another browser.": 44 on a 52 line.
     static let name: CGFloat = 44
-    /// Welcome's lede: 17 on 24, muted.
-    static let lede: CGFloat = 17
+    static let lede: CGFloat = 24
 }
 
 // MARK: - curves

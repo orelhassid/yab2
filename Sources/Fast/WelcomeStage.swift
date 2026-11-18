@@ -81,8 +81,8 @@ struct WelcomeWords: Equatable {
     var frame: Frame = .chapter
     var title = ""
     var sub = ""
-    /// Chapter 2's one line at 702: a recorded run on sample data.
-    var marker = false
+    /// The selected preview in the tour timeline.
+    var scene: WelcomeStage.Beat?
     /// The one button's words; nil when there is none.
     var primary: String? = "Continue"
     /// Under way: the press does nothing, the ↩ goes.
@@ -94,12 +94,11 @@ struct WelcomeWords: Equatable {
     /// A failure, said beside the button in words: no red, no icon.
     var failure: String?
 
-    init(frame: Frame = .chapter, title: String = "", sub: String = "", marker: Bool = false, primary: String? = "Continue",
+    init(frame: Frame = .chapter, title: String = "", sub: String = "", primary: String? = "Continue",
          busy: Bool = false, disabled: Bool = false, quiet: String? = nil, failure: String? = nil) {
         self.frame = frame
         self.title = title
         self.sub = sub
-        self.marker = marker
         self.primary = primary
         self.busy = busy
         self.disabled = disabled
@@ -286,8 +285,7 @@ final class WelcomeStage: ObservableObject {
 
         var chapter: Int? {
             switch self {
-            case .pins, .peek, .find: return 1
-            case .task, .watch, .results: return 2
+            case .pins, .peek, .find, .task, .watch, .results: return 1
             case .connect, .howto: return 3
             case .move, .look, .color, .vault: return 4
             case .access, .accessB: return 5
@@ -316,8 +314,6 @@ final class WelcomeStage: ObservableObject {
         case replay
     }
 
-    /// Open decision 1, as approved: chapter 1 shown, not folded into 2.
-    static let foldsFirstChapter = false
     /// Open decision 4, as approved: The site's color doesn't lead to Color.
     static let siteColorTakesGrain = false
 
@@ -439,7 +435,7 @@ final class WelcomeStage: ObservableObject {
     /// Back is there: past Welcome and the path's first beat, and not at
     /// Finish. Under way too, as the prototype has it: an install goes on,
     /// and Make Default's wait is let go (`back()`).
-    var canGoBack: Bool { beat != .welcome && beat != .finish && beat != path.dropFirst().first }
+    var canGoBack: Bool { beat != .welcome && beat != .finish && beat.chapter != 1 }
 
     /// How a welcome that begins now begins: again once welcomed, from the
     /// disk image's window when it was opened from there, else a launch.
@@ -578,10 +574,16 @@ final class WelcomeStage: ObservableObject {
         }
     }
 
+    /// Picking a scene plays it once and leaves the tour on that selection.
+    func selectScene(_ scene: Beat) {
+        guard beat.chapter == 1, scene.chapter == 1 else { return }
+        start(scene, from: beat, play: true, forward: false)
+    }
+
     /// A beat, forward, played.
     func go(_ beat: Beat) {
         guard beat != self.beat else { return }
-        history.append(self.beat)
+        if beat.chapter != 1 || self.beat.chapter != 1 { history.append(self.beat) }
         start(beat, from: self.beat, play: true, forward: true)
     }
 
@@ -635,7 +637,7 @@ final class WelcomeStage: ObservableObject {
         playing += 1
         // Chapter 1 runs on by itself when played forward; one come back
         // to stands still and waits for Continue.
-        runToken = play && forward && !reduceMotion && beat.chapter == 1 ? playing : nil
+        runToken = play && forward && !reduceMotion && beat.chapter == 1 && beat != .results ? playing : nil
         runStart = CACurrentMediaTime()
         heldFor = 0
         heldSince = runHeld ? runStart : nil
@@ -726,6 +728,8 @@ final class WelcomeStage: ObservableObject {
                 }
             default: break
             }
+        case .pins, .peek, .find, .task, .watch, .results:
+            view.viewport = CGRect(x: 130, y: 115, width: 920, height: 590)
         case .finish:
             view.viewport = nil
         default:

@@ -27,7 +27,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 enum WelcomeYours: WelcomeChapter {
-    static let title = "Make it yours."
+    static let title = "Bring your browser."
 
     /// Continue on Bring from X seen again, after Bring: Look is simply
     /// there, nothing pours a second time.
@@ -345,10 +345,10 @@ enum WelcomeYours: WelcomeChapter {
             return WelcomeWords(title: title, sub: sub, primary: primary, busy: stage.bringing.asking && !pretending(stage),
                                 quiet: stage.brought && !failed ? nil : "Start Fresh", failure: stage.bringFailure)
         case .color:
-            let sub = colorSource(stage) == .spaces ? "Each space came with its own color." : "Any color you like. Move the dot, then the wave."
-            return WelcomeWords(title: title, sub: sub)
+            let sub = colorSource(stage) == .spaces ? "Each space came with its own color." : "Choose a color and texture. See each change in the window beside you."
+            return WelcomeWords(title: "Color your space.", sub: sub)
         default:
-            return WelcomeWords(title: title, sub: "Where your tabs go, and what the page sits on.")
+            return WelcomeWords(title: "Shape your workspace.", sub: "Choose where tabs sit, how pages fit, and how much the command field shows.")
         }
     }
 
@@ -713,24 +713,23 @@ enum WelcomeYours: WelcomeChapter {
             if height > 8 { parts.append(countsCard(from, CGRect(x: 494, y: 282, width: width, height: height), keep: keep, stage)) }
             footnote = max(282 + height + 24, 504)
         } else {
-            let pitch = browserPitch(all.count)
-            let nameWidth = pitch - 8
+            let nameWidth: CGFloat = 154
             for (index, one) in all.enumerated() {
-                let x = 590 + (CGFloat(index) - CGFloat(all.count - 1) / 2) * pitch - 48
-                let frame = CGRect(x: x, y: 176, width: 96, height: 96)
+                let frame = browserFrame(index, count: all.count)
                 parts.append(WelcomeParts.mark("src-" + one.id, frame, one.mark,
                                                enter: .drop85, delay: Double(index) * 0.04) { pick(index, stage) })
                 if one.id == from.id {
                     parts.append(WelcomeParts.pick("pick-src-" + one.id, frame, one.mark, delay: Double(index) * 0.04))
                 }
-                var name = StagePart.view("bname-" + one.id, CGRect(x: x + 48 - nameWidth / 2, y: 280, width: nameWidth, height: 48), enter: .fade, delay: 0.06 + Double(index) * 0.04) {
+                var name = StagePart.view("bname-" + one.id, CGRect(x: frame.midX - nameWidth / 2, y: frame.maxY + 2, width: nameWidth, height: 48), enter: .fade, delay: 0.06 + Double(index) * 0.04) {
                     WelcomeBrowserName(name: one.name, caption: one.caption, chosen: one.id == from.id)
                 }
                 name.version = "\(one.name) \(one.caption) \(one.id == from.id)"
                 parts.append(name)
             }
-            if height > 8 { parts.append(countsCard(from, CGRect(x: 590 - width / 2, y: 348, width: width, height: height), keep: keep, stage)) }
-            footnote = 348 + height + 16
+            let bottom = browserFrame(all.count - 1, count: all.count).maxY + 52
+            if height > 8 { parts.append(countsCard(from, CGRect(x: 590 - width / 2, y: bottom, width: width, height: height), keep: keep, stage)) }
+            footnote = bottom + height + 12
         }
         parts.append(.view("kc", CGRect(x: 0, y: footnote, width: 1180, height: 16), enter: .fade, delay: 0.16) {
             Text("macOS asks for your keychain once, when you press Bring.")
@@ -739,6 +738,12 @@ enum WelcomeYours: WelcomeChapter {
                 .frame(maxWidth: .infinity)
         })
         return WelcomeBoard(parts)
+    }
+
+    static func browserFrame(_ index: Int, count: Int) -> CGRect {
+        let columns = min(3, max(1, count))
+        let center = 590 + (CGFloat(index % columns) - CGFloat(columns - 1) / 2) * 158
+        return CGRect(x: center - 29, y: 176 + CGFloat(index / columns) * 103, width: 58, height: 58)
     }
 
     static func browserPitch(_ count: Int) -> CGFloat {
