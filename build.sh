@@ -490,6 +490,7 @@ cp Resources/emoji.dat "$APP/Contents/Resources/emoji.dat"
 # Every emoji in Unicode's order, by part, for Change Icon (IconPicker.swift).
 cp Resources/emoji-groups.dat "$APP/Contents/Resources/emoji-groups.dat"
 # The hand an update's note is written in (UpdateDoodle.swift).
+cp -R Resources/HomeBackgrounds "$APP/Contents/Resources/"
 cp Resources/Caveat.ttf "$APP/Contents/Resources/Caveat.ttf"
 mkdir -p "$APP/Contents/Resources/LaunchArrival"
 cp Resources/LaunchArrival/Waves.metal Resources/LaunchArrival/arrival-02.m4a "$APP/Contents/Resources/LaunchArrival/"

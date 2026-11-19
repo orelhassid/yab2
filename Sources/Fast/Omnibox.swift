@@ -39,6 +39,7 @@ struct Omnibox: View {
     /// words and mask (`Stealth`). A private window says it once, at its
     /// column's foot, and its field is everyone's, only dark.
     let stealth: Bool
+    @State private var customizingHome = false
     /// Look.apply sets the app's appearance; a window can wear a space's
     /// different Look. Observe the app so every window's field agrees.
     @State private var appAppearance = NSApplication.shared.effectiveAppearance
@@ -215,10 +216,24 @@ struct Omnibox: View {
     private var showsHome: Bool { homeField && browser.typed.isEmpty }
 
     var body: some View {
+        HStack(spacing: 0) {
+            fieldContent
+            if homeField && customizingHome {
+                HomeSettingsPanel(browser: browser) { customizingHome = false }
+                    .padding(.top, max(0, pageTop))
+            }
+        }
+        .onChange(of: homeField) { _, active in if !active { customizingHome = false } }
+        .padding(.leading, homeField ? max(inset, browser.leadingSidebarRoom) : inset) // design: reserve the sidebar and trail on their chosen edges
+        .padding(.trailing, homeField ? max(trail, browser.trailingSidebarRoom) : trail) // design: reserve the sidebar and trail on their chosen edges
+        .onReceive(NSApplication.shared.publisher(for: \.effectiveAppearance)) { appAppearance = $0 }
+    }
+
+    private var fieldContent: some View {
         GeometryReader { space in
             VStack(spacing: 8) {
                 if homeField {
-                    HomeNavigation(browser: browser, selected: homeSelection)
+                    HomeNavigation(browser: browser, selected: homeSelection, customizing: $customizingHome)
                 }
                 HStack(spacing: 8) {
                     surface(room: showsHome ? 0 : compactList ? Self.compactRoom(in: space.size.height, pageTop: pageTop, pageBottom: pageBottom) : Self.placeRoom(in: space.size.height))
@@ -257,9 +272,6 @@ struct Omnibox: View {
             }
         }
         .modifier(SpacePageSurface(browser: browser, themedControls: true, active: homeField))
-        .padding(.leading, homeField ? max(inset, browser.leadingSidebarRoom) : inset) // design: reserve the sidebar and trail on their chosen edges
-        .padding(.trailing, homeField ? max(trail, browser.trailingSidebarRoom) : trail) // design: reserve the sidebar and trail on their chosen edges
-        .onReceive(NSApplication.shared.publisher(for: \.effectiveAppearance)) { appAppearance = $0 }
     }
 
     /// The field's width in a space this wide: its own, or, where the page

@@ -446,28 +446,65 @@ private struct HomeControl<Outline: InsettableShape, Label: View>: View {
     }
 }
 
+private struct HomeHiddenTabs: View {
+    @AppStorage("home.hiddenLibraries", store: Store.settings) private var hidden = ""
+    private var hiddenKeys: [String] { hidden.split(separator: ",").map(String.init) }
+    var body: some View {
+        Section("Hidden tabs") {
+            ForEach(HomeNavigation.standard.filter(hiddenKeys.contains), id: \.self) { key in
+                Button("Show " + key.capitalized) { hidden = hiddenKeys.filter { $0 != key }.joined(separator: ",") }
+            }
+        }
+    }
+}
+
+struct HomeSettingsPanel: View {
+    let browser: Browser
+    let close: () -> Void
+    @AppStorage("home.hiddenLibraries", store: Store.settings) private var hidden = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Home Tab Settings").font(.headline)
+                Spacer()
+                Button(action: close) { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).accessibilityLabel("Close Home Tab Settings")
+            }.padding(16)
+            Divider()
+            ScrollView {
+                SpacePageLook(browser: browser) { look, custom, reset in
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Background image").font(.subheadline.weight(.semibold))
+                        HomePhotoGallery(space: browser.spaceID)
+                        Divider()
+                        LookControls(look: .paint(look), bare: true, offersSite: false)
+                        if !hidden.isEmpty { Menu("Hidden tabs") { HomeHiddenTabs() } }
+                        Button("Use Space Look", action: reset).disabled(!custom)
+                    }
+                    .frame(width: LookCardView.inner)
+                    .padding(16)
+                }
+            }
+        }
+        .frame(width: LookCardView.inner + 32)
+        .background(Palette.ground)
+        .overlay(alignment: .leading) { Divider() }
+    }
+}
+
 struct HomeNavigation: View {
     let browser: Browser
     @Binding var selected: String
     @AppStorage("home.tabOrder", store: Store.settings) private var order = ""
     @AppStorage("home.hiddenLibraries", store: Store.settings) private var hidden = ""
     @AppStorage("home.libraryTabStyle", store: Store.settings) private var display = "Text only"
-    private let standard = ["tabs", "bookmarks", "history", "downloads", "extensions", "settings"]
+    fileprivate static let standard = ["tabs", "bookmarks", "history", "downloads", "extensions", "settings"]
     private var hiddenKeys: [String] { hidden.split(separator: ",").map(String.init) }
     private var keys: [String] {
         let custom = groups.map { $0.id.uuidString }
         let kept = order.split(separator: ",").map(String.init).filter(custom.contains)
-        return ["overview"] + standard.filter { !hiddenKeys.contains($0) } + kept + custom.filter { !kept.contains($0) }
-    }
-
-    @ViewBuilder private var hiddenTabs: some View {
-        if !hiddenKeys.isEmpty {
-            Section("Hidden tabs") {
-                ForEach(standard.filter(hiddenKeys.contains), id: \.self) { key in
-                    Button("Show " + key.capitalized) { hidden = hiddenKeys.filter { $0 != key }.joined(separator: ",") }
-                }
-            }
-        }
+        return ["overview"] + Self.standard.filter { !hiddenKeys.contains($0) } + kept + custom.filter { !kept.contains($0) }
     }
 
     @ViewBuilder private func libraryOptions(_ key: String) -> some View {
@@ -476,13 +513,13 @@ struct HomeNavigation: View {
                 ForEach(["Icon only", "Text only", "Text and icon"], id: \.self) { Text($0).tag($0) }
             }.pickerStyle(.inline)
         }
-        if standard.contains(key) {
+        if Self.standard.contains(key) {
             Button("Hide " + key.capitalized) {
                 hidden = (hiddenKeys + [key]).joined(separator: ",")
                 if selected == key { selected = "overview" }
             }
         }
-        hiddenTabs
+        if !hiddenKeys.isEmpty { HomeHiddenTabs() }
     }
 
     private func reorder(_ source: String, onto target: String) {
@@ -495,7 +532,7 @@ struct HomeNavigation: View {
     @AppStorage("home.shortcuts", store: Store.settings) private var savedShortcuts = Data()
     @State private var adding: HomeGroup?
     @State private var renaming: UUID?
-    @State private var customizing = false
+    @Binding var customizing: Bool
     private var groups: [HomeGroup] { (try? JSONDecoder().decode([HomeGroup].self, from: data)) ?? [] }
 
     var body: some View {
@@ -522,19 +559,10 @@ struct HomeNavigation: View {
                         }
                 }
             }.scrollIndicators(.hidden)
-            HomeControl(outline: navigationIconOutline, action: { customizing = true }) { navigationIcon("gearshape") }
+            HomeControl(outline: navigationIconOutline, selected: customizing, action: { customizing.toggle() }) { navigationIcon("gearshape") }
                 .accessibilityLabel("Customize Home")
                 .pointerTip("Customize Home")
-                .popover(isPresented: $customizing) {
-                    SpacePageLook(browser: browser) { look, custom, reset in
-                        VStack(spacing: 12) {
-                            LookControls(look: .paint(look), bare: true, offersSite: false)
-                            HomePhotoMenu(space: browser.spaceID)
-                            if !hiddenKeys.isEmpty { Menu("Hidden tabs") { hiddenTabs } }
-                            Button("Use Space Look", action: reset).disabled(!custom)
-                        }.padding(16)
-                    }
-                }
+
         }
         .onChange(of: keys) { _, _ in
             if !keys.contains(selected) { selected = "overview" }
@@ -571,7 +599,7 @@ struct HomeNavigation: View {
         HomeControl(outline: Capsule(), selected: selected == key, action: { selected = key }) {
             HStack(spacing: 6) {
                 if let page = LibraryPage(rawValue: key), display != "Text only" { Image(systemName: page.icon) }
-                if !standard.contains(key) || display != "Icon only" { Text(title) }
+                if !Self.standard.contains(key) || display != "Icon only" { Text(title) }
             }.font(CardFrame.title).padding(.horizontal, 12).padding(.vertical, 8)
         }.accessibilityLabel(title + " Home tab").accessibilityAddTraits(selected == key ? .isSelected : [])
         .modifier(HomeDropTarget(area: HomeDropArea(tabKey: UUID(uuidString: key) == nil ? nil : key, reorder: { reorder($0, onto: key) }, activate: { selected = key }) { source, _ in
