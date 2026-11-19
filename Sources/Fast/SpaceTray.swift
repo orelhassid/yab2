@@ -1650,6 +1650,10 @@ struct SpaceMenu: View {
         // its emoji and its look are yours, and its settings are Settings ›
         // Mail.
         let mail = space.id == Space.mailID
+        if space.id == Space.allTabs.id {
+            AllTabsOrganizationMenu(browser: browser)
+            Divider()
+        }
         Button("Edit Space…", mark: "pencil") {
             SpaceTray.customize(space, browser: browser, from: fromHome ? .homeTile(space.id) : nil)
         }

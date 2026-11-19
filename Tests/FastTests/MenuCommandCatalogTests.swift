@@ -120,6 +120,10 @@ struct MenuCommandCatalogTests {
             #expect(browser.offers.first?.menuTargetID == target.id)
             #expect(MenuCommands.runTarget(target.id, in: browser))
             #expect(browser.sidebarSpaceID == Space.allTabs.id)
+            for command: Command in [.sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs] {
+                browser.replaceTyped(command.title)
+                #expect(browser.offers.first?.kind == .command(command))
+            }
             #expect(browser.spaceID == personal.id)
             #expect(browser.allTabsRows.map(\.id) == [local.id, other.id, old.id])
             #expect(browser.allTabsRows[1].space.profileID == work.id)
@@ -135,6 +139,39 @@ struct MenuCommandCatalogTests {
             browser.switchSpace(to: personal.id)
             #expect(!browser.showingAllTabs)
         }
+    }
+
+    @Test func allTabsOrganizesByVisitSpaceAndDomainAndRemembersDragOrder() throws {
+        let suite = "test.allTabs." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let config = AllTabsConfiguration(defaults: defaults)
+        let home = Space(id: UUID(), name: "Personal", icon: "house", ownSignIns: false)
+        let work = Space(id: UUID(), name: "Work", icon: "briefcase", ownSignIns: true)
+        func entry(_ space: Space, _ url: String) -> Browser.SpaceTab {
+            let tab = Tab()
+            tab.restore(url: URL(string: url)!, title: url)
+            return Browser.SpaceTab(space: space, tab: tab)
+        }
+        let first = entry(home, "https://www.example.com/a")
+        let second = entry(work, "https://docs.example.com/b")
+        let third = entry(work, "https://example.org/c")
+        let rows = [first, second, third]
+        config.group = .domain
+        #expect(config.sections(rows).map(\.title) == ["example.com", "example.org"])
+        #expect(!config.reorder(third.id, at: first.id, after: true, rows: rows))
+        config.choose(.oldest, rows: rows)
+        #expect(config.arranged(rows).map(\.id) == [third.id, second.id, first.id])
+        #expect(config.reorder(second.id, at: first.id, after: true, rows: rows))
+        #expect(config.sort == .manual)
+        #expect(config.arranged(rows).map(\.id) == [third.id, first.id, second.id])
+        config.group = .space
+        #expect(config.sections(rows).map(\.title) == ["Work", "Personal"])
+        let restored = AllTabsConfiguration(defaults: defaults)
+        #expect(restored.sort == .manual && restored.group == .space)
+        #expect(restored.arranged(rows.reversed()).map(\.id) == [third.id, first.id, second.id])
+        config.set([first.tab], pinned: true)
+        #expect(!config.reorder(first.id, at: second.id, after: false, rows: rows))
     }
 
     @Test func spaceArrowActionsLeadOffersWithoutTheExpandedCatalog() {

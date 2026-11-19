@@ -3169,15 +3169,15 @@ struct SpaceName: View {
         .overlay(alignment: .trailing) {
             if let browser {
                 HStack(spacing: Self.controlGap) {
-                    if stepsShown {
+                    if stepsShown && (space.id != Space.allTabs.id || hovering) {
                         step(-1, in: browser)
                         step(1, in: browser)
                     }
                     dots(browser)
                 }
                 .padding(.trailing, Self.dotsInset)
-                .opacity(hovering || onDots || onStep != nil ? 1 : 0)
-                .allowsHitTesting(hovering || onDots || onStep != nil)
+                .opacity(space.id == Space.allTabs.id || hovering || onDots || onStep != nil ? 1 : 0)
+                .allowsHitTesting(space.id == Space.allTabs.id || hovering || onDots || onStep != nil)
             }
         }
         .background {
@@ -3239,8 +3239,14 @@ struct SpaceName: View {
             let at = NSApp.currentEvent.map { window.convertPoint(toScreen: $0.locationInWindow) } ?? NSEvent.mouseLocation
             ActionMenu.show(NSHostingMenu(rootView: SpaceMenu(browser: browser, space: space)), in: window, at: at, tone: SpaceSurface.tone(in: browser))
         } label: {
-            HStack(spacing: 2) {
-                ForEach(0..<3, id: \.self) { _ in Circle().frame(width: 3, height: 3) }
+            Group {
+                if space.id == Space.allTabs.id {
+                    Symbol("slider.horizontal.3", size: SideBar.mark / Glyphs.scale)
+                } else {
+                    HStack(spacing: 2) {
+                        ForEach(0..<3, id: \.self) { _ in Circle().frame(width: 3, height: 3) }
+                    }
+                }
             }
             .foregroundStyle(onDots ? Palette.strong(on: tone) : Palette.muted(on: tone))
             .frame(width: Self.dots.width, height: Self.dots.height)
@@ -3251,7 +3257,7 @@ struct SpaceName: View {
         .fixedSize()
         .focusable(false)
         .onHover { onDots = $0 }
-        .accessibilityLabel("Space menu")
+        .accessibilityLabel(space.id == Space.allTabs.id ? "Organize All Tabs" : "Space menu")
     }
 }
 

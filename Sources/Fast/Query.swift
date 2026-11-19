@@ -260,6 +260,7 @@ enum Command: String, CaseIterable {
     case nextTab, previousTab, moveTabLeft, moveTabRight, renameTab, pickAllTabs, moveTabToWindow
     case moveToWindow, copyTabToWindow, keepTab, releaseTab, sleepTabs, keepSiteAwake, allowSiteSleep
     case muteTab, unmuteTab, muteSite, unmuteSite, resetPinnedTab, replacePinnedURL, editPinnedURL
+    case sortAllTabsRecent, sortAllTabsOldest, sortAllTabsManual, groupAllTabsSpace, groupAllTabsDomain, ungroupAllTabs
     case clearToday, tidyTabs, newSpace, manageSpaces, switchSpace, nextSpace, previousSpace
     case moveToSpace, changeSpaceIcon, deleteSpace, moveToFolder, moveOutOfFolder, openFolder
     case closeFolder, renameFolder, customizeFolder, newFolderInside, moveFolder, ungroupFolder, newLiveFolder

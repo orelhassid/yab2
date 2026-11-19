@@ -25,6 +25,7 @@ enum MenuCommands {
         .sharePage, .back, .forward, .nextTab, .previousTab, .renameTab, .pickAllTabs, .keepTab, .releaseTab,
         .sleepTabs, .muteTab, .unmuteTab, .editPinnedURL, .clearToday, .tidyTabs,
         .moveTabToWindow, .smallWindow, .reopenWindow, .fullScreen, .exitFullScreen, .undoBrowserAction,
+        .sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs,
         .newSpace, .switchSpace, .nextSpace, .previousSpace, .moveToSpace, .changeSpaceIcon, .deleteSpace,
         .moveToFolder, .moveOutOfFolder, .renameFolder, .newFolderInside, .ungroupFolder, .newLiveFolder,
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
@@ -154,6 +155,17 @@ enum MenuCommands {
         add(.tidyTabs, "Organize Today’s Tabs", ["tidy", "tidy tabs", "organize today tabs"], symbol: "yab.folder.bolt",
             when: { !$0.privateBrowsing && $0.canTidyTabs }) { $0.tidyTabs() }
 
+        let sorts: [(Command, AllTabsConfiguration.Sort)] = [(.sortAllTabsRecent, .recent), (.sortAllTabsOldest, .oldest), (.sortAllTabsManual, .manual)]
+        for (command, sort) in sorts {
+            add(command, "Sort All Tabs by " + sort.rawValue, [sort.rawValue], symbol: "arrow.up.arrow.down",
+                when: { $0.showingAllTabs }) { AllTabsConfiguration.shared.choose(sort, rows: $0.allTabsRows) }
+        }
+        let groups: [(Command, AllTabsConfiguration.Group)] = [(.groupAllTabsSpace, .space), (.groupAllTabsDomain, .domain), (.ungroupAllTabs, .none)]
+        for (command, group) in groups {
+            let title = group == .none ? "Ungroup All Tabs" : "Group All Tabs by " + group.rawValue
+            add(command, title, ["Group by " + group.rawValue], symbol: "rectangle.3.group",
+                when: { $0.showingAllTabs }) { _ in AllTabsConfiguration.shared.group = group }
+        }
         add(.newSpace, "New Space…", ["create space", "new space"], symbol: "plus.rectangle.on.rectangle",
             opens: true, when: spaces) { SpaceTray.open($0) }
         add(.manageSpaces, "Manage Spaces…", ["manage spaces"], symbol: "square.2.layers.3d",
