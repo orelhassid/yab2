@@ -655,7 +655,10 @@ final class BrowserWindows: ObservableObject {
             // No tab in front: the field, in the space it opens into.
             title = entry.browser.prefs.usesSpaces ? entry.browser.space.name : "Yab"
         }
-        if entry.window.title != title { entry.window.title = title }
+        // The Dock builds its window rows from NSWindow titles, outside
+        // the app's own menu and its item-width observer.
+        let dockTitle = MenuWidth.cut(title, font: .menuFont(ofSize: 0)) ?? title
+        if entry.window.title != dockTitle { entry.window.title = dockTitle }
         PageContinuity.advertise(entry.browser, in: entry.window)
     }
 

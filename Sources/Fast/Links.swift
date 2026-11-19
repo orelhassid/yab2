@@ -513,8 +513,10 @@ final class Links: NSObject, NSApplicationDelegate {
             return browser.spaces
         }
         for space in spaces {
-            let item = menu.addItem(withTitle: "New Window in \(space.marked())",
-                                    action: #selector(dockNewWindowInSpace), keyEquivalent: "")
+            let title = "New Window in \(space.marked())"
+            let short = MainActor.assumeIsolated { MenuWidth.cut(title, font: .menuFont(ofSize: 0)) }
+            let item = menu.addItem(withTitle: short ?? title, action: #selector(dockNewWindowInSpace), keyEquivalent: "")
+            if short != nil { item.toolTip = title } // design: NSMenuItem has no view to wear a keyTip
             item.target = self
             item.representedObject = space.id
         }
