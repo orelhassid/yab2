@@ -124,6 +124,17 @@ struct MenuCommandCatalogTests {
                 browser.replaceTyped(command.title)
                 #expect(browser.offers.first?.kind == .command(command))
             }
+            let config = AllTabsConfiguration.shared
+            let originalGroup = config.group
+            defer { config.group = originalGroup }
+            config.group = .none
+            #expect(!Command.collapseAllTabGroups.available(in: browser))
+            #expect(!Command.expandAllTabGroups.available(in: browser))
+            config.group = .space
+            for command: Command in [.collapseAllTabGroups, .expandAllTabGroups] {
+                browser.replaceTyped(command.title)
+                #expect(browser.offers.first?.kind == .command(command))
+            }
             #expect(browser.spaceID == personal.id)
             #expect(browser.allTabsRows.map(\.id) == [local.id, other.id, old.id])
             #expect(browser.allTabsRows[1].space.profileID == work.id)
@@ -170,6 +181,14 @@ struct MenuCommandCatalogTests {
         let restored = AllTabsConfiguration(defaults: defaults)
         #expect(restored.sort == .manual && restored.group == .space)
         #expect(restored.arranged(rows.reversed()).map(\.id) == [third.id, first.id, second.id])
+        config.setAllCollapsed(true, rows: rows)
+        config.group = .domain
+        config.setAllCollapsed(true, rows: rows)
+        config.group = .space
+        config.setAllCollapsed(false, rows: rows)
+        let reopened = AllTabsConfiguration(defaults: defaults)
+        #expect(!reopened.isCollapsed(.space(home.id)) && !reopened.isCollapsed(.space(work.id)))
+        #expect(reopened.isCollapsed(.domain("example.com")) && reopened.isCollapsed(.domain("example.org")))
         config.set([first.tab], pinned: true)
         #expect(!config.reorder(first.id, at: second.id, after: false, rows: rows))
     }

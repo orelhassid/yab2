@@ -25,7 +25,7 @@ enum MenuCommands {
         .sharePage, .back, .forward, .nextTab, .previousTab, .renameTab, .pickAllTabs, .keepTab, .releaseTab,
         .sleepTabs, .muteTab, .unmuteTab, .editPinnedURL, .clearToday, .tidyTabs,
         .moveTabToWindow, .smallWindow, .reopenWindow, .fullScreen, .exitFullScreen, .undoBrowserAction,
-        .sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs,
+        .sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs, .collapseAllTabGroups, .expandAllTabGroups,
         .newSpace, .switchSpace, .nextSpace, .previousSpace, .moveToSpace, .changeSpaceIcon, .deleteSpace,
         .moveToFolder, .moveOutOfFolder, .renameFolder, .newFolderInside, .ungroupFolder, .newLiveFolder,
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
@@ -160,6 +160,11 @@ enum MenuCommands {
             add(command, "Sort All Tabs by " + sort.rawValue, [sort.rawValue], symbol: "arrow.up.arrow.down",
                 when: { $0.showingAllTabs }) { AllTabsConfiguration.shared.choose(sort, rows: $0.allTabsRows) }
         }
+        let groupedTabs: @MainActor (Browser) -> Bool = { $0.showingAllTabs && AllTabsConfiguration.shared.group != .none }
+        add(.collapseAllTabGroups, "Collapse all", ["collapse all tab groups"], symbol: "arrow.down.right.and.arrow.up.left",
+            when: groupedTabs) { AllTabsConfiguration.shared.setAllCollapsed(true, rows: $0.allTabsRows) }
+        add(.expandAllTabGroups, "Expand all", ["expand all tab groups"], symbol: "arrow.up.left.and.arrow.down.right",
+            when: groupedTabs) { AllTabsConfiguration.shared.setAllCollapsed(false, rows: $0.allTabsRows) }
         let groups: [(Command, AllTabsConfiguration.Group)] = [(.groupAllTabsSpace, .space), (.groupAllTabsDomain, .domain), (.ungroupAllTabs, .none)]
         for (command, group) in groups {
             let title = group == .none ? "Ungroup All Tabs" : "Group All Tabs by " + group.rawValue

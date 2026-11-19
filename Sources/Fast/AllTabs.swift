@@ -29,7 +29,11 @@ final class AllTabsConfiguration {
     var group: Group {
         didSet { defaults.set(group.rawValue, forKey: "sidebar.allTabs.group") }
     }
-    private var collapsed: Set<Browser.SpaceTab.Section>
+    private var collapsed: Set<Browser.SpaceTab.Section> {
+        didSet {
+            if let data = try? JSONEncoder().encode(collapsed) { defaults.set(data, forKey: Self.collapsedKey) }
+        }
+    }
     private static let collapsedKey = "sidebar.allTabs.collapsed"
 
     func isCollapsed(_ section: Browser.SpaceTab.Section) -> Bool { collapsed.contains(section) }
@@ -37,7 +41,13 @@ final class AllTabsConfiguration {
     func toggleCollapse(_ section: Browser.SpaceTab.Section) {
         guard section != .ungrouped else { return }
         if collapsed.remove(section) == nil { collapsed.insert(section) }
-        if let data = try? JSONEncoder().encode(collapsed) { defaults.set(data, forKey: Self.collapsedKey) }
+    }
+
+    func setAllCollapsed(_ collapse: Bool, rows: [Browser.SpaceTab]) {
+        guard group != .none else { return }
+        let pins = Set(order)
+        let groups = rows.lazy.filter { !pins.contains($0.tab.allTabsKey) }.map { $0.section(self.group) }
+        if collapse { collapsed.formUnion(groups) } else { collapsed.subtract(groups) }
     }
 
     private var manual: [UUID] {
@@ -236,6 +246,15 @@ struct AllTabsOrganizationMenu: View {
         Menu("Group by", mark: "rectangle.3.group") {
             ForEach(AllTabsConfiguration.Group.allCases, id: \.self) { choice in
                 Toggle(choice.rawValue, isOn: Binding(get: { config.group == choice }, set: { _ in config.group = choice }))
+            }
+        }
+        if config.group != .none {
+            Divider()
+            Button(Command.collapseAllTabGroups.title, mark: "arrow.down.right.and.arrow.up.left") {
+                config.setAllCollapsed(true, rows: browser.allTabsRows)
+            }
+            Button(Command.expandAllTabGroups.title, mark: "arrow.up.left.and.arrow.down.right") {
+                config.setAllCollapsed(false, rows: browser.allTabsRows)
             }
         }
     }
