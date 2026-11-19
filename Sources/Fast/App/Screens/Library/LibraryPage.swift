@@ -1,5 +1,16 @@
 import SwiftUI
 
+private struct LibraryNavigationInsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat? = nil
+}
+
+extension EnvironmentValues {
+    var libraryNavigationInset: CGFloat? {
+        get { self[LibraryNavigationInsetKey.self] }
+        set { self[LibraryNavigationInsetKey.self] = newValue }
+    }
+}
+
 /// Search, scope and ordering for one library.
 @Observable final class LibraryControls {
     var search = ""
@@ -61,7 +72,6 @@ struct LibraryPageHeader<Action: View, Search: View>: View {
 
 /// The shared page template: a title and actions header, then navigation and data.
 struct LibraryPageFrame<Action: View, Search: View, Content: View>: View {
-    @ObservedObject var browser: Browser
     let page: LibraryPage
     var breadcrumbs: [String] = []
     @ViewBuilder var action: () -> Action
@@ -76,7 +86,6 @@ struct LibraryPageFrame<Action: View, Search: View, Content: View>: View {
         .padding(LibraryPageLayout.inset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .foregroundStyle(Palette.ink)
-        .modifier(SpacePageSurface(browser: browser, library: true, themedControls: page == .settings))
     }
 }
 
@@ -164,7 +173,7 @@ private struct LibraryScreen<Content: View>: View {
     @Environment(LibraryControls.self) private var controls
 
     var body: some View {
-        LibraryPageFrame(browser: browser, page: page) {
+        LibraryPageFrame(page: page) {
             if let openDownloadFolder {
                 Button(action: openDownloadFolder) {
                     Label("Open Downloads Folder", systemImage: "folder")
@@ -284,6 +293,7 @@ enum LibraryPage: String {
 
 extension Tab {
     var libraryPage: LibraryPage? { LibraryPage(url: pending ?? address) }
+    var showsLibrary: Bool { LibraryPage(url: address) != nil && !floating }
 }
 
 extension Browser {
@@ -783,7 +793,7 @@ private struct SplitLibrary<Filters: View, Action: View, Results: View>: View {
     @State private var showFilters = false
 
     var body: some View {
-        LibraryPageFrame(browser: browser, page: page, action: action) {
+        LibraryPageFrame(page: page, action: action) {
             LibrarySearch(page: page)
         } content: {
             GeometryReader { bounds in

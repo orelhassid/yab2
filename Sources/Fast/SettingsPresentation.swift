@@ -15,6 +15,8 @@ enum SettingsPresentation: String, CaseIterable {
 struct SettingsTab: NSViewRepresentable {
     @ObservedObject var browser: Browser
     let tab: Tab
+    @Environment(\.tone) private var tone
+    @Environment(\.colorScheme) private var scheme
 
     func makeNSView(context: Context) -> SettingsTabHost {
         SettingsTabHost(browser: browser, tab: tab)
@@ -23,6 +25,7 @@ struct SettingsTab: NSViewRepresentable {
     func updateNSView(_ host: SettingsTabHost, context: Context) {
         host.browser = browser
         host.tab = tab
+        host.applyLook(tone: tone, scheme: scheme)
         if browser.activeID == tab.id { host.attach() } else { SettingsWindow.shared.detachTab(host) }
     }
 
@@ -36,7 +39,9 @@ struct SettingsTab: NSViewRepresentable {
 final class SettingsTabHost: NSView {
     weak var browser: Browser?
     weak var tab: Tab?
-    private var header: NSView?
+    private var header: NSHostingView<SettingsLibraryPage>?
+    private var tone: Tone?
+    private var scheme: ColorScheme?
     private var keys: Any?
     private var keyWatch: AnyCancellable?
 
@@ -75,9 +80,21 @@ final class SettingsTabHost: NSView {
         SettingsWindow.shared.attachTab(self, browser: browser, tab: tab)
     }
 
+    func applyLook(tone: Tone?, scheme: ColorScheme) {
+        guard self.tone != tone || self.scheme != scheme else { return }
+        self.tone = tone
+        self.scheme = scheme
+        if let header {
+            var page = header.rootView
+            page.tone = tone
+            page.scheme = scheme
+            header.rootView = page
+        }
+    }
+
     func install(browser: Browser, model: SettingsModel) {
         header?.removeFromSuperview()
-        let header = NSHostingView(rootView: SettingsLibraryPage(browser: browser, model: model))
+        let header = NSHostingView(rootView: SettingsLibraryPage(browser: browser, model: model, tone: tone, scheme: scheme))
         header.sizingOptions = []
         header.safeAreaRegions = []
         self.header = header
@@ -95,14 +112,19 @@ final class SettingsTabHost: NSView {
 private struct SettingsLibraryPage: View {
     @ObservedObject var browser: Browser
     @ObservedObject var model: SettingsModel
+    var tone: Tone?
+    var scheme: ColorScheme?
+
     var body: some View {
-        LibraryPageFrame(browser: browser, page: .settings, breadcrumbs: SettingsNavigation.breadcrumbs(for: model.page)) {
+        LibraryPageFrame(page: .settings, breadcrumbs: SettingsNavigation.breadcrumbs(for: model.page)) {
             EmptyView()
         } search: {
             SettingsLibrarySearch(model: model)
         } content: {
             SettingsLibraryBody(browser: browser, model: model)
         }
+        .environment(\.tone, tone)
+        .transformEnvironment(\.colorScheme) { if let scheme { $0 = scheme } }
     }
 }
 

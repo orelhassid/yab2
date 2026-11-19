@@ -6,6 +6,7 @@ struct NavigationHeader: View {
     let corner: CGFloat
     let topInset: CGFloat
     var emptyTone: Tone? = nil
+    var inheritsPageSurface = false
 
     @State private var switcher: Switcher?
     @State private var hoveringTabs = false
@@ -20,7 +21,9 @@ struct NavigationHeader: View {
     }
 
     var body: some View {
-        if let tab {
+        if inheritsPageSurface {
+            row
+        } else if let tab {
             Toned(tab: tab) { tone in
                 row
                     .toned(tone)

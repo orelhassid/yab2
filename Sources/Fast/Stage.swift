@@ -31,6 +31,7 @@ struct Page: View {
     var paned = false
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.libraryNavigationInset) private var libraryNavigationInset
 
     var body: some View {
         // A tab put down with ⌘W has no view, and asking for one here
@@ -102,9 +103,17 @@ struct Page: View {
     private var overlays: some View {
         ZStack {
             if let library = LibraryPage(url: tab.address), let browser = tab.delegate as? Browser, !tab.floating {
-                library.screen(browser: browser, tab: tab)
-                    .environment(browser.libraryControls(for: library, tab: tab))
-                    .id(tab.id.uuidString + library.rawValue)
+                VStack(spacing: 0) {
+                    if let libraryNavigationInset {
+                        NavigationHeader(browser: browser, tab: tab, corner: 0, topInset: libraryNavigationInset,
+                                         inheritsPageSurface: true)
+                    }
+                    library.screen(browser: browser, tab: tab)
+                        .transformEnvironment(\.tone) { if library != .settings { $0 = nil } }
+                        .environment(browser.libraryControls(for: library, tab: tab))
+                        .id(tab.id.uuidString + library.rawValue)
+                }
+                .modifier(SpacePageSurface(browser: browser, library: true, themedControls: true))
             }
 
             if let device = tab.device {

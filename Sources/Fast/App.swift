@@ -1317,6 +1317,7 @@ struct ContentView: View {
         let split = side != .whole
         let showBar = split || browser.barShown
         let showNavigation = front && navigationHeaderHeight > 0
+        let libraryNavigation = showNavigation && tab.showsLibrary ? (showBar ? 0 : margins.top) : nil
         VStack(spacing: 0) {
             // The address, when asked for: the card's own top edge, the page
             // under it. Built ahead, out of sight, while a tab is carried
@@ -1369,7 +1370,7 @@ struct ContentView: View {
                 .allowsHitTesting(showBar)
                 .accessibilityHidden(!showBar)
             }
-            if showNavigation {
+            if showNavigation && libraryNavigation == nil {
                 NavigationHeader(browser: browser, tab: tab, corner: showBar ? 0 : corner, topInset: showBar ? 0 : margins.top)
             }
 
@@ -1377,7 +1378,8 @@ struct ContentView: View {
             // band goes to its half on SwiftUI's curve, the page and its
             // paper are laid out there at once and drawn there by Core
             // Animation on the same one, WebKit following.
-            PageContent(browser: browser, preview: browser.splitPreview, tab: tab, corner: corner, showBar: showBar || showNavigation, front: front)
+            PageContent(browser: browser, preview: browser.splitPreview, tab: tab, corner: corner, showBar: showBar || (showNavigation && libraryNavigation == nil), front: front)
+                .environment(\.libraryNavigationInset, libraryNavigation)
                 .background { GestureSurface { MouseGestureInput.shared.registerPage($0) } }
                 .transaction { if browser.splitRooming { $0.animation = nil } }
                 // No bar to hold reading mode's book and Aa: they stand in
@@ -1560,7 +1562,7 @@ struct ContentView: View {
         let tone = tab.tone.map { Tone($0) }
         let address = browser.barShown || browser.side(of: tab.id) != .whole
         let height = address ? AddressBar.height(sidebar: browser.prefs.sidebar, carded: laid)
-            : tab.id == browser.activeID ? navigationHeaderHeight : 0
+            : tab.id == browser.activeID && !tab.showsLibrary ? navigationHeaderHeight : 0
         guard height > 0 else { return nil }
         let worn = address ? barTone(tab, tone) : tone
         return PaperBand(
