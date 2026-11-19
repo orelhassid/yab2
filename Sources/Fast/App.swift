@@ -1172,7 +1172,7 @@ struct ContentView: View {
                             }
                         }
                         .overlay(alignment: .top) {
-                            if navigationHeaderHeight > 0 {
+                            if navigationHeaderHeight > 0 && !browser.showsHomeField {
                                 NavigationHeader(browser: browser, tab: nil, corner: corner, topInset: margins.top, emptyTone: backdropTone)
                             }
                         }
@@ -1316,7 +1316,7 @@ struct ContentView: View {
         Sided(preview: browser.splitPreview, laid: placed, alone: front && browser.stagePair == nil) { side, warm in
         let split = side != .whole
         let showBar = split || browser.barShown
-        let showNavigation = front && navigationHeaderHeight > 0
+        let showNavigation = front && navigationHeaderHeight > 0 && !browser.showsHomeField
         let libraryNavigation = showNavigation && tab.showsLibrary ? (showBar ? 0 : margins.top) : nil
         VStack(spacing: 0) {
             // The address, when asked for: the card's own top edge, the page
@@ -1639,8 +1639,11 @@ struct ContentView: View {
     @ViewBuilder
     private func field(in space: CGSize) -> some View {
             let (lead, trail) = fieldRoom(in: space.width)
+            let top = band + shelfRoom + margins.top
+            let homeHeaderTop = navigationHeaderHeight > 0 ? top : nil
             Omnibox(browser: browser, inset: lead, trail: trail,
-                    pageTop: band + shelfRoom + navigationHeaderHeight + margins.top + barHeight, pageBottom: margins.bottom)
+                    pageTop: top + navigationHeaderHeight + barHeight, pageBottom: margins.bottom,
+                    homeHeaderTop: homeHeaderTop, homeHeaderInset: margins.top)
                 // Keep the native editor and glass prepared with the window.
                 // Mounting them on Cmd-L put their first layout and render
                 // setup in the opening frame. Hidden fields cannot take
@@ -2018,7 +2021,7 @@ struct ContentView: View {
 
     private var navigationHeaderHeight: CGFloat {
         guard browser.prefs.navigationHeader, !frontImmersed else { return 0 }
-        let belowAddress = browser.active != nil && (browser.barShown || browser.splitShown)
+        let belowAddress = !browser.showsHomeField && browser.active != nil && (browser.barShown || browser.splitShown)
         return NavigationHeader.height(topInset: belowAddress ? 0 : margins.top)
     }
 

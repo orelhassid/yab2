@@ -23,6 +23,8 @@ struct Omnibox: View {
     /// Page edges used only by the Compact card. Full keeps its original layout.
     let pageTop: CGFloat
     let pageBottom: CGFloat
+    let homeHeaderTop: CGFloat?
+    let homeHeaderInset: CGFloat
     /// Taken as a value, not read off the browser in the body: the browser
     /// is the same object before and after, so a refusal would otherwise
     /// give this view nothing to notice and the field would never shiver.
@@ -47,13 +49,16 @@ struct Omnibox: View {
     @State private var refused = false
     @StateObject private var retainedRows: RetainedFieldRows
 
-    init(browser: Browser, inset: CGFloat, trail: CGFloat = 0, pageTop: CGFloat = 0, pageBottom: CGFloat = 0) {
+    init(browser: Browser, inset: CGFloat, trail: CGFloat = 0, pageTop: CGFloat = 0, pageBottom: CGFloat = 0,
+         homeHeaderTop: CGFloat? = nil, homeHeaderInset: CGFloat = 0) {
         self.browser = browser
         self.query = browser.query
         self.inset = inset
         self.trail = trail
         self.pageTop = pageTop
         self.pageBottom = pageBottom
+        self.homeHeaderTop = homeHeaderTop
+        self.homeHeaderInset = homeHeaderInset
         self.refusals = browser.refusals
         self.shy = browser.windowPurpose.isPrivate(active: (browser.fieldGuest ?? browser.active)?.shy)
         self.hushedAt = (browser.fieldGuest ?? browser.active)?.hushedAt
@@ -243,7 +248,15 @@ struct Omnibox: View {
                 .frame(maxWidth: .infinity, alignment: .top)
         }
         .background { if homeField { GestureSurface { MouseGestureInput.shared.registerPage($0) } } }
-        .modifier(SpacePageSurface(browser: browser, active: homeField))
+        .transformEnvironment(\.tone) { if homeField { $0 = nil } }
+        .overlay(alignment: .top) {
+            if homeField, let homeHeaderTop {
+                NavigationHeader(browser: browser, tab: nil, corner: 0, topInset: homeHeaderInset,
+                                 inheritsPageSurface: true)
+                    .padding(.top, homeHeaderTop)
+            }
+        }
+        .modifier(SpacePageSurface(browser: browser, themedControls: true, active: homeField))
         .padding(.leading, homeField ? max(inset, browser.leadingSidebarRoom) : inset) // design: reserve the sidebar and trail on their chosen edges
         .padding(.trailing, homeField ? max(trail, browser.trailingSidebarRoom) : trail) // design: reserve the sidebar and trail on their chosen edges
         .onReceive(NSApplication.shared.publisher(for: \.effectiveAppearance)) { appAppearance = $0 }

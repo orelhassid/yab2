@@ -57,7 +57,7 @@ struct NavigationHeader: View {
                         TabSwitcherWidth {
                             HStack(spacing: SideBar.markGap) {
                                 if let tab { NavigationTabLabel(tab: tab) }
-                                else { Text("Tabs").sidebarFont(size: 12.5) }
+                                else { Text(inheritsPageSurface ? "Home" : "Tabs").sidebarFont(size: 12.5) }
                                 Spacer(minLength: 0)
                                 Symbol("chevron.down", size: 10).fixedSize()
                             }
