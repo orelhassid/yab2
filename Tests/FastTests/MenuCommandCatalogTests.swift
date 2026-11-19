@@ -130,6 +130,19 @@ struct MenuCommandCatalogTests {
             config.group = .none
             #expect(!Command.collapseAllTabGroups.available(in: browser))
             #expect(!Command.expandAllTabGroups.available(in: browser))
+            let originalStyle = config.headerStyle
+            defer { config.headerStyle = originalStyle }
+            for (command, _) in MenuCommands.headerStyles { #expect(!command.available(in: browser)) }
+            config.group = .domain
+            for (command, style) in MenuCommands.headerStyles {
+                browser.replaceTyped(command.title)
+                #expect(browser.offers.first?.kind == .command(command))
+                command.run(in: browser)
+                browser.replaceTyped(command.title(in: browser))
+                #expect(browser.offers.first?.kind == .command(command))
+                #expect(config.headerStyle == style)
+                #expect(AllTabsConfiguration(defaults: Store.settings).headerStyle == style)
+            }
             config.group = .space
             for command: Command in [.collapseAllTabGroups, .expandAllTabGroups] {
                 browser.replaceTyped(command.title)

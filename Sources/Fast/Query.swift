@@ -261,6 +261,7 @@ enum Command: String, CaseIterable {
     case moveToWindow, copyTabToWindow, keepTab, releaseTab, sleepTabs, keepSiteAwake, allowSiteSleep
     case muteTab, unmuteTab, muteSite, unmuteSite, resetPinnedTab, replacePinnedURL, editPinnedURL
     case sortAllTabsRecent, sortAllTabsOldest, sortAllTabsManual, groupAllTabsSpace, groupAllTabsDomain, ungroupAllTabs, collapseAllTabGroups, expandAllTabGroups
+    case headerSpaceIcon, headerColorDot, headerSpaceBadge, headerHairline
     case clearToday, tidyTabs, newSpace, manageSpaces, switchSpace, nextSpace, previousSpace
     case moveToSpace, changeSpaceIcon, deleteSpace, moveToFolder, moveOutOfFolder, openFolder
     case closeFolder, renameFolder, customizeFolder, newFolderInside, moveFolder, ungroupFolder, newLiveFolder
@@ -1075,7 +1076,7 @@ enum Command: String, CaseIterable {
         switch self {
         case .sleepTabs, .keepTab, .releaseTab, .muteTab, .unmuteTab, .moveToFolder, .moveToSpace,
              .resetPinnedTab, .replacePinnedURL, .editPinnedURL, .folderWithTabs, .newTabInFolder, .mail,
-             .closeBefore, .closeAfter:
+             .closeBefore, .closeAfter, .headerSpaceIcon, .headerColorDot, .headerSpaceBadge, .headerHairline:
             return Self.normalizedName(title(in: browser)) == Self.normalizedName(text)
         default: return false
         }

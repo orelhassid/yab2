@@ -26,6 +26,7 @@ enum MenuCommands {
         .sleepTabs, .muteTab, .unmuteTab, .editPinnedURL, .clearToday, .tidyTabs,
         .moveTabToWindow, .smallWindow, .reopenWindow, .fullScreen, .exitFullScreen, .undoBrowserAction,
         .sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs, .collapseAllTabGroups, .expandAllTabGroups,
+        .headerSpaceIcon, .headerColorDot, .headerSpaceBadge, .headerHairline,
         .newSpace, .switchSpace, .nextSpace, .previousSpace, .moveToSpace, .changeSpaceIcon, .deleteSpace,
         .moveToFolder, .moveOutOfFolder, .renameFolder, .newFolderInside, .ungroupFolder, .newLiveFolder,
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
@@ -34,6 +35,10 @@ enum MenuCommands {
         .inspectElement, .measurePage, .hideRulers,
         .lightTheme, .darkTheme, .systemTheme, .shortcuts, .openCommandField, .addExtension, .importExtensions,
         .newChatProject, .openChatProject, .moveChatToProject,
+    ]
+
+    static let headerStyles: [(Command, AllTabsConfiguration.HeaderStyle)] = [
+        (.headerSpaceIcon, .icon), (.headerColorDot, .dot), (.headerSpaceBadge, .badge), (.headerHairline, .hairline)
     ]
 
     private static func make() -> [Command: MenuCommand] {
@@ -161,6 +166,10 @@ enum MenuCommands {
                 when: { $0.showingAllTabs }) { AllTabsConfiguration.shared.choose(sort, rows: $0.allTabsRows) }
         }
         let groupedTabs: @MainActor (Browser) -> Bool = { $0.showingAllTabs && AllTabsConfiguration.shared.group != .none }
+        for (command, style) in headerStyles {
+            add(command, "Use " + style.rawValue + " for All Tabs Headers", [style.rawValue, "Header Style " + style.rawValue],
+                symbol: "textformat", when: groupedTabs) { _ in AllTabsConfiguration.shared.headerStyle = style }
+        }
         add(.collapseAllTabGroups, "Collapse all", ["collapse all tab groups"], symbol: "arrow.down.right.and.arrow.up.left",
             when: groupedTabs) { AllTabsConfiguration.shared.setAllCollapsed(true, rows: $0.allTabsRows) }
         add(.expandAllTabGroups, "Expand all", ["expand all tab groups"], symbol: "arrow.up.left.and.arrow.down.right",
@@ -433,6 +442,9 @@ enum MenuCommands {
 
     @MainActor static func contextTitle(_ command: Command, in browser: Browser) -> String? {
         switch command {
+        case .headerSpaceIcon, .headerColorDot, .headerSpaceBadge, .headerHairline:
+            guard headerStyles.contains(where: { $0.0 == command && $0.1 == AllTabsConfiguration.shared.headerStyle }) else { return nil }
+            return command.title + " (Selected)"
         case .sleepTabs where browser.several: return "Put \(browser.chosenCount) Tabs to Sleep"
         case .keepTab where browser.several: return "Keep \(browser.chosenCount) Tabs"
         case .releaseTab where browser.several: return "Don’t Keep \(browser.chosenCount) Tabs"

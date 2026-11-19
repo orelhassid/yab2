@@ -3960,13 +3960,7 @@ struct SideRow: View {
                 // A share asked for while behind, waiting here (ShareWaiting.swift).
                 if let sourceSpace, !hovering {
                     let fill = Tone((sourceSpace.paint ?? SpacePaint(browser.prefs)).color(dark: badgeScheme == .dark))
-                    Text(sourceSpace.name)
-                        .foregroundStyle(Palette.strong(on: fill))
-                        .font(.system(size: titleSize - 2, weight: .medium))
-                        .lineLimit(1)
-                        .padding(.horizontal, SideBar.markGap)
-                        .padding(.vertical, 2)
-                        .background(fill.color, in: Capsule())
+                    SidebarSpaceBadge(title: sourceSpace.name, fill: fill, titleSize: titleSize)
                         .frame(maxWidth: 90, alignment: .trailing)
                         .fixedSize(horizontal: true, vertical: false)
                 }
@@ -4925,5 +4919,21 @@ extension EnvironmentValues {
     var doorSize: Door.Size {
         get { self[DoorSizeKey.self] }
         set { self[DoorSizeKey.self] = newValue }
+    }
+}
+
+struct SidebarSpaceBadge: View {
+    let title: String
+    let fill: Tone
+    let titleSize: CGFloat
+
+    var body: some View {
+        Text(title)
+            .foregroundStyle(Palette.strong(on: fill))
+            .font(.system(size: titleSize - 2, weight: .medium))
+            .lineLimit(1)
+            .padding(.horizontal, SideBar.markGap)
+            .padding(.vertical, 2)
+            .background(fill.color, in: Capsule())
     }
 }

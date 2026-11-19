@@ -23,6 +23,18 @@ final class AllTabsConfiguration {
         case domain = "Domain"
     }
 
+    enum HeaderStyle: String, CaseIterable {
+        case icon = "Space Icon"
+        case dot = "Color Dot"
+        case badge = "Space Badge"
+        case hairline = "Hairline"
+    }
+
+    var headerStyle: HeaderStyle {
+        didSet { defaults.set(headerStyle.rawValue, forKey: Self.headerStyleKey) }
+    }
+    private static let headerStyleKey = "sidebar.allTabs.headerStyle"
+
     private(set) var sort: Sort {
         didSet { defaults.set(sort.rawValue, forKey: "sidebar.allTabs.sort") }
     }
@@ -62,6 +74,7 @@ final class AllTabsConfiguration {
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
+        headerStyle = defaults.string(forKey: Self.headerStyleKey).flatMap(HeaderStyle.init(rawValue:)) ?? .icon
         collapsed = defaults.data(forKey: Self.collapsedKey)
             .flatMap { try? JSONDecoder().decode(Set<Browser.SpaceTab.Section>.self, from: $0) } ?? []
         sort = defaults.string(forKey: "sidebar.allTabs.sort").flatMap(Sort.init(rawValue:)) ?? .recent
@@ -249,6 +262,11 @@ struct AllTabsOrganizationMenu: View {
             }
         }
         if config.group != .none {
+            Menu("Header Style", mark: "textformat") {
+                ForEach(AllTabsConfiguration.HeaderStyle.allCases, id: \.self) { style in
+                    Toggle(style.rawValue, isOn: Binding(get: { config.headerStyle == style }, set: { _ in config.headerStyle = style }))
+                }
+            }
             Divider()
             Button(Command.collapseAllTabGroups.title, mark: "arrow.down.right.and.arrow.up.left") {
                 config.setAllCollapsed(true, rows: browser.allTabsRows)
@@ -271,13 +289,25 @@ private struct AllTabsSectionHeader: View {
     var body: some View {
         let config = AllTabsConfiguration.shared
         let collapsed = config.isCollapsed(section.id)
-        HStack(spacing: 0) {
+        let style = config.headerStyle
+        HStack(spacing: SideBar.markGap) {
             Button { config.toggleCollapse(section.id) } label: {
                 HStack(spacing: SideBar.markGap) {
-                    Text(section.title).lineLimit(1)
-                    Symbol(collapsed ? "chevron.right" : "chevron.down", size: 9, weight: .semibold)
-                        .foregroundStyle(Palette.muted(on: tone))
-                        .fixedSize()
+                    if style == .icon {
+                        Group {
+                            if hovered { disclosure(collapsed) } else { groupIcon }
+                        }
+                        .frame(width: SideBar.mark, height: SideBar.mark)
+                    }
+                    if style == .badge {
+                        SidebarSpaceBadge(title: section.title, fill: badgeTone, titleSize: titleSize)
+                    } else {
+                        Text(section.title).lineLimit(1)
+                    }
+                    if style != .icon { disclosure(collapsed) }
+                    if style == .hairline {
+                        Rectangle().fill(accent.opacity(0.4)).frame(height: 1)
+                    }
                 }
                 .padding(.leading, SideBar.inner)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -294,33 +324,62 @@ private struct AllTabsSectionHeader: View {
                         .run({ browser.select(first.tab) }, stay: true)
                 }
             } label: {
-                Symbol("arrow.up.right", size: SideBar.mark / Glyphs.scale)
-                    .frame(width: RowPlate.column.side, height: RowPlate.column.side)
+                Text("Open")
+                    .font(.system(size: titleSize - 2, weight: .medium))
+                    .foregroundStyle(Palette.muted(on: tone))
+                    .padding(.horizontal, 4)
+                    .frame(height: RowPlate.column.side)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(actionTitle)
             .keyTip(actionTitle)
             .opacity(hovered ? 1 : 0)
+            .overlay(alignment: .trailing) {
+                if style == .dot && !hovered {
+                    Circle().fill(accent).frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+            }
         }
         .font(.system(size: titleSize, weight: .semibold))
         .foregroundStyle(Palette.strong(on: tone))
         .padding(.trailing, SideBar.inner)
         .frame(height: SideBar.row)
-        .background(headerTint, in: RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous))
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
     }
 
-    private var headerTint: LinearGradient {
-        let members = Set(section.rows.map { $0.space.id })
-        let dark = (tone?.scheme ?? scheme) == .dark
-        // Keep a multi-Space domain's color order stable as its tabs are visited or dragged.
-        let colors = browser.spaces.filter { members.contains($0.id) }.map { space in
-            let paint = space.paint ?? SpacePaint(browser.prefs)
-            return Color(nsColor: paint.color(dark: !dark)).opacity(dark ? 0.17 : 0.09)
-        }
-        return LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
+    private func disclosure(_ collapsed: Bool) -> some View {
+        Symbol(collapsed ? "chevron.right" : "chevron.down", size: 9, weight: .semibold)
+            .foregroundStyle(Palette.muted(on: tone))
+            .fixedSize()
     }
+
+    @ViewBuilder private var groupIcon: some View {
+        switch section.id {
+        case .space:
+            if let space = section.rows.first?.space {
+                SpaceMark(icon: space.icon, size: SideBar.mark).foregroundStyle(accent)
+            }
+        case .domain(let name):
+            Mark(icon: section.rows.first?.tab.icon, letter: String(name.prefix(1)).uppercased(), size: SideBar.mark)
+        case .localFiles, .browserPages, .ungrouped:
+            Symbol(section.id == .localFiles ? "folder" : "globe", size: SideBar.mark)
+        }
+    }
+
+    // A domain shared by multiple Spaces uses the All Tabs theme.
+    private var paint: SpacePaint {
+        if let space = section.rows.first?.space, section.rows.allSatisfy({ $0.space.id == space.id }) {
+            return space.paint ?? SpacePaint(browser.prefs)
+        }
+        return browser.sidebarSpace.paint ?? SpacePaint(browser.prefs)
+    }
+
+    private var dark: Bool { (tone?.scheme ?? scheme) == .dark }
+    private var accent: Color { Color(nsColor: paint.color(dark: !dark)) }
+    private var badgeTone: Tone { Tone(paint.color(dark: dark)) }
 
     private var actionTitle: String {
         if case .space = section.id { return "Open " + section.title + " Space" }
