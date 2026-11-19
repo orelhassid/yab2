@@ -54,12 +54,15 @@ struct NavigationHeader: View {
 
                 HStack(spacing: size.gap) {
                     RailButton("Switch Tab", selected: switcher == .tabs, fitsLabel: true, doorSize: size, action: { switcher = .tabs }) {
-                        HStack(spacing: SideBar.markGap) {
-                            if let tab { NavigationTabLabel(tab: tab) }
-                            else { Text("Tabs").sidebarFont(size: 12.5) }
-                            Symbol("chevron.down", size: 10)
+                        TabSwitcherWidth {
+                            HStack(spacing: SideBar.markGap) {
+                                if let tab { NavigationTabLabel(tab: tab) }
+                                else { Text("Tabs").sidebarFont(size: 12.5) }
+                                Spacer(minLength: 0)
+                                Symbol("chevron.down", size: 10).fixedSize()
+                            }
+                            .padding(.horizontal, SideBar.inner)
                         }
-                        .padding(.horizontal, SideBar.inner)
                     }
                     .disabled(browser.tabs.isEmpty)
                     .popover(isPresented: presented(.tabs), arrowEdge: .bottom) { tabs }
@@ -132,6 +135,24 @@ struct NavigationHeader: View {
 
     private func presented(_ item: Switcher) -> Binding<Bool> {
         Binding(get: { switcher == item }, set: { if !$0, switcher == item { switcher = nil } })
+    }
+}
+
+/// Fit the title within the switcher's range. In a narrow pane the
+/// available width takes precedence so the neighboring controls still fit.
+private struct TabSwitcherWidth: Layout {
+    private let minimum: CGFloat = 112
+    private let maximum: CGFloat = 240
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let label = subviews[0]
+        let ideal = label.sizeThatFits(.unspecified).width
+        let width = min(max(ideal, minimum), maximum, proposal.width ?? maximum)
+        return CGSize(width: width, height: label.sizeThatFits(.init(width: width, height: proposal.height)).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews[0].place(at: bounds.origin, anchor: .topLeading, proposal: .init(bounds.size))
     }
 }
 
