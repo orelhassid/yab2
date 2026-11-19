@@ -223,18 +223,20 @@ struct RailButton<Mark: View>: View {
     var highlighted = false
     var grid = false
     let keyboard: Bool
+    let fitsLabel: Bool
     let action: () -> Void
     @ViewBuilder let mark: () -> Mark
     @Environment(\.tone) private var tone
     @State private var hovering = false
 
     init(_ title: String, selected: Bool = false, highlighted: Bool = false, grid: Bool = false,
-         keyboard: Bool = false, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
+         keyboard: Bool = false, fitsLabel: Bool = false, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
         self.title = title
         self.selected = selected
         self.highlighted = highlighted
         self.grid = grid
         self.keyboard = keyboard
+        self.fitsLabel = fitsLabel
         self.action = action
         self.mark = mark
     }
@@ -249,7 +251,7 @@ struct RailButton<Mark: View>: View {
         Button(action: action) {
             mark()
                 .foregroundStyle(hovering || selected ? Palette.ink : Palette.muted(on: tone))
-                .frame(width: grid ? nil : SideBar.row, height: grid ? SideBar.square : SideBar.row)
+                .frame(width: grid || fitsLabel ? nil : SideBar.row, height: grid ? SideBar.square : SideBar.row)
                 .frame(maxWidth: grid ? .infinity : nil)
                 .background {
                     if selected {

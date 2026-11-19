@@ -4141,6 +4141,18 @@ final class AnchorView: NSView {
         }
     }
 
+    /// Multiple toolbars can show the same pin. Open its popup from the
+    /// one the pointer pressed, falling back to the settled anchor for keys.
+    @MainActor
+    static func preferPressed(_ id: String) {
+        guard let window = NSApp.keyWindow else { return }
+        let point = window.mouseLocationOutsideOfEventStream
+        guard let pin = showing(id, in: window).first(where: {
+            $0.visibleRect.contains($0.convert(point, from: nil))
+        }) else { return }
+        Extensions.shared.anchors[id] = WeakView(pin)
+    }
+
     @MainActor
     static func settle(_ id: String) {
         let here = live.allObjects.filter { $0.id == id && $0.window != nil && !$0.isHiddenOrHasHiddenAncestor }

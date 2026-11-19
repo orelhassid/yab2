@@ -301,6 +301,8 @@ struct AppearancePage: View {
                 .settingsAnchor("density")
         }
         Section {
+            SettingsSwitch("Navigation Header", isOn: $prefs.navigationHeader)
+                .settingsAnchor("navigation-header")
             MenuRow("Address bar", options: [("Hidden", AddressShow.hidden), ("Site", .site), ("Full URL", .full)],
                     selection: addressShow)
                 .settingsAnchor("address-bar")

@@ -1124,7 +1124,7 @@ struct ContentView: View {
                                 // its margins, so they are added back. The
                                 // top rim is each one's own, so the notice
                                 // can be tucked away above it.
-                                .padding(.top, margins.top + barHeight)
+                                .padding(.top, margins.top + barHeight + navigationHeaderHeight)
                                 .padding(.trailing, margins.trailing + Metrics.rim + devTrail + frontTrail(in: room.size.width - margins.leading - margins.trailing - devTrail))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                                 }
@@ -1171,10 +1171,15 @@ struct ContentView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
                             }
                         }
+                        .overlay(alignment: .top) {
+                            if navigationHeaderHeight > 0 {
+                                NavigationHeader(browser: browser, tab: nil, corner: corner, emptyTone: backdropTone)
+                            }
+                        }
                         .padding(margins)
                         .overlay(alignment: .topTrailing) {
                             notices(top: Metrics.rim)
-                                .padding(.top, margins.top)
+                                .padding(.top, margins.top + navigationHeaderHeight)
                                 .padding(.trailing, margins.trailing + Metrics.rim)
                         }
                         // With no page in front too: a question asked of
@@ -1311,6 +1316,7 @@ struct ContentView: View {
         Sided(preview: browser.splitPreview, laid: placed, alone: front && browser.stagePair == nil) { side, warm in
         let split = side != .whole
         let showBar = split || browser.barShown
+        let showNavigation = front && navigationHeaderHeight > 0
         VStack(spacing: 0) {
             // The address, when asked for: the card's own top edge, the page
             // under it. Built ahead, out of sight, while a tab is carried
@@ -1363,11 +1369,15 @@ struct ContentView: View {
                 .allowsHitTesting(showBar)
                 .accessibilityHidden(!showBar)
             }
+            if showNavigation {
+                NavigationHeader(browser: browser, tab: tab, corner: showBar ? 0 : corner)
+            }
+
             // Room made for a tab carried over the page (previewSplit): the
             // band goes to its half on SwiftUI's curve, the page and its
             // paper are laid out there at once and drawn there by Core
             // Animation on the same one, WebKit following.
-            PageContent(browser: browser, preview: browser.splitPreview, tab: tab, corner: corner, showBar: showBar, front: front)
+            PageContent(browser: browser, preview: browser.splitPreview, tab: tab, corner: corner, showBar: showBar || showNavigation, front: front)
                 .background { GestureSurface { MouseGestureInput.shared.registerPage($0) } }
                 .transaction { if browser.splitRooming { $0.animation = nil } }
                 // No bar to hold reading mode's book and Aa: they stand in
@@ -1547,10 +1557,14 @@ struct ContentView: View {
     /// The address bar over `tab`'s page, for the paper under it to wear
     /// the bar's color where the bar's corners are the card's.
     private func paperBand(_ tab: Tab) -> PaperBand? {
-        guard browser.barShown || browser.side(of: tab.id) != .whole else { return nil }
-        let worn = barTone(tab, tab.tone.map { Tone($0) })
+        let tone = tab.tone.map { Tone($0) }
+        let address = browser.barShown || browser.side(of: tab.id) != .whole
+        let height = address ? AddressBar.height(sidebar: browser.prefs.sidebar, carded: laid)
+            : tab.id == browser.activeID ? navigationHeaderHeight : 0
+        guard height > 0 else { return nil }
+        let worn = address ? barTone(tab, tone) : tone
         return PaperBand(
-            height: AddressBar.height(sidebar: browser.prefs.sidebar, carded: laid),
+            height: height,
             color: worn?.page ?? Palette.NS.ground,
             dark: (worn?.scheme ?? scheme) == .dark
         )
@@ -1624,7 +1638,7 @@ struct ContentView: View {
     private func field(in space: CGSize) -> some View {
             let (lead, trail) = fieldRoom(in: space.width)
             Omnibox(browser: browser, inset: lead, trail: trail,
-                    pageTop: band + shelfRoom + margins.top + barHeight, pageBottom: margins.bottom)
+                    pageTop: band + shelfRoom + navigationHeaderHeight + margins.top + barHeight, pageBottom: margins.bottom)
                 // Keep the native editor and glass prepared with the window.
                 // Mounting them on Cmd-L put their first layout and render
                 // setup in the opening frame. Hidden fields cannot take
@@ -1998,6 +2012,10 @@ struct ContentView: View {
             trail: laid ? margins.trailing : AddressBar.shelfRim,
             style: browser.prefs.bookmarkStyle
         )
+    }
+
+    private var navigationHeaderHeight: CGFloat {
+        browser.prefs.navigationHeader && !frontImmersed ? NavigationHeader.height : 0
     }
 
     /// The address bar's height, or nothing while there is none.

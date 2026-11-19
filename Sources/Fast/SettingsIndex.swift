@@ -250,6 +250,8 @@ struct SettingsItem: Identifiable, Hashable {
                      words: "dock icon default dev flat watercolor glass opal smoked chrome amber red enamel"),
         SettingsItem(id: "sidebar-position", page: .appearance, title: "Sidebar Position",
                      words: "tabs in a sidebar top vertical horizontal left right column side bar layout off"),
+        SettingsItem(id: "navigation-header", page: .appearance, title: "Navigation Header",
+                     words: "toolbar tab switcher spaces reload pinned extensions show hide"),
         SettingsItem(id: "sidebar-button", page: .appearance, title: "Show sidebar button",
                      words: "hide show sidebar toggle button toolbar narrow reload overflow"),
         SettingsItem(id: "tab-icons", page: .appearance, title: "Tab icons",

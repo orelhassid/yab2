@@ -31,7 +31,7 @@ struct NativeSetting {
                     "small-links": LinkWindow.key, "mail-motion": "mail.motion", "player": "player.shown", "agents-ask-opens": "agents.askOpens", "agents-cleanup": AgentTabsAfter.key,
                     "float-leave": "float.leave", "link-folders": "tabs.linkFolders", "folder-emoji": "tabs.folderEmoji", "opt-shift-folders": "tabs.optShiftFolders", "meeting-folders": "tabs.meetingFolders", "today-every-window": KeptEverywhere.todayKey, "float-away": "float.away", "dev-offer": "dev.offer", "dev-side": "dev.side", "search-engine": Engine.key, "tidy": "tabs.tidy",
                     "live-folders": LiveFolderFeature.key, "float-snap": Floater.snapToEdgesKey,
-                    "sidebar-button": "sidebar.button", "tidy-tabs": "tidy.tabs", "tidy-titles": "tidy.titles", "folder-names": "folders.names",
+                    "navigation-header": "navigation.header", "sidebar-button": "sidebar.button", "tidy-tabs": "tidy.tabs", "tidy-titles": "tidy.titles", "folder-names": "folders.names",
                     "tidy-downloads": "tidy.downloads", "ai-instant-links": "field.instant", "ai-link-previews": LinkCard.key]
         guard let key = keys[id], let raw = Store.settings.object(forKey: key), let value = try? NativeValue.read(raw) else { return nil }
         let descriptor: [String: Any] = ["parameters": ["properties": ["value": schema], "required": ["value"]]]
@@ -313,6 +313,7 @@ struct NativeSetting {
         choice("search-engine", "Search engine", \.engine, values: Engine.allCases.map(\.rawValue)),
         boolean("search-suggest", "Suggest searches from your search engine", \.searchSuggest),
         boolean("small-key", "Open a small window from any app with its shortcut", \.smallKey),
+        boolean("navigation-header", "Navigation Header", \.navigationHeader),
         boolean("sidebar-button", "Show sidebar button", \.sidebarButton),
         boolean("tidy-tabs", "Tidy tabs: group Today tabs into folders by topic", \.tidyTabs),
         boolean("tidy-titles", "Tidy tab titles: shorten titles of kept tabs", \.tidyTitles),

@@ -1509,7 +1509,10 @@ struct PlatePin: View {
 
     var body: some View {
         let lit = self.lit || hung.ids.contains(button.id)
-        Button(action: act) {
+        Button {
+            if native == nil { AnchorView.preferPressed(button.id) }
+            act()
+        } label: {
             ExtensionIcon(button: button, size: 14)
                 .frame(width: 18, height: 18)
                 .frame(width: width ?? side, height: side)

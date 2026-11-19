@@ -385,6 +385,14 @@ final class Preferences: ObservableObject, Relaying {
         }
     }
 
+    var navigationHeader: Bool {
+        willSet { relay.send(\.navigationHeader, newValue) }
+        didSet {
+            store.set(navigationHeader, forKey: "navigation.header")
+            if navigationHeader != oldValue { told(\.navigationHeader) }
+        }
+    }
+
     /// Those watching `path` told again, now that it holds its new value.
     ///
     /// The column has a hosting view of its own inside the window's, and
@@ -1200,6 +1208,7 @@ final class Preferences: ObservableObject, Relaying {
         sidebar = store.object(forKey: "sidebar") as? Bool
             ?? (store.string(forKey: "manner") == "side")
         sideShut = store.bool(forKey: "sidebar.shut")
+        navigationHeader = store.bool(forKey: "navigation.header")
         sidebarButton = store.object(forKey: "sidebar.button") as? Bool ?? true
         stripShut = store.bool(forKey: "strip.shut")
         spaceDots = store.bool(forKey: "spaces.dots")
