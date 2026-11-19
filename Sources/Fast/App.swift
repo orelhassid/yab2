@@ -2039,7 +2039,8 @@ struct ContentView: View {
     }
 
     private var navigationHeaderHeight: CGFloat {
-        guard browser.prefs.navigationHeader, !frontImmersed else { return 0 }
+        guard browser.prefs.navigationHeader, !frontImmersed,
+              browser.showsHomeField || browser.active?.isDev != true else { return 0 }
         let belowAddress = !browser.showsHomeField && browser.active != nil && (browser.barShown || browser.splitShown)
         return NavigationHeader.height(topInset: belowAddress ? 0 : margins.top)
     }
