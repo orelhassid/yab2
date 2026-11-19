@@ -19,7 +19,7 @@ struct YabApp: App {
 
     var body: some Scene {
         Window("Yab", id: "browser") {
-            ContentView(browser: browser)
+            WorkspaceThemeReader(browser: browser) { _ in ContentView(browser: browser) }
                 .windowFloor(browser)
         }
         .windowStyle(.hiddenTitleBar)
@@ -922,6 +922,7 @@ final class ChatRoomWidest {
 }
 
 struct ContentView: View {
+    @Environment(\.workspaceTheme) private var workspaceTheme
     @ObservedObject var browser: Browser
     /// The card's edge, dragged (DevSize): the room is laid out again.
     @ObservedObject private var devSize = DevSize.shared
@@ -960,7 +961,15 @@ struct ContentView: View {
             // the column reads as that site's bar. The swatch is for pages
             // that won't say.
             leaf { ZStack(alignment: .top) {
-            if let backdrop = backdrop ?? edgeBackdrop {
+            if workspaceTheme.active {
+                let look = workspaceTheme.look ?? SpacePaint(browser.prefs)
+                let paint = SpaceWash.painted(look)
+                ZStack {
+                    Color(nsColor: paint.color)
+                    CardGround(paint: paint, step: look.shift ? browser.lookStep : 0).environment(browser)
+                    if workspaceTheme.hasPhoto { HomePhoto(space: browser.spaceID) }
+                }.allowsHitTesting(false)
+            } else if let backdrop = backdrop ?? edgeBackdrop {
                 Worn(browser: browser, mode: privateWindow ? .color : browser.prefs.backdrop, swatch: Tone(backdrop, lifted: true, glass: glassActive), glassActive: glassActive) { tone in
                     // The look card's switches and drawings (LookCard): the
                     // site's color in one of yours, the colors' turn.
@@ -983,7 +992,13 @@ struct ContentView: View {
                     Palette.ground
                         .padding(.leading, browser.leadingSidebarRoom) // design: reserve the rail independently of the tab column on either side
                         .padding(.trailing, browser.trailingSidebarRoom) // design: reserve the rail independently of the tab column on either side
-                } else {
+                }
+            } else if let tab = browser.dresser, !browser.prefs.sidebar {
+                PageGround(tab: tab, away: frontImmersed)
+            } else {
+                Palette.ground
+            }
+            if carded {
                 // Not under the tabs: a real view takes a click before
                 // anything SwiftUI draws over it, and over the whole window
                 // it had every drag on a tab moving the window instead. The
@@ -995,11 +1010,6 @@ struct ContentView: View {
                     trailing: browser.trailingSidebarRoom,
                     top: !browser.prefs.sidebar, shut: browser.prefs.stripShut, shelf: shelfRoom
                 )
-                }
-            } else if let tab = browser.dresser, !browser.prefs.sidebar {
-                PageGround(tab: tab, away: frontImmersed)
-            } else {
-                Palette.ground
             }
             }
             // Window's mode picked: the new ground at once, under the page
@@ -1431,7 +1441,7 @@ struct ContentView: View {
     private func sharedColumn<Page: View>(@ViewBuilder page: () -> Page) -> some View {
         let rim = DevRoom.Rim(card: laid)
         return ChatRoom(open: browser.chatOpen, rim: rim, width: chatShown, leading: browser.chatLeads) {
-            page()
+            page().opacity(workspaceTheme.active && browser.showsHomeField ? 0 : 1)
             if browser.chatOpen || browser.chatMoving || !Extensions.all.allSatisfy({ $0.panelPages(in: browser).isEmpty }) {
                 ChatColumnHost(browser: browser, shown: browser.chatOpen, corner: rim.corner, width: chatShown, leading: browser.chatLeads)
                     .padding(browser.chatLeads ? .trailing : .leading, -Backdrop.inset)
@@ -1539,7 +1549,7 @@ struct ContentView: View {
     /// corner.
     @ViewBuilder
     private func pagePaper(_ tab: Tab) -> some View {
-        if carded {
+        if carded && !(workspaceTheme.active && tab.showsLibrary) {
             Shaded(tab: tab) { shade in
                 // Under a hand on the divider the paper follows it as laid
                 // out, with nothing drawn from where it was.

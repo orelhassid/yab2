@@ -362,7 +362,11 @@ private struct SpacePageLook<Content: View>: View {
 
     var body: some View {
         let custom = try? JSONDecoder().decode(SpacePaint.self, from: stored)
-        content(Binding(get: { custom ?? SpacePaint(browser.prefs) }, set: { value in
+        content(Binding(get: {
+            // The color field writes the main color and linked colors in one event.
+            let data = Store.settings.data(forKey: "home.look." + browser.spaceID.uuidString)
+            return data.flatMap { try? JSONDecoder().decode(SpacePaint.self, from: $0) } ?? SpacePaint(browser.prefs)
+        }, set: { value in
             if let data = try? JSONEncoder().encode(value) { stored = data }
         }), custom != nil, { stored = Data() })
     }
@@ -370,6 +374,7 @@ private struct SpacePageLook<Content: View>: View {
 
 struct SpacePageSurface: ViewModifier {
     let browser: Browser
+    @Environment(\.workspaceTheme) private var theme
     var library = false
     var themedControls = false
     var active = true
@@ -383,12 +388,12 @@ struct SpacePageSurface: ViewModifier {
                 let paint = (!library || share) && (custom || browser.prefs.backdrop != .site) ? SpaceWash.painted(look) : nil
                 content.background {
                     ZStack {
-                        if let paint {
+                        if theme.active { Color.clear }
+                        else if let paint {
                             Color(nsColor: paint.color)
                             CardGround(paint: paint, step: look.shift ? browser.lookStep : 0)
                                 .environment(browser)
                         } else { Palette.stage }
-                        HomePhoto(space: browser.spaceID)
                     }.allowsHitTesting(false)
                 }
                 .environment(\.tone, themedControls ? paint.map { SpaceSurface.tone(for: $0.color) } : nil)

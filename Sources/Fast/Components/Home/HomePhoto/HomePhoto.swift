@@ -21,6 +21,53 @@ private func photoURL(_ file: String) -> URL? {
     return file.isEmpty ? nil : photos.appendingPathComponent(file)
 }
 
+struct WorkspaceTheme {
+    var look: SpacePaint?
+    var hasPhoto = false
+    var active: Bool { look != nil || hasPhoto }
+}
+
+private struct WorkspaceThemeKey: EnvironmentKey {
+    static let defaultValue = WorkspaceTheme()
+}
+
+extension EnvironmentValues {
+    var workspaceTheme: WorkspaceTheme {
+        get { self[WorkspaceThemeKey.self] }
+        set { self[WorkspaceThemeKey.self] = newValue }
+    }
+}
+
+/// The window and its native sidebar have separate SwiftUI hosting roots.
+struct WorkspaceThemeReader<Content: View>: View {
+    let browser: Browser
+    @ViewBuilder var content: (WorkspaceTheme) -> Content
+
+    var body: some View {
+        StoredWorkspaceTheme(space: browser.spaceID, privateWindow: browser.windowPurpose == .privateOnly, content: content)
+    }
+}
+
+private struct StoredWorkspaceTheme<Content: View>: View {
+    let privateWindow: Bool
+    let content: (WorkspaceTheme) -> Content
+    @AppStorage private var look: Data
+    @AppStorage private var photo: String
+
+    init(space: UUID, privateWindow: Bool, content: @escaping (WorkspaceTheme) -> Content) {
+        self.privateWindow = privateWindow
+        self.content = content
+        _look = AppStorage(wrappedValue: Data(), "home.look." + space.uuidString, store: Store.settings)
+        _photo = AppStorage(wrappedValue: "", photoKey(space), store: Store.settings)
+    }
+
+    var body: some View {
+        let theme = privateWindow ? WorkspaceTheme() :
+            WorkspaceTheme(look: try? JSONDecoder().decode(SpacePaint.self, from: look), hasPhoto: !photo.isEmpty)
+        content(theme).environment(\.workspaceTheme, theme)
+    }
+}
+
 private struct PhotoLayers: DynamicProperty {
     @AppStorage var noise: Double
     @AppStorage var blur: Double
@@ -97,6 +144,8 @@ struct HomePhoto: View {
 struct HomePhotoGallery: View {
     @AppStorage private var file: String
     @State private var failed = false
+    @State private var page = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var uploadPreview: NSImage?
 
     init(space: UUID) {
@@ -104,17 +153,24 @@ struct HomePhotoGallery: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
-            tile("No Image", symbol: "nosign", selected: file.isEmpty) { replace(with: "") }
-            tile("Upload image", symbol: "square.and.arrow.up", image: uploadPreview,
-                 selected: !file.isEmpty && HomePreset(rawValue: file) == nil) {
-                let panel = NSOpenPanel()
-                panel.allowedContentTypes = [.image]
-                if panel.runModal() == .OK, let url = panel.url { install(url) }
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(0..<4, id: \.self) { column in
+                    let index = page * 4 + column
+                    if index < itemCount { galleryItem(index) }
+                    else { Color.clear.frame(maxWidth: .infinity) }
+                }
             }
-            ForEach(HomePreset.allCases, id: \.self) { preset in
-                tile(preset.title, symbol: "photo", image: preset.url(preview: true).flatMap(NSImage.init(contentsOf:)),
-                     selected: file == preset.rawValue) { replace(with: preset.rawValue) }
+            .id(page)
+            .transition(.push(from: page == 0 ? .leading : .trailing))
+            .clipped()
+            .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { drag in
+                guard abs(drag.translation.width) > abs(drag.translation.height) else { return }
+                turnPage(drag.translation.width < 0 ? 1 : -1)
+            })
+            HStack(spacing: 4) {
+                arrow("chevron.left", label: "Previous backgrounds", offset: -1)
+                arrow("chevron.right", label: "Next backgrounds", offset: 1)
             }
         }
         .task(id: file) {
@@ -130,13 +186,47 @@ struct HomePhotoGallery: View {
         .alert("Couldn’t load this image", isPresented: $failed) { Button("OK") {} }
     }
 
+    private var itemCount: Int { 2 + HomePreset.allCases.count }
+    private var pageCount: Int { (itemCount + 3) / 4 }
+
+    @ViewBuilder private func galleryItem(_ index: Int) -> some View {
+        switch index {
+        case 0:
+            tile("No Image", symbol: "nosign", selected: file.isEmpty) { replace(with: "") }
+        case 1:
+            tile("Upload image", symbol: "square.and.arrow.up", image: uploadPreview,
+                 selected: !file.isEmpty && HomePreset(rawValue: file) == nil) {
+                let panel = NSOpenPanel()
+                panel.allowedContentTypes = [.image]
+                if panel.runModal() == .OK, let url = panel.url { install(url) }
+            }
+        default:
+            let preset = HomePreset.allCases[index - 2]
+            tile(preset.title, symbol: "photo", image: preset.url(preview: true).flatMap(NSImage.init(contentsOf:)),
+                 selected: file == preset.rawValue) { replace(with: preset.rawValue) }
+        }
+    }
+
+    private func arrow(_ symbol: String, label: String, offset: Int) -> some View {
+        Button { turnPage(offset) } label: { Image(systemName: symbol) }
+            .buttonStyle(.yab(.quiet, .small, icon: .square))
+            .accessibilityLabel(label)
+            .disabled(!(0..<pageCount).contains(page + offset))
+    }
+
+    private func turnPage(_ offset: Int) {
+        let target = page + offset
+        guard (0..<pageCount).contains(target) else { return }
+        withAnimation(reduceMotion ? nil : Motion.quick) { page = target }
+    }
+
     private func tile(_ title: String, symbol: String, image: NSImage? = nil, selected: Bool,
                       action: @escaping () -> Void) -> some View {
         let shape = RoundedRectangle(cornerRadius: Radius.control)
         return Button(action: action) {
             VStack(spacing: 4) {
                 shape.fill(Palette.ink.opacity(0.08))
-                    .aspectRatio(2, contentMode: .fit)
+                    .aspectRatio(1, contentMode: .fit)
                     .overlay {
                         if let image { Image(nsImage: image).resizable().scaledToFill() }
                         else { Image(systemName: symbol).foregroundStyle(.secondary) }
@@ -148,6 +238,7 @@ struct HomePhotoGallery: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

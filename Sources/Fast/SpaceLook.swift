@@ -139,7 +139,7 @@ struct ColorEditor: View {
                    fill: Color(nsColor: NSColor(oklch: lch)), lightness: lightness,
                    following: zip(following, ids).map { ColorHandle(id: $1, point: $0.point, fill: Color(nsColor: NSColor(oklch: $0.lch))) },
                    born: born, choose: { chosen = $0 },
-                   angular: multiple, canAdd: colors.count < 2, canRemove: !colors.isEmpty,
+                   angular: multiple, plated: showsSurfaceSliders, canAdd: colors.count < 2, canRemove: !colors.isEmpty,
                    add: multiple ? { addColor() } : nil, remove: multiple ? { removeColor() } : nil,
                    moveFollowing: { index, point in
                        harmony.move(index, to: point, from: primary)
@@ -291,6 +291,7 @@ struct ColorField: View {
     var born: (id: UUID, from: CGPoint)? = nil
     /// Which dot a press took: nil for the main one.
     var choose: (Int?) -> Void = { _ in }
+    var plated = true
     var angular = false
     var canAdd = false
     var canRemove = false
@@ -303,9 +304,10 @@ struct ColorField: View {
     /// one private to this file.
     init(point: CGPoint, fill: Color, lightness: CGFloat, following: [ColorHandle] = [],
          born: (id: UUID, from: CGPoint)? = nil, choose: @escaping (Int?) -> Void = { _ in },
-         angular: Bool = false, canAdd: Bool = false, canRemove: Bool = false,
+         angular: Bool = false, plated: Bool = true, canAdd: Bool = false, canRemove: Bool = false,
          add: (() -> Void)? = nil, remove: (() -> Void)? = nil,
          moveFollowing: ((Int, CGPoint) -> Void)? = nil, move: @escaping (CGPoint) -> Void) {
+        self.plated = plated
         self.point = point; self.fill = fill; self.lightness = lightness; self.following = following
         self.born = born; self.choose = choose; self.angular = angular; self.canAdd = canAdd
         self.canRemove = canRemove; self.add = add; self.remove = remove
@@ -417,7 +419,7 @@ struct ColorField: View {
                 .padding(.bottom, 2)
             }
         }
-        .background(Palette.ink.opacity(0.05), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+        .background(Palette.ink.opacity(plated ? 0.05 : 0), in: RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         .onDisappear {
             if cursor != .none { NSCursor.pop(); cursor = .none }

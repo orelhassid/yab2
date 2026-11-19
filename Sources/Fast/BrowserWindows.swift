@@ -390,7 +390,7 @@ final class BrowserWindows: ObservableObject {
         // Its space's own Light or Dark before the first frame: the colors
         // are drawn in the shades of the window's appearance.
         if purpose == .normal { window.wearLookMode(of: browser.prefs) }
-        window.contentView = WindowFloorLayout.host(ContentView(browser: browser)
+        window.contentView = WindowFloorLayout.host(WorkspaceThemeReader(browser: browser) { _ in ContentView(browser: browser) }
             .windowFloor(browser))
         let frameName = frameAutosaveName(for: id)
         if purpose == .normal {

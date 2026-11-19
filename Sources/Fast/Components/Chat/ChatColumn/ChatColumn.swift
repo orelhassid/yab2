@@ -546,7 +546,7 @@ private struct ChatColumnRoot: View {
         ZStack {
             if browser.homeSettingsInColumn {
                 HomeSettingsPanel(browser: browser, width: look.width, close: browser.hideChat)
-                    .modifier(ChatColumnFrame(browser: browser, width: look.width))
+                    .modifier(ChatColumnFrame(browser: browser, width: look.width, solid: true))
                     .modifier(ChatColumnScheme(browser: browser))
             } else {
                 ChatColumn(browser: browser, corner: look.corner, width: look.width, feed: feed)
@@ -2495,13 +2495,14 @@ private struct ChatColumnScheme: ViewModifier {
 private struct ChatColumnFrame: ViewModifier {
     let browser: Browser
     let width: CGFloat
+    var solid = false
 
     func body(content: Content) -> some View {
         content
             .foregroundStyle(Palette.ink)
             .frame(width: width, alignment: .top)
             .clipShape(RoundedRectangle(cornerRadius: Radius.surface, style: .continuous))
-            .background { ChatColumnGround(browser: browser) }
+            .background { ChatColumnGround(browser: browser, solid: solid) }
             // Its edge, in the air between it and the page: dragged as a split's.
             .overlay(alignment: browser.chatLeads ? .trailing : .leading) {
                 ChatEdge(browser: browser)
@@ -2516,13 +2517,14 @@ private struct ChatColumnFrame: ViewModifier {
 /// column in the space's colors. With no look it is the page's plate.
 private struct ChatColumnGround: View {
     let browser: Browser
+    let solid: Bool
     /// How much of the page's ground lies over the look.
     static let veil: CGFloat = 0.55
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
-        if browser.prefs.backdrop != .none {
-            shape.fill(Palette.ground.opacity(Self.veil))
+        if solid || browser.prefs.backdrop != .none {
+            shape.fill(Palette.ground.opacity(solid ? 1 : Self.veil))
                 .overlay(shape.strokeBorder(Palette.hairline, lineWidth: 1)) // design: the column is a see-through surface on the look, not a card
         } else {
             HUD.plate(Radius.surface, surface: .page)

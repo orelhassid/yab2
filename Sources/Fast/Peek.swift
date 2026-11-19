@@ -930,8 +930,12 @@ struct ColumnRoot: View {
             // the same from one site to the next of the same light. Out over
             // the page as a card it paints the site's color itself.
             let docked = !prefs.sideShut
-            Column(browser: browser, prefs: prefs, peek: browser.peek, docked: docked, tone: docked ? ink ?? tone : tone, card: card,
-                   carried: true, ink: docked ? nil : ink)
+            WorkspaceThemeReader(browser: browser) { theme in
+                let workspaceTone = theme.active ? Tone(SpaceWash.painted(theme.look ?? SpacePaint(prefs)).color, lifted: true) : nil
+                Column(browser: browser, prefs: prefs, peek: browser.peek, docked: docked,
+                       tone: workspaceTone ?? (docked ? ink ?? tone : tone), card: card,
+                       carried: true, ink: docked || workspaceTone != nil ? nil : ink)
+            }
         }
     }
 

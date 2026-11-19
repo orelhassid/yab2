@@ -31,6 +31,7 @@ struct Page: View {
     var paned = false
 
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.workspaceTheme) private var workspaceTheme
     @Environment(\.libraryNavigationInset) private var libraryNavigationInset
 
     var body: some View {
@@ -51,7 +52,7 @@ struct Page: View {
             ZStack {
                 // A blank card's face, in the page's light or dark, as the
                 // paper under it was.
-                if page == nil, !tab.shy, tab.cover == nil {
+                if page == nil, !(workspaceTheme.active && tab.showsLibrary), !tab.shy, tab.cover == nil {
                     Palette.ground
                         .environment(\.colorScheme, (tab.isBlank ? nil : tab.shade) ?? scheme)
                         .allowsHitTesting(false)
@@ -79,6 +80,7 @@ struct Page: View {
                 sidebarPin: sidebarPin,
                 shade: tab.shade, tone: tab.tone, device: tab.device
             )
+            .opacity(workspaceTheme.active && tab.showsLibrary ? 0 : 1)
 
             overlays
                 // What SwiftUI draws over the page is clipped here, apart
