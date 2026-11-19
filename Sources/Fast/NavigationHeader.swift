@@ -13,7 +13,9 @@ struct NavigationHeader: View {
 
     private enum Switcher { case spaces, tabs }
 
-    static let height = Metrics.strip
+    static func height(topInset: CGFloat) -> CGFloat {
+        Metrics.strip - Backdrop.inset - topInset
+    }
 
     private var size: Door.Size {
         guard browser.prefs.sidebar else { return .header }
@@ -88,10 +90,10 @@ struct NavigationHeader: View {
             .frame(height: size.side)
             // The card begins below the window edge. Measure the controls
             // from that same edge as the sidebar while keeping the card inset.
-            .padding(.top, (Self.height - size.side) / 2 - topInset)
+            .padding(.top, (Metrics.strip - size.side) / 2 - topInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(height: Self.height)
+        .frame(height: Self.height(topInset: topInset))
     }
 
     private var spaces: some View {

@@ -2017,7 +2017,9 @@ struct ContentView: View {
     }
 
     private var navigationHeaderHeight: CGFloat {
-        browser.prefs.navigationHeader && !frontImmersed ? NavigationHeader.height : 0
+        guard browser.prefs.navigationHeader, !frontImmersed else { return 0 }
+        let belowAddress = browser.active != nil && (browser.barShown || browser.splitShown)
+        return NavigationHeader.height(topInset: belowAddress ? 0 : margins.top)
     }
 
     /// The address bar's height, or nothing while there is none.
