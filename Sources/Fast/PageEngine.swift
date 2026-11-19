@@ -302,6 +302,7 @@ protocol PageDownload: AnyObject {
     var pageURL: URL? { get }
     var pageTitle: String? { get }
     var downloadEvents: (any PageDownloadEvents)? { get set }
+    var supportsPause: Bool { get }
     func cancelDownload(_ done: @escaping @MainActor (Data?) -> Void)
     func restartDownload(from resumeData: Data?, fallback: (any PageHandle)?,
                          done: @escaping @MainActor ((any PageDownload)?) -> Void)
@@ -312,6 +313,7 @@ protocol PageDownload: AnyObject {
 
 extension PageDownload {
     var isExtensionDownload: Bool { false }
+    var supportsPause: Bool { false }
     func didPublish(to file: URL) async throws {}
 }
 

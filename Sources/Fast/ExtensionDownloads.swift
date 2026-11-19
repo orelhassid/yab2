@@ -326,11 +326,19 @@ enum ExtensionDownloads {
         items.values.first { $0.ended === download }?.id
     }
 
+    static func pauseFromUI(_ download: any PageDownload, hoard: Hoard) async {
+        if let id = ids[ObjectIdentifier(download)] {
+            try? await pause(id, hoard: hoard)
+        } else {
+            _ = await hoard.pause(download)
+        }
+    }
+
     static func pause(_ id: Int, hoard: Hoard) async throws {
         guard let item = items[id] else { throw ExtensionShims.Unsupported(what: "Invalid download id \(id)") }
         guard item.state == "in_progress" else { throw ExtensionShims.Unsupported(what: "Download must be in progress") }
         guard !item.paused, let download = item.download else { return }
-        pausing.insert(id)
+        guard pausing.insert(id).inserted else { return }
         defer { pausing.remove(id) }
         let resumable = await hoard.pause(download)
         change(id) { item in

@@ -30,6 +30,7 @@ final class WebKitDownloadEvents: NSObject, WKDownloadDelegate {
 }
 
 extension WKDownload: PageDownload {
+    var supportsPause: Bool { true }
     var isExtensionDownload: Bool {
         ExtensionDownloads.byExtension(self) || eventAdapter.originURL?.scheme == Extensions.scheme
     }

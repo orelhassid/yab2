@@ -1392,7 +1392,7 @@ struct TrailLibraryPopover: ViewModifier {
             }), arrowEdge: vertical ? (browser.trailFlank == .right ? .leading : .trailing) : .bottom) {
                 TrailPreviewContent(page: page, browser: browser, bookmarks: browser.bookmarks,
                                     history: browser.active.map(browser.history(for:)) ?? browser.history,
-                                    loot: browser.loot, extensions: Extensions.of(browser)) { state.dismiss(page) }
+                                    loot: browser.loot, hoard: browser.hoard, extensions: Extensions.of(browser)) { state.dismiss(page) }
                     .onHover { state.hover(page, inside: $0) }
             }
     }
@@ -1404,6 +1404,7 @@ private struct TrailPreviewContent: View {
     @ObservedObject var bookmarks: Bookmarks
     @ObservedObject var history: History
     @ObservedObject var loot: Loot
+    @ObservedObject var hoard: Hoard
     @ObservedObject var extensions: Extensions
     let close: () -> Void
     private let limit = 5
@@ -1443,14 +1444,20 @@ private struct TrailPreviewContent: View {
             if today.isEmpty { empty("No history today") }
             ForEach(today) { link($0.title, $0.url) }
         case .downloads:
-            let latest = loot.kept.sorted { $0.date > $1.date }.prefix(limit)
-            if latest.isEmpty { empty("No downloads") }
+            let transfers = hoard.fetches.prefix(limit)
+            let latest = loot.kept.sorted { $0.date > $1.date }.prefix(limit - transfers.count)
+            if transfers.isEmpty && latest.isEmpty { empty("No downloads") }
+            ForEach(transfers) { fetch in
+                HoardList.FetchRow(hoard: hoard, meter: hoard.meter, fetch: fetch)
+            }
             ForEach(latest) { file in
-                row(file.name, action: { loot.reveal(file) }) {
-                    if let icon = ActionIcons.file(file.url) {
-                        Image(nsImage: icon).resizable().scaledToFit()
-                    } else { Symbol("doc", size: SideBar.mark) }
-                }
+                HoardList.KeptRow(hoard: hoard, showActions: true, keep: file, open: {
+                    close()
+                    loot.open(file)
+                }, reveal: {
+                    close()
+                    loot.reveal(file)
+                })
             }
         case .extensions:
             let active = extensions.installed.filter(\.enabled).sorted { alphabetic($0.name, $1.name) }.prefix(limit)

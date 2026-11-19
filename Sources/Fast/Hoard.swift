@@ -84,7 +84,7 @@ final class Hoard: ObservableObject {
     /// it. Before that it has none there. The column's foot always has it.
     @Published private(set) var shown = false
     /// The last file's name, while its icon waits by the button for the
-    /// pointer. No timer: it goes when the list opens, or the next one comes.
+    /// pointer, until the preview is used or its brief display expires.
     @Published private(set) var waiting: String?
     var landed: Bool { waiting != nil }
     /// The waiting file has had its moment on the chip: the chip goes back
@@ -134,6 +134,7 @@ final class Hoard: ObservableObject {
     static let full: Double = 0.18
     /// From the tick until the chip goes back into its edge with the file.
     static let home: Double = 0.9
+    private static let waitingDuration: Double = 4
     /// The list's curve and time, which what rides into its row shares.
     static let ride: Double = 0.26
     static let rideCurve = (x1: 0.32, y1: 0.72, x2: 0.0, y2: 1.0)
@@ -188,6 +189,7 @@ final class Hoard: ObservableObject {
     private var origins: [ObjectIdentifier: CGPoint] = [:]
     private var canceled: Set<ObjectIdentifier> = []
     private var pausing: Set<ObjectIdentifier> = []
+    private var waitingExpiry: Task<Void, Never>?
     private var press: (at: CGPoint, time: CFTimeInterval, right: Bool)?
     private var monitor: Any?
     private weak var window: NSWindow?
@@ -324,8 +326,7 @@ final class Hoard: ObservableObject {
     private func settleForNext() {
         if staying { staying = false }
         beat?.cancel()
-        if waiting != nil { waiting = nil }
-        if settled { settled = false }
+        clearWaitingPreview()
         if filling { filling = false }
     }
 
@@ -432,14 +433,29 @@ final class Hoard: ObservableObject {
             goHome()
             return
         }
+        waitingExpiry?.cancel()
         waiting = name
         settled = false
-        // The file rises on the chip, then the chip goes home with it.
-        DispatchQueue.main.asyncAfter(deadline: .now() + Hoard.home) { [weak self] in
-            guard let self, waiting == name, going.isEmpty else { return }
-            settled = true
-            staying = false
+        waitingExpiry = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(Hoard.home))
+                if let self, waiting != nil, going.isEmpty {
+                    settled = true
+                    staying = false
+                }
+                try await Task.sleep(for: .seconds(Hoard.waitingDuration - Hoard.home))
+                self?.clearWaitingPreview()
+            } catch {}
         }
+    }
+
+    func clearWaitingPreview() {
+        waitingExpiry?.cancel()
+        waitingExpiry = nil
+        guard waiting != nil else { return }
+        waiting = nil
+        settled = false
+        if going.isEmpty { staying = false }
     }
 
     /// The chip goes home a little after what kept it out.
@@ -517,16 +533,25 @@ final class Hoard: ObservableObject {
         }
     }
 
-    /// Stopped where it is by an extension, keeping what WebKit needs to
+    func canPause(_ fetch: Fetch) -> Bool { downloads[fetch.id]?.supportsPause == true }
+
+    func pause(_ fetch: Fetch) {
+        guard canPause(fetch), fetches.contains(where: { $0.id == fetch.id && !$0.failed }),
+              let download = downloads[fetch.id] else { return }
+        Task { await ExtensionDownloads.pauseFromUI(download, hoard: self) }
+    }
+
+    /// Stopped where it is, keeping what the engine needs to
     /// go on; true when it kept enough. The row stays, saying Paused.
     func pause(_ download: any PageDownload) async -> Bool {
         let id = ObjectIdentifier(download)
-        pausing.insert(id)
+        guard pausing.insert(id).inserted else { return false }
         defer { pausing.remove(id) }
         browser?.downloading.removeAll { $0 === download }
         let data = await withCheckedContinuation { (done: CheckedContinuation<Data?, Never>) in
             download.cancelDownload { done.resume(returning: $0) }
         }
+        guard downloads[id] != nil else { return false }
         watches[id] = nil
         browser?.downloadParts[id]?.partial?.stop()
         if let data { resume[id] = data }
@@ -1210,6 +1235,7 @@ struct HoardButton: View {
     var preview: (() -> Void)?
 
     @State private var hovering = false
+    @FocusState private var previewFocused: Bool
     @State private var reportID = UUID()
     @State private var lastFrame: CGRect?
     @Environment(\.tone) private var tone
@@ -1264,15 +1290,18 @@ struct HoardButton: View {
     var body: some View {
         Group {
             if inRail {
-                RailButton("Downloads", selected: hoard.openAt == place || hoard.browser?.active?.libraryPage == .downloads, action: {
+                RailButton("Downloads", selected: hoard.openAt == place || hoard.browser?.active?.libraryPage == .downloads,
+                           keyboard: preview != nil, action: {
                     if let preview {
                         hoard.acknowledgeFailure()
+                        hoard.clearWaitingPreview()
                         preview()
                     } else { hoard.press(place, inRail: true) }
                 }) {
                     RailButton<Symbol>.glyph("arrow.down.circle")
                         .opacity(hoard.badged && hoard.openAt == nil ? 0 : 1)
                 }
+                .focused($previewFocused)
             } else {
                 legacyButton
             }
@@ -1289,6 +1318,10 @@ struct HoardButton: View {
             // is where its list opens and files land.
             if inside, let lastFrame { claim(lastFrame) }
             if preview == nil { hoard.hover(place, inside) }
+            else if inside { hoard.clearWaitingPreview() }
+        }
+        .onChange(of: previewFocused) { _, focused in
+            if focused && preview != nil { hoard.clearWaitingPreview() }
         }
         // The column's says what a click does beside it, under its cards.
         // With nothing downloaded there are no cards, and the tip is its own.
@@ -2474,7 +2507,7 @@ struct HoardList: View {
         }
     }
 
-    private struct FetchRow: View {
+    struct FetchRow: View {
         @ObservedObject var hoard: Hoard
         /// The numbers, watched here and only here: the list is the one
         /// thing that needs them ten times a second, and only while it is open.
@@ -2486,14 +2519,18 @@ struct HoardList: View {
         var body: some View {
             Line(title: fetch.name, detail: fetch.paused ? "Paused" : fetch.failed ? "Couldn't download" : said,
                  alarm: fetch.failed && !fetch.paused) {
-                HoardRowDial(fraction: step.fraction, failed: fetch.failed, unknown: step.fraction == nil && step.got > 0,
+                HoardRowDial(fraction: step.fraction, failed: fetch.failed && !fetch.paused,
+                             unknown: step.fraction == nil && step.got > 0,
                              side: 20, tone: hoard.browser?.chorus.tone)
                     .opacity(hoard.carrying && hoard.fetches.first?.id == fetch.id ? 0 : 1)
                     .modifier(HoardRowSpot(hoard: hoard, on: hoard.fetches.first?.id == fetch.id, inset: 1, side: 20))
             } end: { _ in
                 HStack(spacing: 2) {
-                    if fetch.failed {
-                        Tool(symbol: "arrow.clockwise", help: fetch.paused ? "Resume" : "Try Again") { hoard.retry(fetch) }
+                    if fetch.failed || hoard.canPause(fetch) {
+                        Tool(symbol: fetch.paused ? "play" : fetch.failed ? "arrow.clockwise" : "pause",
+                             help: fetch.paused ? "Resume" : fetch.failed ? "Try Again" : "Pause") {
+                            fetch.failed ? hoard.retry(fetch) : hoard.pause(fetch)
+                        }
                     }
                     Tool(symbol: "xmark", help: fetch.failed ? "Remove" : "Cancel") {
                         fetch.failed ? hoard.dismiss(fetch) : hoard.cancel(fetch)
@@ -2507,10 +2544,11 @@ struct HoardList: View {
         private var said: String { HoardList.said(fetch, step: step) }
     }
 
-    private struct KeptRow: View {
+    struct KeptRow: View {
         @ObservedObject var hoard: Hoard
         /// The list's first row: nothing is going above it.
         var first = false
+        var showActions = false
         let keep: Keep
         let open: () -> Void
         let reveal: () -> Void
@@ -2530,8 +2568,9 @@ struct HoardList: View {
                     .modifier(HoardFileGrows(keep: keep, hoard: hoard))
                     .modifier(HoardRowSpot(hoard: hoard, on: first, inset: 1, side: 20))
             } end: { hovering in
-                if hovering, there {
-                    Tool(symbol: "magnifyingglass", help: "Show in Finder", act: reveal)
+                if hovering || showActions {
+                    Tool(symbol: "folder", help: "Show in Finder", act: reveal)
+                        .disabled(!there)
                 }
             } act: {
                 if there { open() }
@@ -2589,6 +2628,7 @@ struct HoardList: View {
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
             .keyTip(help)
+            .accessibilityLabel(help)
         }
     }
 
