@@ -266,6 +266,7 @@ private struct AllTabsSectionHeader: View {
     @State private var hovered = false
     @Environment(\.tone) private var tone
     @Environment(\.tabTitleSize) private var titleSize
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let config = AllTabsConfiguration.shared
@@ -273,9 +274,10 @@ private struct AllTabsSectionHeader: View {
         HStack(spacing: 0) {
             Button { config.toggleCollapse(section.id) } label: {
                 HStack(spacing: SideBar.markGap) {
-                    Symbol(collapsed ? "chevron.right" : "chevron.down", size: 9, weight: .semibold)
-                        .frame(width: SideBar.mark)
                     Text(section.title).lineLimit(1)
+                    Symbol(collapsed ? "chevron.right" : "chevron.down", size: 9, weight: .semibold)
+                        .foregroundStyle(Palette.muted(on: tone))
+                        .fixedSize()
                 }
                 .padding(.leading, SideBar.inner)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
@@ -301,11 +303,23 @@ private struct AllTabsSectionHeader: View {
             .opacity(hovered ? 1 : 0)
         }
         .font(.system(size: titleSize, weight: .semibold))
-        .foregroundStyle(Palette.muted(on: tone))
+        .foregroundStyle(Palette.strong(on: tone))
         .padding(.trailing, SideBar.inner)
         .frame(height: SideBar.row)
+        .background(headerTint, in: RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous))
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
+    }
+
+    private var headerTint: LinearGradient {
+        let members = Set(section.rows.map { $0.space.id })
+        let dark = (tone?.scheme ?? scheme) == .dark
+        // Keep a multi-Space domain's color order stable as its tabs are visited or dragged.
+        let colors = browser.spaces.filter { members.contains($0.id) }.map { space in
+            let paint = space.paint ?? SpacePaint(browser.prefs)
+            return Color(nsColor: paint.color(dark: !dark)).opacity(dark ? 0.17 : 0.09)
+        }
+        return LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
     }
 
     private var actionTitle: String {
