@@ -412,7 +412,8 @@ struct AllTabsRows: View {
     }
 
     private func list(_ rows: [Browser.SpaceTab], ranks: [UUID: Int], pinned: [Browser.SpaceTab]) -> some View {
-        LazyVStack(alignment: .leading, spacing: SideBar.gap) {
+        let sections = pins.sections(rows.filter { ranks[$0.tab.allTabsKey] == nil })
+        return LazyVStack(alignment: .leading, spacing: SideBar.gap) {
             ForEach(pinned) { entry in
                 row(entry)
                     .draggable(entry.tab.allTabsKey.uuidString)
@@ -425,8 +426,11 @@ struct AllTabsRows: View {
             if pinned.count < rows.count { Divider().padding(.horizontal, SideBar.inner).frame(height: SideBar.line) }
             Quiet(icon: "plus", title: "New tab", height: SideBar.row, news: true,
                   lit: browser.newTabLit, prefs: browser.prefs, browser: browser) { browser.newTab() }
-            ForEach(pins.sections(rows.filter { ranks[$0.tab.allTabsKey] == nil })) { section in
-                if section.id != .ungrouped { AllTabsSectionHeader(section: section, browser: browser) }
+            ForEach(sections) { section in
+                if section.id != .ungrouped {
+                    AllTabsSectionHeader(section: section, browser: browser)
+                        .padding(.top, pins.group == .space && section.id != sections.first?.id ? 12 : 0)
+                }
                 if !pins.isCollapsed(section.id) {
                     ForEach(section.rows) { entry in
                         row(entry, showSpaceBadge: pins.group != .space)
