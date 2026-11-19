@@ -29,6 +29,17 @@ final class AllTabsConfiguration {
     var group: Group {
         didSet { defaults.set(group.rawValue, forKey: "sidebar.allTabs.group") }
     }
+    private var collapsed: Set<Browser.SpaceTab.Section>
+    private static let collapsedKey = "sidebar.allTabs.collapsed"
+
+    func isCollapsed(_ section: Browser.SpaceTab.Section) -> Bool { collapsed.contains(section) }
+
+    func toggleCollapse(_ section: Browser.SpaceTab.Section) {
+        guard section != .ungrouped else { return }
+        if collapsed.remove(section) == nil { collapsed.insert(section) }
+        if let data = try? JSONEncoder().encode(collapsed) { defaults.set(data, forKey: Self.collapsedKey) }
+    }
+
     private var manual: [UUID] {
         didSet { defaults.set(manual.map(\.uuidString), forKey: "sidebar.allTabs.manual") }
     }
@@ -41,6 +52,8 @@ final class AllTabsConfiguration {
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
+        collapsed = defaults.data(forKey: Self.collapsedKey)
+            .flatMap { try? JSONDecoder().decode(Set<Browser.SpaceTab.Section>.self, from: $0) } ?? []
         sort = defaults.string(forKey: "sidebar.allTabs.sort").flatMap(Sort.init(rawValue:)) ?? .recent
         group = defaults.string(forKey: "sidebar.allTabs.group").flatMap(Group.init(rawValue:)) ?? .none
         manual = (defaults.stringArray(forKey: "sidebar.allTabs.manual") ?? []).compactMap(UUID.init(uuidString:))
@@ -161,7 +174,7 @@ extension Browser {
 }
 
 extension Browser.SpaceTab {
-    enum Section: Hashable {
+    enum Section: Hashable, Codable {
         case ungrouped, space(UUID), domain(String), localFiles, browserPages
     }
 
@@ -236,9 +249,23 @@ private struct AllTabsSectionHeader: View {
     @Environment(\.tabTitleSize) private var titleSize
 
     var body: some View {
-        HStack {
-            Text(section.title).lineLimit(1).accessibilityAddTraits(.isHeader)
-            Spacer()
+        let config = AllTabsConfiguration.shared
+        let collapsed = config.isCollapsed(section.id)
+        HStack(spacing: 0) {
+            Button { config.toggleCollapse(section.id) } label: {
+                HStack(spacing: SideBar.markGap) {
+                    Symbol(collapsed ? "chevron.right" : "chevron.down", size: 9, weight: .semibold)
+                        .frame(width: SideBar.mark)
+                    Text(section.title).lineLimit(1)
+                }
+                .padding(.leading, SideBar.inner)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(section.title)
+            .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
+            .accessibilityAddTraits(.isHeader)
             Button {
                 if case .space(let id) = section.id { browser.switchSpace(to: id) }
                 else if let first = section.rows.first {
@@ -256,7 +283,7 @@ private struct AllTabsSectionHeader: View {
         }
         .font(.system(size: titleSize, weight: .semibold))
         .foregroundStyle(Palette.muted(on: tone))
-        .padding(.horizontal, SideBar.inner)
+        .padding(.trailing, SideBar.inner)
         .frame(height: SideBar.row)
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
@@ -308,14 +335,16 @@ struct AllTabsRows: View {
                   lit: browser.newTabLit, prefs: browser.prefs, browser: browser) { browser.newTab() }
             ForEach(pins.sections(rows.filter { ranks[$0.tab.allTabsKey] == nil })) { section in
                 if section.id != .ungrouped { AllTabsSectionHeader(section: section, browser: browser) }
-                ForEach(section.rows) { entry in
-                    row(entry, showSpaceBadge: pins.group != .space)
-                        .draggable(entry.tab.allTabsKey.uuidString)
-                        .dropDestination(for: String.self) { items, point in
-                            guard let key = items.first.flatMap(UUID.init(uuidString:)) else { return false }
-                            return pins.reorder(key, at: entry.tab.allTabsKey, after: point.y >= SideBar.row / 2,
-                                                rows: browser.allTabsRows)
-                        }
+                if !pins.isCollapsed(section.id) {
+                    ForEach(section.rows) { entry in
+                        row(entry, showSpaceBadge: pins.group != .space)
+                            .draggable(entry.tab.allTabsKey.uuidString)
+                            .dropDestination(for: String.self) { items, point in
+                                guard let key = items.first.flatMap(UUID.init(uuidString:)) else { return false }
+                                return pins.reorder(key, at: entry.tab.allTabsKey, after: point.y >= SideBar.row / 2,
+                                                    rows: browser.allTabsRows)
+                            }
+                    }
                 }
             }
         }

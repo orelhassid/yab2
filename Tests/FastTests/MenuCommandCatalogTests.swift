@@ -174,6 +174,28 @@ struct MenuCommandCatalogTests {
         #expect(!config.reorder(first.id, at: second.id, after: false, rows: rows))
     }
 
+    @Test func allTabsRemembersCollapsedGroupsIndependently() throws {
+        let suite = "test.allTabs.collapse." + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let config = AllTabsConfiguration(defaults: defaults)
+        let space = Browser.SpaceTab.Section.space(UUID())
+        let domain = Browser.SpaceTab.Section.domain("example.com")
+        #expect(!config.isCollapsed(space))
+        config.toggleCollapse(space)
+        config.group = .domain
+        config.toggleCollapse(domain)
+        config.toggleCollapse(.localFiles)
+        config.toggleCollapse(.ungrouped)
+        let restored = AllTabsConfiguration(defaults: defaults)
+        #expect(restored.isCollapsed(space) && restored.isCollapsed(domain))
+        #expect(restored.isCollapsed(.localFiles) && !restored.isCollapsed(.browserPages))
+        #expect(!restored.isCollapsed(.ungrouped))
+        restored.toggleCollapse(space)
+        let reopened = AllTabsConfiguration(defaults: defaults)
+        #expect(!reopened.isCollapsed(space) && reopened.isCollapsed(domain))
+    }
+
     @Test func spaceArrowActionsLeadOffersWithoutTheExpandedCatalog() {
         withPage { browser, _ in
             let enabled = browser.prefs.usesSpaces
