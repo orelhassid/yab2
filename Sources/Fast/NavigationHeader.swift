@@ -9,7 +9,7 @@ struct NavigationHeader: View {
     var inheritsPageSurface = false
 
     @State private var switcher: Switcher?
-    @State private var hoveringTabs = false
+    @State private var sidebarPeeking = false
 
     private enum Switcher { case spaces, tabs }
 
@@ -41,10 +41,13 @@ struct NavigationHeader: View {
 
     private var row: some View {
         let size = self.size
+        let sidebarHidden = browser.sideShown == 0 && !sidebarPeeking
         return GeometryReader { room in
             HStack(spacing: size.gap) {
-                RailButton(browser.columnTitle, icon: ColumnDoor.mark(browser.flank), doorSize: size) { browser.toggleColumn() }
-                    .keyTip(browser.columnTitle)
+                if sidebarHidden {
+                    RailButton(browser.columnTitle, icon: ColumnDoor.mark(browser.flank), doorSize: size) { browser.toggleColumn() }
+                        .keyTip(browser.columnTitle)
+                }
                 RailButton("New Tab", icon: "plus", doorSize: size) { browser.newTab() }
                     .keyTip("New Tab")
                 RailButton("Switch Space", icon: "folder", selected: switcher == .spaces, doorSize: size) { switcher = .spaces }
@@ -52,36 +55,24 @@ struct NavigationHeader: View {
                     .keyTip("Switch Space")
                     .popover(isPresented: presented(.spaces), arrowEdge: .bottom) { spaces }
 
-                HStack(spacing: size.gap) {
-                    RailButton("Switch Tab", selected: switcher == .tabs, fitsLabel: true, doorSize: size, action: { switcher = .tabs }) {
-                        TabSwitcherWidth {
-                            HStack(spacing: SideBar.markGap) {
-                                if let tab { NavigationTabLabel(tab: tab) }
-                                else { Text(inheritsPageSurface ? "Home" : "Tabs").sidebarFont(size: 12.5) }
-                                Spacer(minLength: 0)
-                                Symbol("chevron.down", size: 10).fixedSize()
-                            }
-                            .padding(.horizontal, SideBar.inner)
+                RailButton("Switch Tab", selected: switcher == .tabs, fitsLabel: true, doorSize: size, action: { switcher = .tabs }) {
+                    TabSwitcherWidth {
+                        HStack(spacing: SideBar.markGap) {
+                            if let tab { NavigationTabLabel(tab: tab) }
+                            else { Text(inheritsPageSurface ? "Home" : "Tabs").sidebarFont(size: 12.5) }
+                            Spacer(minLength: 0)
+                            Symbol("chevron.down", size: 10).fixedSize()
                         }
-                    }
-                    .disabled(browser.tabs.isEmpty)
-                    .popover(isPresented: presented(.tabs), arrowEdge: .bottom) { tabs }
-
-                    if hoveringTabs, let tab, switcher == nil {
-                        if !tab.isBlank {
-                            RailButton("Reload Page", icon: "arrow.clockwise", doorSize: size) { browser.reload(tab) }
-                                .keyTip("Reload Page")
-                        }
-                        if browser.tabs.count > 1 {
-                            RailButton("Previous Tab", icon: "arrow.up", doorSize: size) { browser.step(-1) }
-                                .keyTip("Previous Tab")
-                            RailButton("Next Tab", icon: "arrow.down", doorSize: size) { browser.step(1) }
-                                .keyTip("Next Tab")
-                        }
+                        .padding(.horizontal, SideBar.inner)
                     }
                 }
-                .contentShape(Rectangle())
-                .onHover { hoveringTabs = $0 }
+                .disabled(browser.tabs.isEmpty)
+                .popover(isPresented: presented(.tabs), arrowEdge: .bottom) { tabs }
+
+                if sidebarHidden, let tab, !tab.isBlank {
+                    Helm(browser: browser, tab: tab, reads: false)
+                        .environment(\.doorSize, size)
+                }
 
                 Spacer(minLength: 0)
                 if let tab, !tab.isBlank {
@@ -97,6 +88,7 @@ struct NavigationHeader: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(height: Self.height(topInset: topInset))
+        .onReceive(browser.peek.$out.removeDuplicates()) { sidebarPeeking = $0 }
     }
 
     private var spaces: some View {
