@@ -285,6 +285,7 @@ private struct AllTabsSectionHeader: View {
     @Environment(\.tone) private var tone
     @Environment(\.tabTitleSize) private var titleSize
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         let config = AllTabsConfiguration.shared
@@ -344,6 +345,7 @@ private struct AllTabsSectionHeader: View {
         }
         .font(.system(size: titleSize, weight: .semibold))
         .foregroundStyle(Palette.strong(on: tone))
+        .opacity(config.group == .space && !hovered && contrast == .standard ? 0.75 : 1)
         .padding(.trailing, SideBar.inner)
         .frame(height: SideBar.row)
         .contentShape(Rectangle())
@@ -434,6 +436,7 @@ struct AllTabsRows: View {
                 if !pins.isCollapsed(section.id) {
                     ForEach(section.rows) { entry in
                         row(entry, showSpaceBadge: pins.group != .space)
+                            .padding(.leading, pins.group == .space ? Folders.indent : 0)
                             .draggable(entry.tab.allTabsKey.uuidString)
                             .dropDestination(for: String.self) { items, point in
                                 guard let key = items.first.flatMap(UUID.init(uuidString:)) else { return false }
