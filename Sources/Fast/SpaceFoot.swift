@@ -224,19 +224,21 @@ struct RailButton<Mark: View>: View {
     var grid = false
     let keyboard: Bool
     let fitsLabel: Bool
+    let doorSize: Door.Size?
     let action: () -> Void
     @ViewBuilder let mark: () -> Mark
     @Environment(\.tone) private var tone
     @State private var hovering = false
 
     init(_ title: String, selected: Bool = false, highlighted: Bool = false, grid: Bool = false,
-         keyboard: Bool = false, fitsLabel: Bool = false, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
+         keyboard: Bool = false, fitsLabel: Bool = false, doorSize: Door.Size? = nil, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
         self.title = title
         self.selected = selected
         self.highlighted = highlighted
         self.grid = grid
         self.keyboard = keyboard
         self.fitsLabel = fitsLabel
+        self.doorSize = doorSize
         self.action = action
         self.mark = mark
     }
@@ -248,16 +250,18 @@ struct RailButton<Mark: View>: View {
     }
 
     var body: some View {
+        let side = doorSize?.side ?? SideBar.row
+        let corner = doorSize?.corner ?? SideBar.radius
         Button(action: action) {
             mark()
                 .foregroundStyle(hovering || selected ? Palette.ink : Palette.muted(on: tone))
-                .frame(width: grid || fitsLabel ? nil : SideBar.row, height: grid ? SideBar.square : SideBar.row)
+                .frame(width: grid || fitsLabel ? nil : side, height: grid ? SideBar.square : side)
                 .frame(maxWidth: grid ? .infinity : nil)
                 .background {
                     if selected {
-                        SelectionPlate(corner: SideBar.radius, state: .selected)
+                        SelectionPlate(corner: corner, state: .selected)
                     } else if hovering || highlighted || grid {
-                        SelectionPlate(corner: SideBar.radius, state: .hover)
+                        SelectionPlate(corner: corner, state: .hover)
                     }
                 }
                 .contentShape(Rectangle())
@@ -270,8 +274,8 @@ struct RailButton<Mark: View>: View {
 }
 
 extension RailButton where Mark == Symbol {
-    init(_ title: String, icon: String, selected: Bool = false, action: @escaping () -> Void) {
-        self.init(title, selected: selected, action: action) { Self.glyph(icon) }
+    init(_ title: String, icon: String, selected: Bool = false, doorSize: Door.Size? = nil, action: @escaping () -> Void) {
+        self.init(title, selected: selected, doorSize: doorSize, action: action) { doorSize?.symbol(icon) ?? Self.glyph(icon) }
     }
 }
 

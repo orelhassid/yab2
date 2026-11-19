@@ -4,6 +4,7 @@ struct NavigationHeader: View {
     let browser: Browser
     let tab: Tab?
     let corner: CGFloat
+    let topInset: CGFloat
     var emptyTone: Tone? = nil
 
     @State private var switcher: Switcher?
@@ -11,7 +12,12 @@ struct NavigationHeader: View {
 
     private enum Switcher { case spaces, tabs }
 
-    static var height: CGFloat { SideBar.row + 4 }
+    static let height = Metrics.strip
+
+    private var size: Door.Size {
+        guard browser.prefs.sidebar else { return .header }
+        return ColumnHead.doors(width: browser.presentedSidebarWidth, right: browser.flank == .right)
+    }
 
     var body: some View {
         if let tab {
@@ -29,19 +35,20 @@ struct NavigationHeader: View {
     }
 
     private var row: some View {
-        GeometryReader { room in
-            HStack(spacing: 0) {
-                RailButton(browser.columnTitle, icon: ColumnDoor.mark(browser.flank)) { browser.toggleColumn() }
+        let size = self.size
+        return GeometryReader { room in
+            HStack(spacing: size.gap) {
+                RailButton(browser.columnTitle, icon: ColumnDoor.mark(browser.flank), doorSize: size) { browser.toggleColumn() }
                     .keyTip(browser.columnTitle)
-                RailButton("New Tab", icon: "plus") { browser.newTab() }
+                RailButton("New Tab", icon: "plus", doorSize: size) { browser.newTab() }
                     .keyTip("New Tab")
-                RailButton("Switch Space", icon: "folder", selected: switcher == .spaces) { switcher = .spaces }
+                RailButton("Switch Space", icon: "folder", selected: switcher == .spaces, doorSize: size) { switcher = .spaces }
                     .disabled(!browser.swipesSpaces || browser.blank)
                     .keyTip("Switch Space")
                     .popover(isPresented: presented(.spaces), arrowEdge: .bottom) { spaces }
 
-                HStack(spacing: 0) {
-                    RailButton("Switch Tab", selected: switcher == .tabs, fitsLabel: true, action: { switcher = .tabs }) {
+                HStack(spacing: size.gap) {
+                    RailButton("Switch Tab", selected: switcher == .tabs, fitsLabel: true, doorSize: size, action: { switcher = .tabs }) {
                         HStack(spacing: SideBar.markGap) {
                             if let tab { NavigationTabLabel(tab: tab) }
                             else { Text("Tabs").sidebarFont(size: 12.5) }
@@ -54,13 +61,13 @@ struct NavigationHeader: View {
 
                     if hoveringTabs, let tab, switcher == nil {
                         if !tab.isBlank {
-                            RailButton("Reload Page", icon: "arrow.clockwise") { browser.reload(tab) }
+                            RailButton("Reload Page", icon: "arrow.clockwise", doorSize: size) { browser.reload(tab) }
                                 .keyTip("Reload Page")
                         }
                         if browser.tabs.count > 1 {
-                            RailButton("Previous Tab", icon: "arrow.up") { browser.step(-1) }
+                            RailButton("Previous Tab", icon: "arrow.up", doorSize: size) { browser.step(-1) }
                                 .keyTip("Previous Tab")
-                            RailButton("Next Tab", icon: "arrow.down") { browser.step(1) }
+                            RailButton("Next Tab", icon: "arrow.down", doorSize: size) { browser.step(1) }
                                 .keyTip("Next Tab")
                         }
                     }
@@ -71,11 +78,15 @@ struct NavigationHeader: View {
                 Spacer(minLength: 0)
                 if let tab, !tab.isBlank {
                     NavigationPinnedExtensions(tab: tab, extensions: Extensions.of(tab: tab),
-                                               available: room.size.width / 3)
+                                               available: room.size.width / 3, size: size)
                 }
             }
-            .padding(.horizontal, SideBar.inner)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, SideBar.margin)
+            .frame(height: size.side)
+            // The card begins below the window edge. Measure the controls
+            // from that same edge as the sidebar while keeping the card inset.
+            .padding(.top, (Self.height - size.side) / 2 - topInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(height: Self.height)
     }
@@ -146,6 +157,7 @@ private struct NavigationPinnedExtensions: View {
     let tab: Tab
     @ObservedObject var extensions: Extensions
     let available: CGFloat
+    let size: Door.Size
 
     @ObservedObject private var column = ChromiumColumn.shared
     @ObservedObject private var nativePopup = ChromiumPopupHost.shared
@@ -157,16 +169,16 @@ private struct NavigationPinnedExtensions: View {
         let fromDoor = native ? nativePopup.shownFromDoor(for: tab) : ExtensionPopup.shared.fromDoor
         if !pins.isEmpty {
             ThreadScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
+                HStack(spacing: size.gap) {
                     ForEach(pins) { pin in
                         PlatePin(button: pin, lit: !fromDoor && popupID == pin.id,
-                                 side: SideBar.row, corner: SideBar.radius, native: native ? tab : nil) {
+                                 side: size.side, corner: size.corner, native: native ? tab : nil) {
                             if native { column.press(pin.id, tab: tab) } else { extensions.press(pin.id) }
                         }
                     }
                 }
             }
-            .frame(width: min(CGFloat(pins.count) * SideBar.row, available))
+            .frame(width: min(CGFloat(pins.count) * (size.side + size.gap) - size.gap, available))
         }
     }
 }

@@ -1173,7 +1173,7 @@ struct ContentView: View {
                         }
                         .overlay(alignment: .top) {
                             if navigationHeaderHeight > 0 {
-                                NavigationHeader(browser: browser, tab: nil, corner: corner, emptyTone: backdropTone)
+                                NavigationHeader(browser: browser, tab: nil, corner: corner, topInset: margins.top, emptyTone: backdropTone)
                             }
                         }
                         .padding(margins)
@@ -1370,7 +1370,7 @@ struct ContentView: View {
                 .accessibilityHidden(!showBar)
             }
             if showNavigation {
-                NavigationHeader(browser: browser, tab: tab, corner: showBar ? 0 : corner)
+                NavigationHeader(browser: browser, tab: tab, corner: showBar ? 0 : corner, topInset: showBar ? 0 : margins.top)
             }
 
             // Room made for a tab carried over the page (previewSplit): the

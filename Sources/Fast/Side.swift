@@ -4309,7 +4309,7 @@ struct Door: View {
         /// The glyph for this door's symbol.
         func glyph(for icon: String) -> CGFloat {
             switch icon {
-            case "arrow.left", "arrow.right": arrow ?? glyph
+            case "arrow.left", "arrow.right", "arrow.up", "arrow.down": arrow ?? glyph
             case "sidebar.left", "sidebar.right": mark ?? glyph
             default: glyph
             }
