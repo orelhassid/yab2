@@ -831,6 +831,7 @@ enum Command: String, CaseIterable {
         case .darkPage: return browser.darkPageReady() != nil
         case .mail: return browser.prefs.usesMail && (MailCenter.shared.connected || browser.inMail)
         case .pinTab:
+            if browser.showingAllTabs { return browser.active.map { !AllTabsConfiguration.shared.order.contains($0.allTabsKey) } == true }
             if browser.prefs.sidebar { return page && browser.active?.keepable == true && browser.active?.kept == false }
             if let pair = browser.pair(of: browser.activeID) { return browser.canPinPair(pair) }
             return page && browser.active?.pin == nil
@@ -838,7 +839,9 @@ enum Command: String, CaseIterable {
             guard browser.windowPurpose == .normal, !browser.blank, !browser.privateBrowsing, browser.fieldGuest == nil,
                   let url = TrailApps.shared.address(for: browser.active) else { return false }
             return TrailApps.shared.contains(url) == (self == .unpinTrailApp)
-        case .unpinTab: return browser.active.map { ($0.pin != nil || $0.kept) && TrailApps.shared.application(for: $0) == nil } == true
+        case .unpinTab:
+            if browser.showingAllTabs { return browser.active.map { AllTabsConfiguration.shared.order.contains($0.allTabsKey) } == true }
+            return browser.active.map { ($0.pin != nil || $0.kept) && TrailApps.shared.application(for: $0) == nil } == true
         case .folderWithTabs: return browser.chosen.contains(where: \.keepable)
         case .newTabInFolder: return browser.folderHere != nil
         case .closeOthers: return browser.tabs.count > 1

@@ -270,7 +270,7 @@ private struct TabsItems: View {
         if selected.several {
             let chosen = selected.chosen
             let n = chosen.count
-            let loose = chosen.filter { $0.pin == nil && !$0.isBlank && (!selected.prefs.sidebar || !$0.kept) }.count
+            let loose = chosen.filter { !selected.isPinnedInSidebar($0) && !$0.isBlank }.count
             if loose > 0 {
                 Button("Pin \(loose) Tabs in This Space") { selected.pin(chosen) }
                     .shortcut(.pin)
@@ -286,7 +286,7 @@ private struct TabsItems: View {
                 .shortcut(.copyMarkdownLink)
         } else {
             if let tab = selected.active {
-                if tab.pin == nil && (!selected.prefs.sidebar || !tab.kept) {
+                if !selected.isPinnedInSidebar(tab) {
                     Button(Command.pinTab.title) { selected.pin(tab) }
                         .shortcut(.pin)
                         .disabled(selected.menuBlank)

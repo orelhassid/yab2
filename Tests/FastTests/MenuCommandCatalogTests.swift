@@ -96,6 +96,47 @@ struct MenuCommandCatalogTests {
         }
     }
 
+    @Test func allTabsSwitchesFromComposedOffersAndKeepsIndependentPins() throws {
+        try withPage { browser, _ in
+            let originalSidebar = browser.prefs.sidebar
+            let originalSpaces = browser.prefs.usesSpaces
+            defer { browser.prefs.sidebar = originalSidebar; browser.prefs.usesSpaces = originalSpaces }
+            browser.prefs.sidebar = true
+            browser.prefs.usesSpaces = true
+            let personal = Space(id: Space.firstID, name: "Personal", icon: "house", ownSignIns: false)
+            let work = Space(id: UUID(), name: "Work", icon: "briefcase", ownSignIns: true)
+            browser.spaces = [personal, work]
+            let local = Tab()
+            let other = Tab()
+            let old = Tab()
+            let url = try #require(URL(string: "https://example.test/"))
+            for tab in [local, other, old] { tab.restore(url: url, title: "Same page") }
+            browser.lay([local, old])
+            browser.activeID = local.id
+            old.touch(at: .distantPast)
+            browser.parked[work.id] = Parked(tabs: [other], active: other.id)
+            let target = try #require(MenuCommands.targets(.switchSpace, in: browser).first { $0.id.hasSuffix(Space.allTabs.id.uuidString) })
+            browser.replaceTyped(target.title)
+            #expect(browser.offers.first?.menuTargetID == target.id)
+            #expect(MenuCommands.runTarget(target.id, in: browser))
+            #expect(browser.sidebarSpaceID == Space.allTabs.id)
+            #expect(browser.spaceID == personal.id)
+            #expect(browser.allTabsRows.map(\.id) == [local.id, other.id, old.id])
+            #expect(browser.allTabsRows[1].space.profileID == work.id)
+            browser.pin(local)
+            defer { AllTabsConfiguration.shared.set([local], pinned: false) }
+            #expect(AllTabsConfiguration(defaults: Store.settings).order.contains(local.allTabsKey))
+            #expect(!local.kept && local.pin == nil)
+            #expect(Command.unpinTab.available(in: browser))
+            browser.unpin(local)
+            #expect(!browser.isPinnedInSidebar(local))
+            browser.togglePin()
+            #expect(browser.isPinnedInSidebar(local))
+            browser.switchSpace(to: personal.id)
+            #expect(!browser.showingAllTabs)
+        }
+    }
+
     @Test func spaceArrowActionsLeadOffersWithoutTheExpandedCatalog() {
         withPage { browser, _ in
             let enabled = browser.prefs.usesSpaces

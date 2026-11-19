@@ -22,6 +22,7 @@ struct SideBar: View {
 
     /// Set while the window wears a backdrop: the column is then no room of
     /// its own, just the backdrop with tabs on it.
+    @Environment(\.colorScheme) private var scheme
     @Environment(\.tone) private var tone
 
     @State private var dragging: Tab.ID?
@@ -271,6 +272,9 @@ struct SideBar: View {
     var body: some View {
         let _ = SpacePager.touched()
         ZStack(alignment: .top) {
+            if browser.showingAllTabs, let paint = browser.sidebarSpace.paint {
+                Color(nsColor: paint.color(dark: scheme == .dark)).allowsHitTesting(false)
+            }
             // Under the last row the window is dragged by, and a right
             // click there brings the space's menu, as Arc's sidebar does.
             DragStrip(reserved: 0, below: rowsEnd, menu: roomMenu, menuTone: SpaceSurface.tone(in: browser),
@@ -291,7 +295,7 @@ struct SideBar: View {
             // The rows on AppKit (ColumnKit): each space's a page of its
             // own, under the head, the pins, the name and the foot, as
             // SideBar's own rows were.
-            if ColumnKit.on {
+            if ColumnKit.on && !browser.showingAllTabs {
                 ColumnPagesHost(browser: browser, lead: lead, footRoom: pagesFootRoom, top: max(0, lead - SideBar.margin),
                                 foot: pagesFootRoom > 0, grain: tone == nil ? 0 : prefs.grain)
                     .opacity(browser.inMail ? 0 : 1)
@@ -370,7 +374,7 @@ struct SideBar: View {
                         } else if browser.windowPurpose == .privateOnly {
                             PrivateName()
                         } else {
-                            SpaceName(space: browser.space, browser: browser)
+                            SpaceName(space: browser.sidebarSpace, browser: browser)
                         }
                     }
                         // Where what slides starts while the pins stand
@@ -384,7 +388,7 @@ struct SideBar: View {
 
                 SidebarAppTabs(browser: browser)
 
-                if shownPins > 0 {
+                if shownPins > 0 && !browser.showingAllTabs {
                     Group {
                         // The AppKit column draws the pins itself, in each
                         // space's page (ColumnPage): their room is kept here.
@@ -424,7 +428,9 @@ struct SideBar: View {
                 // spaces visited lately kept built behind the one on screen,
                 // unseen (`rowPages`): a change of space shows a row already
                 // made instead of making every row of it.
-                if !ColumnKit.on {
+                if browser.showingAllTabs {
+                    AllTabsRows(browser: browser)
+                } else if !ColumnKit.on {
                 ZStack(alignment: .top) {
                     ForEach(rowPages, id: \.space) { source in
                         KeptPage(still: source.still, live: source.live) { rowsScroll(source) }
@@ -581,7 +587,7 @@ struct SideBar: View {
     private var roomMenu: (@MainActor () -> NSMenu)? {
         guard !browser.inMail else { return nil }
         let browser = browser
-        return { NSHostingMenu(rootView: SpaceMenu(browser: browser, space: browser.space)) }
+        return { NSHostingMenu(rootView: SpaceMenu(browser: browser, space: browser.sidebarSpace)) }
     }
 
     /// Where the rows stop and the window's own drag area starts. Added up
@@ -3092,7 +3098,7 @@ struct SpaceName: View {
     private static let controlGap: CGFloat = 2
 
     private var stepsShown: Bool {
-        scope == nil && browser.map { $0.turnsSpaces && $0.turnOrder.count > 1 } == true
+        scope == nil && browser.map { $0.turnsSpaces && $0.switcherSpaces.count > 1 } == true
     }
 
     private var controlsWidth: CGFloat {
@@ -3103,7 +3109,7 @@ struct SpaceName: View {
     private var live: Bool { browser != nil }
     /// Something to fold: the chevron shows, and a click folds.
     private var folds: Bool {
-        guard let browser else { return false }
+        guard let browser, space.id != Space.allTabs.id else { return false }
         if let scope, scope.id != browser.spaceID {
             return browser.parked[scope.id]?.tabs.contains(where: \.kept) == true || !folders.empties(in: scope.id).isEmpty
         }
@@ -3800,6 +3806,8 @@ struct SideRow: View {
     /// Closed from its end or its menu; a row only drawn for a moment, the
     /// next space's under a swipe, closes nothing.
     var closes = true
+    let sourceSpace: Space?
+    @Environment(\.colorScheme) private var badgeScheme
 
     @Environment(\.sidebarSpaceActions) private var scope
     @Environment(\.tabTitleSize) private var titleSize
@@ -3831,7 +3839,8 @@ struct SideRow: View {
     /// theirs.
     var lifted = false
 
-    init(browser: Browser, prefs: Preferences, floating: Bool = false, tab: Tab, live: Bool, picked: Bool = false, lifted: Bool = false, closes: Bool = true) {
+    init(browser: Browser, prefs: Preferences, floating: Bool = false, tab: Tab, live: Bool, picked: Bool = false, lifted: Bool = false, closes: Bool = true, sourceSpace: Space? = nil) {
+        self.sourceSpace = sourceSpace
         self.browser = browser
         glyph = prefs.glyph
         self.floating = floating
@@ -3943,6 +3952,18 @@ struct SideRow: View {
                 // 0.46.10): the favicon's red dot and the speaker say a call
                 // is on; the band, the strip and the tag say a share.
                 // A share asked for while behind, waiting here (ShareWaiting.swift).
+                if let sourceSpace, !hovering {
+                    let fill = Tone((sourceSpace.paint ?? SpacePaint(browser.prefs)).color(dark: badgeScheme == .dark))
+                    Text(sourceSpace.name)
+                        .foregroundStyle(Palette.strong(on: fill))
+                        .font(.system(size: titleSize - 2, weight: .medium))
+                        .lineLimit(1)
+                        .padding(.horizontal, SideBar.markGap)
+                        .padding(.vertical, 2)
+                        .background(fill.color, in: Capsule())
+                        .frame(maxWidth: 90, alignment: .trailing)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
                 ShareWaiting(tab: tab)
                 // What a live folder's tab needs (LiveViews.swift).
                 LiveWordsView(tab: tab, clearance: showsDevPort ? 0 : TabEnd.clear(tab, hovering: hovering, slotted: busy || hovering,
@@ -3960,12 +3981,14 @@ struct SideRow: View {
         // square at the row's start, as Arc's favicon is (PinnedHome.swift).
         .modifier(HomeMark(browser: browser, tab: tab, away: away && glyph == .icons && !editing, plate: .column))
         .overlay(alignment: .trailing) {
-            TabEnd(browser: browser, tab: tab, live: live, hovering: hovering, editing: editing, tint: color, speaker: false, close: close,
-                   unkeep: closes ? {
-                       if let scope { scope.run { browser.discard([tab], rekept: true) } } else { browser.discard([tab], rekept: true) }
-                   } : nil, reach: SideBar.row, plate: .column, pitch: TabEnd.beside, slotSide: 15,
-                   closeHover: { if columnPointed == nil { point($0, atClose: true) } })
-                .padding(.trailing, SideBar.endInset)
+            if sourceSpace == nil || hovering {
+                TabEnd(browser: browser, tab: tab, live: live, hovering: hovering, editing: editing, tint: color, speaker: false, close: close,
+                       unkeep: closes ? {
+                           if let scope { scope.run { browser.discard([tab], rekept: true) } } else { browser.discard([tab], rekept: true) }
+                       } : nil, reach: SideBar.row, plate: .column, pitch: TabEnd.beside, slotSide: 15,
+                       closeHover: { if columnPointed == nil { point($0, atClose: true) } })
+                    .padding(.trailing, SideBar.endInset)
+            }
         }
         .background { ground }
         // The open tab of a page on this Mac's own server (DevMode.swift).

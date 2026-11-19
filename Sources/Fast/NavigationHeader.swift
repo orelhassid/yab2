@@ -48,7 +48,7 @@ struct NavigationHeader: View {
                 RailButton("New Tab", icon: "plus", doorSize: size) { browser.newTab() }
                     .keyTip("New Tab")
                 RailButton("Switch Space", icon: "folder", selected: switcher == .spaces, doorSize: size) { switcher = .spaces }
-                    .disabled(!browser.swipesSpaces || browser.blank)
+                    .disabled(!(browser.offersAllTabs || browser.swipesSpaces) || browser.blank)
                     .keyTip("Switch Space")
                     .popover(isPresented: presented(.spaces), arrowEdge: .bottom) { spaces }
 
@@ -100,10 +100,10 @@ struct NavigationHeader: View {
     }
 
     private var spaces: some View {
-        let order = browser.turnOrder
+        let order = browser.switcherSpaces
         return choices(count: order.count) {
             ForEach(order) { space in
-                TrailMenuRow(title: space.name, selected: space.id == browser.spaceID, action: {
+                TrailMenuRow(title: space.name, selected: space.id == browser.sidebarSpaceID, action: {
                     switcher = nil
                     browser.switchSpace(to: space.id)
                 }) {

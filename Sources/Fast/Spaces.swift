@@ -759,7 +759,9 @@ extension Browser {
     /// ⌃1 to ⌃9, the menu, a swipe.
     /// `washed`: the fingers already have the new color over the window
     /// (SpacePull), and hand it over themselves.
-    func switchSpace(to id: UUID, washed: Bool = false, keepingHome: Bool = false) {
+    func switchSpace(to id: UUID, washed: Bool = false, keepingHome: Bool = false, preservingAllTabs: Bool = false) {
+        if id == Space.allTabs.id { showAllTabs(); return }
+        if !preservingAllTabs { allTabsSelected = false }
         guard windowPurpose == .normal else { return }
         // Mail's space is gone in and out of with spaces off too (MailSpace).
         let mail = id == Space.mailID || spaceID == Space.mailID
@@ -994,7 +996,7 @@ extension Browser {
 
     /// ⌃1 to ⌃9: the spaces as the foot shows them, Mail in its place.
     func switchSpace(index: Int) {
-        let order = turnOrder
+        let order = switcherSpaces
         guard order.indices.contains(index) else { return }
         switchSpace(to: order[index].id)
     }
@@ -1002,8 +1004,8 @@ extension Browser {
     /// The next space along, or the one before, round the ends, Mail's
     /// among them (turnOrder).
     func stepSpace(_ by: Int) {
-        let order = turnOrder
-        guard turnsSpaces, let here = order.firstIndex(where: { $0.id == spaceID }),
+        let order = switcherSpaces
+        guard turnsSpaces, let here = order.firstIndex(where: { $0.id == sidebarSpaceID }),
               let there = StripTurn.step(from: here, count: order.count, by: by) else { return }
         switchSpace(to: order[there].id)
     }
@@ -1100,6 +1102,10 @@ extension Browser {
     }
 
     func renameSpace(_ id: UUID, to name: String) {
+        if id == Space.allTabs.id {
+            if !name.isEmpty { AllTabsConfiguration.shared.space.name = name }
+            return
+        }
         guard let at = spaces.firstIndex(where: { $0.id == id }), !name.isEmpty else { return }
         let was = spaces[at].name
         spaces[at].name = name
@@ -1108,6 +1114,10 @@ extension Browser {
     }
 
     func setSpaceIcon(_ id: UUID, to icon: String) {
+        if id == Space.allTabs.id {
+            AllTabsConfiguration.shared.space.chooseIcon(icon)
+            return
+        }
         if id == Space.mailID {
             MailSpaceLook.setIcon(icon)
             return
@@ -1133,6 +1143,10 @@ extension Browser {
     /// A space's color and grain: worn now if it is the one on screen,
     /// kept for when it is next if not.
     func setSpacePaint(_ id: UUID, to paint: SpacePaint) {
+        if id == Space.allTabs.id {
+            AllTabsConfiguration.shared.space.paint = paint
+            return
+        }
         if id == Space.mailID {
             if inMail { paint.wear(prefs); MailSpaceLook.worn[ObjectIdentifier(self)] = paint }
             MailSpaceLook.keep(paint)

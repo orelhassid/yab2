@@ -451,7 +451,7 @@ struct SpaceRow: View {
     @State private var lift: CGFloat = 0
 
     var body: some View {
-        let order = browser.turnOrder
+        let order = browser.switcherSpaces
         if vertical {
             let plan = SpaceRowPlan(room: SideBar.row * CGFloat(order.count), count: order.count, dots: browser.prefs.spaceDots)
             let visible = Array(order.prefix(max(1, limit)))
@@ -459,7 +459,7 @@ struct SpaceRow: View {
             RailGroup {
                 slots(visible, plan)
                 if !hidden.isEmpty {
-                    RailButton("More Spaces", icon: "ellipsis", selected: more || hidden.contains { $0.id == browser.spaceID }) {
+                    RailButton("More Spaces", icon: "ellipsis", selected: more || hidden.contains { $0.id == browser.sidebarSpaceID }) {
                         more.toggle()
                     }
                     .popover(isPresented: $more, arrowEdge: browser.trailFlank == .right ? .leading : .trailing) {
@@ -469,7 +469,7 @@ struct SpaceRow: View {
                             ThreadScrollView {
                                 VStack(spacing: 0) {
                                     ForEach(hidden) { space in
-                                        TrailMenuRow(title: space.name, selected: space.id == browser.spaceID, action: {
+                                        TrailMenuRow(title: space.name, selected: space.id == browser.sidebarSpaceID, action: {
                                             more = false
                                             browser.switchSpace(to: space.id)
                                         }) { SpaceMark(icon: space.icon, size: SideBar.mark) }
@@ -495,9 +495,9 @@ struct SpaceRow: View {
                             .frame(minWidth: room.size.width, minHeight: Door.side)
                     }
                     .scrollDisabled(!plan.scrolls)
-                    .onAppear { if plan.scrolls { reader.scrollTo(browser.spaceID, anchor: .center) } }
-                    .onChange(of: browser.spaceID) { _, id in if plan.scrolls { reader.scrollTo(id, anchor: .center) } }
-                    .onChange(of: plan.scrolls) { _, scrolls in if scrolls { reader.scrollTo(browser.spaceID, anchor: .center) } }
+                    .onAppear { if plan.scrolls { reader.scrollTo(browser.sidebarSpaceID, anchor: .center) } }
+                    .onChange(of: browser.sidebarSpaceID) { _, id in if plan.scrolls { reader.scrollTo(id, anchor: .center) } }
+                    .onChange(of: plan.scrolls) { _, scrolls in if scrolls { reader.scrollTo(browser.sidebarSpaceID, anchor: .center) } }
                 }
             }.frame(height: Door.side)
         }
@@ -506,7 +506,7 @@ struct SpaceRow: View {
     private func slots(_ order: [Space], _ plan: SpaceRowPlan) -> some View {
         ForEach(Array(order.enumerated()), id: \.element.id) { index, space in
             let offset = shift(index, order, plan)
-            SpaceSlot(browser: browser, space: space, index: index, on: space.id == browser.spaceID, plan: plan, inRail: vertical)
+            SpaceSlot(browser: browser, space: space, index: index, on: space.id == browser.sidebarSpaceID, plan: plan, inRail: vertical)
                 .id(space.id)
                 .offset(x: vertical ? 0 : offset, y: vertical ? offset : 0)
                 .zIndex(lifted == space.id ? 1 : 0)
@@ -519,7 +519,7 @@ struct SpaceRow: View {
     private func landing(_ from: Int, _ order: [Space], _ plan: SpaceRowPlan) -> Int {
         var edge: CGFloat = 0
         let centers = order.map { space in
-            let width = vertical ? SideBar.row + SideBar.gap : plan.width(on: space.id == browser.spaceID)
+            let width = vertical ? SideBar.row + SideBar.gap : plan.width(on: space.id == browser.sidebarSpaceID)
             defer { edge += width }
             return edge + width / 2
         }
@@ -532,7 +532,7 @@ struct SpaceRow: View {
         guard let lifted, let from = order.firstIndex(where: { $0.id == lifted }) else { return 0 }
         if index == from { return lift }
         let to = landing(from, order, plan)
-        let width = vertical ? SideBar.row + SideBar.gap : plan.width(on: order[from].id == browser.spaceID)
+        let width = vertical ? SideBar.row + SideBar.gap : plan.width(on: order[from].id == browser.sidebarSpaceID)
         if from < to, index > from, index <= to { return -width }
         if from > to, index < from, index >= to { return width }
         return 0

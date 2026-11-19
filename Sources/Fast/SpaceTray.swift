@@ -302,7 +302,7 @@ final class SpaceTray: NSView {
     /// never renamed or taken away with the others.
     var mailRoom: CGFloat { CGFloat(specials.count) * (Self.spaceRow + Self.spaceGap) }
     /// Mail's lines over the list, in the order two fingers go.
-    var specials: [Space] { browser.turnOrder.filter { $0.id == Space.mailID } }
+    var specials: [Space] { browser.switcherSpaces.filter { $0.id == Space.mailID || $0.id == Space.allTabs.id } }
     /// Where the tray is, for the bench.
     var panelFrame: CGRect { panel.frame }
     /// Where the tray is drawn right now, mid-motion, for the bench.
@@ -612,7 +612,8 @@ final class SpaceTray: NSView {
         let plain = event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
         if draft.step == .spaces {
             let n = browser.spaces.count
-            let here = draft.focus ?? browser.spaces.firstIndex { $0.id == browser.spaceID } ?? 0
+            let specialIndex = specials.firstIndex { $0.id == browser.sidebarSpaceID }.map { $0 - specials.count }
+            let here = draft.focus ?? specialIndex ?? browser.spaces.firstIndex { $0.id == browser.sidebarSpaceID } ?? 0
             if Keymap.shared.matches(event, .spaceDelete) {
                 if browser.spaces.indices.contains(here) { askDelete(browser.spaces[here]) }
                 return
@@ -620,9 +621,11 @@ final class SpaceTray: NSView {
             if plain {
                 switch event.keyCode {
                 case 125: draft.focus = min(n - 1, here + 1); return
-                case 126: draft.focus = max(0, here - 1); return
+                case 126: draft.focus = max(-specials.count, here - 1); return
                 case 36, 76:
-                    if browser.spaces.indices.contains(here) { pick(browser.spaces[here].id) }
+                    if here < 0, specials.indices.contains(here + specials.count) {
+                        pick(specials[here + specials.count].id)
+                    } else if browser.spaces.indices.contains(here) { pick(browser.spaces[here].id) }
                     return
                 default: break
                 }
@@ -811,7 +814,7 @@ final class SpaceTray: NSView {
     func pick(_ id: UUID) {
         guard !busy else { return }
         leave()
-        guard id != browser.spaceID else { return }
+        guard id != browser.sidebarSpaceID else { return }
         CATransaction.flush()
         let browser = browser
         DispatchQueue.main.async { browser.switchSpace(to: id) }
@@ -1517,7 +1520,7 @@ struct SpaceLine: View {
                     }
                     if space.id == Space.mailID {
                         shortcut(.mail)
-                    } else if let place = browser?.turnOrder.firstIndex(where: { $0.id == space.id }) ?? Optional(index), place < 9 {
+                    } else if let place = browser?.switcherSpaces.firstIndex(where: { $0.id == space.id }) ?? Optional(index), place < 9 {
                         // Counted as ⌃1 to ⌃9 count: Mail in its place among them.
                         if let action = Shortcut.numbered("space", place + 1) {
                             shortcut(action)
@@ -1650,47 +1653,49 @@ struct SpaceMenu: View {
         Button("Edit Space…", mark: "pencil") {
             SpaceTray.customize(space, browser: browser, from: fromHome ? .homeTile(space.id) : nil)
         }
-        // Every space's name, at once. Not from a space folded under its
-        // name: hidden, nothing would be left to unfold it. Back from this
-        // menu on the column's empty room or a space's icon at its foot.
-        if !mail, browser.spacesShown, !browser.blank {
-            let named = browser.prefs.spaceNames
-            if !named || !browser.folderBook.isShut(space.id, in: browser) {
-                Button(named ? "Hide Space Name" : "Show Space Name", mark: named ? "eye.slash" : "eye") {
-                    // The column's rows glide on their own (ColumnPage, `naming`).
-                    withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.22)) { browser.prefs.spaceNames = !named }
+        if space.id != Space.allTabs.id {
+            // Every space's name, at once. Not from a space folded under its
+            // name: hidden, nothing would be left to unfold it. Back from this
+            // menu on the column's empty room or a space's icon at its foot.
+            if !mail, browser.spacesShown, !browser.blank {
+                let named = browser.prefs.spaceNames
+                if !named || !browser.folderBook.isShut(space.id, in: browser) {
+                    Button(named ? "Hide Space Name" : "Show Space Name", mark: named ? "eye.slash" : "eye") {
+                        // The column's rows glide on their own (ColumnPage, `naming`).
+                        withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.22)) { browser.prefs.spaceNames = !named }
+                    }
                 }
             }
-        }
-        Button("Edit Look…", mark: "paintpalette") {
-            SpaceTray.shown?.leave()
-            if space.id != browser.spaceID { browser.switchSpace(to: space.id, keepingHome: fromHome) }
-            LookCard.shared.show(browser)
-        }
-        // The first space's are everyone's: only another can have its own.
-        if !space.isFirst, !mail {
-            Menu("Sign-Ins", mark: "person.key") {
-                Toggle("Shared", isOn: Binding(get: { !space.ownSignIns }, set: { if $0 { signIns(own: false) } }))
-                Toggle("Its Own", isOn: Binding(get: { space.ownSignIns }, set: { if $0 { signIns(own: true) } }))
+            Button("Edit Look…", mark: "paintpalette") {
+                SpaceTray.shown?.leave()
+                if space.id != browser.spaceID { browser.switchSpace(to: space.id, keepingHome: fromHome) }
+                LookCard.shared.show(browser)
             }
-        }
-        // Folders go into the space on screen, from its column, not from
-        // the tray over it.
-        if space.id == browser.spaceID, !mail, SpaceTray.shown == nil {
-            Divider()
-            KeptFolderItems(browser: browser)
-        }
-        Divider()
-        Button(mail ? "Mail Settings…" : "Space Settings…", mark: "gearshape") {
-            SpaceTray.shown?.leave()
-            if mail { SettingsWindow.shared.show(.mail, for: browser) } else { SettingsWindow.shared.showSpace(space.id, for: browser) }
-        }
-        if browser.canDeleteSpace(space.id), !mail {
-            Divider()
-            Button("Delete Space…", mark: "trash", role: .destructive) {
-                if let tray = SpaceTray.shown { tray.askDelete(space) } else { SpaceTray.confirmDelete(space, browser: browser) }
+            // The first space's are everyone's: only another can have its own.
+            if !space.isFirst, !mail {
+                Menu("Sign-Ins", mark: "person.key") {
+                    Toggle("Shared", isOn: Binding(get: { !space.ownSignIns }, set: { if $0 { signIns(own: false) } }))
+                    Toggle("Its Own", isOn: Binding(get: { space.ownSignIns }, set: { if $0 { signIns(own: true) } }))
+                }
             }
-                .shortcut(.spaceDelete)
+            // Folders go into the space on screen, from its column, not from
+            // the tray over it.
+            if space.id == browser.spaceID, !mail, SpaceTray.shown == nil {
+                Divider()
+                KeptFolderItems(browser: browser)
+            }
+            Divider()
+            Button(mail ? "Mail Settings…" : "Space Settings…", mark: "gearshape") {
+                SpaceTray.shown?.leave()
+                if mail { SettingsWindow.shared.show(.mail, for: browser) } else { SettingsWindow.shared.showSpace(space.id, for: browser) }
+            }
+            if browser.canDeleteSpace(space.id), !mail {
+                Divider()
+                Button("Delete Space…", mark: "trash", role: .destructive) {
+                    if let tray = SpaceTray.shown { tray.askDelete(space) } else { SpaceTray.confirmDelete(space, browser: browser) }
+                }
+                    .shortcut(.spaceDelete)
+            }
         }
     }
 
@@ -1789,11 +1794,12 @@ struct TrayStep: View {
     private var spaces: some View {
         let browser = tray?.browserForList
         let list = browser?.spaces ?? []
-        let current = browser?.spaceID
+        let current = browser?.sidebarSpaceID
         return VStack(spacing: SpaceTray.spaceGap) {
             if let browser, let tray {
-                ForEach(tray.specials) { special in
-                    SpaceLine(space: special, index: -2, current: current == special.id, focused: false, noisy: false,
+                ForEach(Array(tray.specials.enumerated()), id: \.element.id) { offset, special in
+                    let index = offset - tray.specials.count
+                    SpaceLine(space: special, index: index, current: current == special.id, focused: draft.focus == index, noisy: false,
                               browser: browser) { tray.pick(special.id) }
                 }
             }

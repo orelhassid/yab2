@@ -129,7 +129,7 @@ struct SpacesMenuCommands: Commands {
     var body: some Commands {
         CommandMenu("Spaces") {
             if browser.spacesShown {
-                ForEach(Array(browser.turnOrder.enumerated()), id: \.element.id) { entry in
+                ForEach(Array(browser.switcherSpaces.enumerated()), id: \.element.id) { entry in
                     SpaceMenuButton(browser: browser, space: entry.element, number: entry.offset + 1)
                         // A Blank Window stays in its space, as Arc's.
                         .disabled(browser.blank)
@@ -137,10 +137,10 @@ struct SpacesMenuCommands: Commands {
                 Divider()
                 Button("Next Space") { browser.stepSpace(1) }
                     .shortcut(.nextSpace)
-                    .disabled(browser.turnOrder.count < 2 || browser.blank)
+                    .disabled(browser.switcherSpaces.count < 2 || browser.blank)
                 Button("Previous Space") { browser.stepSpace(-1) }
                     .shortcut(.previousSpace)
-                    .disabled(browser.turnOrder.count < 2 || browser.blank)
+                    .disabled(browser.switcherSpaces.count < 2 || browser.blank)
                 Divider()
                 Menu(browser.several ? "Move Tabs to Space" : "Move Tab to Space") {
                     ForEach(Array(browser.turnOrder.enumerated()), id: \.element.id) { entry in
@@ -180,7 +180,7 @@ private struct SpaceMenuButton: View {
 
     private var toggle: some View {
         Toggle(space.name, isOn: Binding(
-            get: { browser.spaceID == space.id },
+            get: { browser.sidebarSpaceID == space.id },
             set: { if $0 { browser.switchSpace(to: space.id) } }
         ))
     }

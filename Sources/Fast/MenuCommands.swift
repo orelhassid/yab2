@@ -159,19 +159,19 @@ enum MenuCommands {
         add(.manageSpaces, "Manage Spaces…", ["manage spaces"], symbol: "square.2.layers.3d",
             opens: true, when: { !$0.privateBrowsing }) { $0.openSettings(.spaces) }
         add(.switchSpace, "Switch Space…", ["focus on space", "switch space"], symbol: "yab.chevupdown",
-            opens: true, when: { spaces($0) && $0.turnOrder.count > 1 }) { choose(.switchSpace, in: $0) }
+            opens: true, when: { spaces($0) && $0.switcherSpaces.count > 1 }) { choose(.switchSpace, in: $0) }
         add(.nextSpace, "Next Space", ["select next space"], symbol: "chevron.down", key: .nextSpace,
-            opens: true, when: { spaces($0) && $0.turnOrder.count > 1 }) { $0.stepSpace(1) }
+            opens: true, when: { spaces($0) && $0.switcherSpaces.count > 1 }) { $0.stepSpace(1) }
         add(.previousSpace, "Previous Space", ["select previous space"], symbol: "chevron.up", key: .previousSpace,
-            opens: true, when: { spaces($0) && $0.turnOrder.count > 1 }) { $0.stepSpace(-1) }
+            opens: true, when: { spaces($0) && $0.switcherSpaces.count > 1 }) { $0.stepSpace(-1) }
         add(.moveToSpace, "Move Tab to Space…", ["move tabs to space", "move tab to space"], symbol: "square.2.layers.3d",
             opens: true, when: { hasTargets(.moveToSpace, in: $0) }) { choose(.moveToSpace, in: $0) }
         add(.changeSpaceIcon, "Edit Space…", ["edit space", "rename space", "customize space", "change space icon", "change space color"], symbol: "pencil",
             opens: true, when: spaces) { browser in
-            SpaceTray.customize(browser.space, browser: browser)
+            SpaceTray.customize(browser.sidebarSpace, browser: browser)
         }
         add(.deleteSpace, "Delete Space…", ["delete space"], symbol: "trash",
-            when: { spaces($0) && $0.canDeleteSpace($0.spaceID) && $0.spaceID != Space.mailID }) { browser in
+            when: { spaces($0) && $0.canDeleteSpace($0.sidebarSpaceID) && $0.spaceID != Space.mailID }) { browser in
             if let space = browser.spaces.first(where: { $0.id == browser.spaceID }) {
                 SpaceTray.confirmDelete(space, browser: browser)
             }

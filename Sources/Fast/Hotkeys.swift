@@ -280,7 +280,7 @@ final class Hotkeys: ObservableObject {
             titles[.copyMarkdownLink] = "Copy \(count) Markdown Links"
             titles[.bookmark] = "Add \(count) Tabs to a Folder"
         } else if let tab = browser.active {
-            titles[.pin] = tab.pin == nil && (!browser.prefs.sidebar || !tab.kept) ? Command.pinTab.title : Command.unpinTab.title
+            titles[.pin] = !browser.isPinnedInSidebar(tab) ? Command.pinTab.title : Command.unpinTab.title
         }
         return titles
     }

@@ -121,6 +121,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// What the field searches with: the space on screen's own engine, or
     /// Settings › Search's while it has none (Space.search).
     var searchEngine: EngineChoice { spaces.first { $0.id == spaceID }?.engine ?? .global }
+    var allTabsSelected = false
     var spaceID: UUID = Space.firstID {
         willSet { relay.send(\.spaceID, newValue) }
         // Its sign-in's extensions on its buttons (ExtensionSignIns).
@@ -2033,6 +2034,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// out of its pair, as an agent asking for that tab pinned means it.
     @discardableResult
     func pin(_ tab: Tab, apart: Bool = false) -> Tab? {
+        if showingAllTabs {
+            AllTabsConfiguration.shared.set([tab], pinned: true)
+            return tab
+        }
         if prefs.sidebar, !MailPage.isMail(tab.pending ?? tab.address) {
             guard !blank, !Agents.shared.sealed(tab), !tab.shy else { return nil }
             pinInCurrentSpace([tab])
@@ -2094,6 +2099,11 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// Pin Tab: what is picked pinned, or unpinned when all of it is already.
     func togglePin() {
+        if showingAllTabs {
+            let pins = AllTabsConfiguration.shared
+            pins.set(chosen, pinned: !chosen.allSatisfy { pins.order.contains($0.allTabsKey) })
+            return
+        }
         if prefs.sidebar {
             if chosen.allSatisfy({ $0.kept || $0.pin != nil }) { releaseTabs(chosen) }
             else { pinInCurrentSpace(chosen) }
@@ -2160,6 +2170,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
     }
 
     func unpin(_ tab: Tab) {
+        if showingAllTabs {
+            AllTabsConfiguration.shared.set([tab], pinned: false)
+            return
+        }
         if prefs.sidebar, tab.pin == nil, tab.kept { releaseTabs([tab]); return }
         if startsArranging { return arranging { unpin(tab) } }
         // A half of a pinned pair: the pair goes back to Today whole.
@@ -5097,6 +5111,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// `index` on, where a stack of them was let go of over the grid. One
     /// new row and one write, however many there are.
     func pin(_ group: [Tab], at index: Int? = nil) {
+        if showingAllTabs {
+            AllTabsConfiguration.shared.set(group, pinned: true)
+            return
+        }
         if prefs.sidebar { pinInCurrentSpace(group); return }
         if startsArranging { return arranging { pin(group, at: index) } }
         guard !blank else { return }
@@ -5123,6 +5141,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// Back to the head of the loose tabs, in the order they stood.
     func unpin(_ group: [Tab]) {
+        if showingAllTabs {
+            AllTabsConfiguration.shared.set(group, pinned: false)
+            return
+        }
         if prefs.sidebar { releaseTabs(group.filter { $0.pin == nil && $0.kept }) }
         if startsArranging { return arranging { unpin(group) } }
         for tab in group where tab.pin != nil && MailPage.isMail(tab.pending ?? tab.address) { unpinMail(tab) }

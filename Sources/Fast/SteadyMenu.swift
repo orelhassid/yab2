@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor struct SidebarSpaceActions {
     let browser: Browser
     let id: UUID
+    var allTabs = false
 
     func run(_ action: () -> Void, stay: Bool = false) {
         guard browser.spaceID != id else { action(); return }
@@ -12,10 +13,10 @@ import SwiftUI
         let still = SpaceTurn.still
         SpaceTurn.still = true
         defer { SpaceTurn.still = still }
-        browser.switchSpace(to: id)
+        browser.switchSpace(to: id, preservingAllTabs: allTabs)
         guard browser.spaceID == id else { return }
         action()
-        if !stay && browser.spaceID == id { browser.switchSpace(to: origin) }
+        if !stay && browser.spaceID == id { browser.switchSpace(to: origin, preservingAllTabs: allTabs) }
     }
 }
 

@@ -3055,6 +3055,7 @@ struct TabMenu: View {
         let split = browser.pair(of: tab.id).flatMap { pair in
             group.allSatisfy { pair.contains($0.id) } ? pair : nil
         }
+        if browser.showingAllTabs && split != nil { allTabsPin }
         if let pair = split {
             SplitMenu(browser: browser, pair: pair)
         } else if group.count > 1 {
@@ -3078,6 +3079,14 @@ struct TabMenu: View {
         }
     }
 
+    private var allTabsPin: some View {
+        let pins = AllTabsConfiguration.shared
+        let pinned = pins.order.contains(tab.allTabsKey)
+        return Button(pinned ? Command.unpinTab.title : Command.pinTab.title, mark: pinned ? "pin.slash" : "pin") {
+            pins.set([tab], pinned: !pinned)
+        }.shortcut(.pin)
+    }
+
     @ViewBuilder
     private var one: some View {
         if let pair = browser.pair(of: tab.id) {
@@ -3093,7 +3102,9 @@ struct TabMenu: View {
                 if pinned { TrailApps.shared.remove(url, in: browser) } else { TrailApps.shared.pin(tab) }
             }
         }
-        if tab.pin != nil {
+        if browser.showingAllTabs {
+            allTabsPin
+        } else if tab.pin != nil {
             Button("Unpin", mark: "pin.slash") { browser.unpin(tab) }.shortcut(.pin)
         } else if tab.kept {
             Button("Unpin Tab", mark: "pin.slash") { browser.releaseTabs([tab]) }.shortcut(.keepTab)
@@ -3157,7 +3168,7 @@ struct TabMenu: View {
     @ViewBuilder
     private func several(_ group: [Tab]) -> some View {
         let n = group.count
-        let loose = group.filter { $0.pin == nil && !$0.isBlank && (!browser.prefs.sidebar || !$0.kept) }.count
+        let loose = group.filter { !browser.isPinnedInSidebar($0) && !$0.isBlank }.count
         let kept = group.filter(\.kept).count
         if loose > 0 {
             Button(loose == 1 ? Command.pinTab.title : "Pin \(loose) Tabs in This Space", mark: "pin") { browser.pin(group) }.shortcut(.pin)
@@ -3280,7 +3291,7 @@ struct TabMenu: View {
                 browser.folderBook.keep(agentTabs, in: browser)
             }
         }
-        let loose = group.filter { $0.pin == nil && !$0.isBlank && (!browser.prefs.sidebar || !$0.kept) }.count
+        let loose = group.filter { !browser.isPinnedInSidebar($0) && !$0.isBlank }.count
         if loose > 0 {
             Button(loose == 1 ? Command.pinTab.title : "Pin \(loose) Tabs in This Space", mark: "pin") { browser.pin(group) }
                 // Nothing is pinned or kept in a Blank Window, as in Arc's.
@@ -3386,7 +3397,9 @@ struct TabMenu: View {
                     .disabled(tab.isBlank || browser.blank)
             }
             // Above the line in the column, the tabs that stay (Kept.swift).
-            if tab.kept {
+            if browser.showingAllTabs {
+                allTabsPin
+            } else if tab.kept {
                 Button("Unpin Tab", mark: "pin.slash") { browser.releaseTabs([tab]) }
                     .shortcut(.keepTab)
             } else {

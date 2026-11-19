@@ -22,6 +22,7 @@ extension Browser {
     /// The field's Pin Tab acts on the split when either half is in front,
     /// as Pin Pair in that split's menu does.
     func pinActive() {
+        if showingAllTabs, let active { AllTabsConfiguration.shared.set([active], pinned: true); return }
         if let pair = pair(of: activeID) {
             pinPair(pair)
         } else if let active, !active.isBlank {
@@ -31,6 +32,7 @@ extension Browser {
 
     /// The field's Unpin Tab returns a pinned split to Today as a pair.
     func unpinActive() {
+        if showingAllTabs, let active { AllTabsConfiguration.shared.set([active], pinned: false); return }
         if let pair = pinPair(of: activeID) {
             unpinPair(pair)
         } else if let active {

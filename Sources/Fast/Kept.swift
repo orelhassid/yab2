@@ -315,6 +315,7 @@ extension Browser {
 
 extension Browser {
     func toggleKeepTabs() {
+        if showingAllTabs { togglePin(); return }
         let group = chosen.filter(\.keepable)
         if group.allSatisfy(\.kept) { releaseTabs(group) } else { keepTabs(group) }
     }

@@ -84,13 +84,15 @@ extension MenuCommands {
             }
         }
         if browser.spacesShown && !browser.privateBrowsing {
-            for (index, space) in browser.turnOrder.enumerated() where space.id != browser.spaceID {
+            for (index, space) in browser.switcherSpaces.enumerated() where space.id != browser.sidebarSpaceID {
                 let id = space.id.uuidString
-                add(.switchSpace, id, "Switch to \(space.name)", ["focus on \(space.name)", "go to space \(space.name)"],
+                var aliases = ["focus on \(space.name)", "go to space \(space.name)"]
+                if space.id == Space.allTabs.id { aliases += ["All Tabs", space.name] }
+                add(.switchSpace, id, "Switch to \(space.name)", aliases,
                     symbol: "square.2.layers.3d", key: Shortcut.numbered("space", index + 1), opens: true) {
                     $0.switchSpace(to: space.id)
                 }
-                if space.id != Space.mailID, browser.chosen.contains(where: { browser.sendable($0) && $0.everywhere == nil }) {
+                if space.id != Space.allTabs.id, space.id != browser.spaceID, space.id != Space.mailID, browser.chosen.contains(where: { browser.sendable($0) && $0.everywhere == nil }) {
                     add(.moveToSpace, id, "Move \(tabsWord(browser)) to \(space.name)",
                         ["move tab to space \(space.name)", "move tabs to space \(space.name)"],
                         symbol: "square.2.layers.3d", key: Shortcut.numbered("sendSpace", index + 1)) {
