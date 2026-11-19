@@ -21,11 +21,55 @@ private func photoURL(_ file: String) -> URL? {
     return file.isEmpty ? nil : photos.appendingPathComponent(file)
 }
 
+private struct PhotoLayers: DynamicProperty {
+    @AppStorage var noise: Double
+    @AppStorage var blur: Double
+    @AppStorage var transparency: Double
+
+    init(space: UUID) {
+        let key = photoKey(space)
+        _noise = AppStorage(wrappedValue: 0, key + ".noise", store: Store.settings)
+        _blur = AppStorage(wrappedValue: 0, key + ".blur", store: Store.settings)
+        _transparency = AppStorage(wrappedValue: 0.68, key + ".transparency", store: Store.settings)
+    }
+}
+
+struct HomePhotoEffects: View {
+    @AppStorage private var file: String
+    let base: LookFields
+    private var layers: PhotoLayers
+
+    init(space: UUID, base: LookFields) {
+        self.base = base
+        layers = PhotoLayers(space: space)
+        _file = AppStorage(wrappedValue: "", photoKey(space), store: Store.settings)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            slider("Noise", file.isEmpty ? base.grain : layers.$noise)
+            slider("Blur", layers.$blur).disabled(file.isEmpty)
+            slider("Transparency", file.isEmpty ? base.transparency : layers.$transparency)
+        }
+    }
+
+    private func slider(_ title: String, _ amount: Binding<Double>) -> some View {
+        HStack {
+            Text(title).frame(width: 88, alignment: .leading)
+            Slider(value: amount, in: 0...1, step: 0.01).accessibilityLabel(title)
+            Text(amount.wrappedValue.formatted(.percent.precision(.fractionLength(0))))
+                .monospacedDigit().foregroundStyle(.secondary).frame(width: 38, alignment: .trailing)
+        }.font(.callout)
+    }
+}
+
 struct HomePhoto: View {
     @AppStorage private var file: String
+    private var layers: PhotoLayers
     @State private var image: NSImage?
 
     init(space: UUID) {
+        layers = PhotoLayers(space: space)
         _file = AppStorage(wrappedValue: "", photoKey(space), store: Store.settings)
     }
 
@@ -33,8 +77,16 @@ struct HomePhoto: View {
         GeometryReader { bounds in
             if let image, !file.isEmpty {
                 Image(nsImage: image).resizable().scaledToFill()
-                    .frame(width: bounds.size.width, height: bounds.size.height).clipped()
-                    .overlay(Palette.stage.opacity(0.68))
+                    .frame(width: bounds.size.width, height: bounds.size.height)
+                    .blur(radius: layers.blur * 24, opaque: true)
+                    .clipped()
+                    .opacity(1 - layers.transparency)
+                    .overlay {
+                        if layers.noise > 0 {
+                            Image(nsImage: Grain.tile).resizable(resizingMode: .tile)
+                                .opacity(Grain.opacity(layers.noise))
+                        }
+                    }
             }
         }
         .task(id: file) { image = photoURL(file).flatMap(NSImage.init(contentsOf:)) }
@@ -52,7 +104,7 @@ struct HomePhotoGallery: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 2), spacing: 8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
             tile("No Image", symbol: "nosign", selected: file.isEmpty) { replace(with: "") }
             tile("Upload image", symbol: "square.and.arrow.up", image: uploadPreview,
                  selected: !file.isEmpty && HomePreset(rawValue: file) == nil) {

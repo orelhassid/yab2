@@ -1055,7 +1055,7 @@ struct ContentView: View {
                         let devRim = DevRoom.Rim(card: laid)
                         // A chat in full on the right, the page making room
                         // as it does for the sheet (ChatColumn.swift).
-                        ChatRoom(open: browser.chatOpen, rim: devRim, width: chatShown, leading: browser.chatLeads) {
+                        sharedColumn {
                         DevRoom(open: devHere && browser.devOpen && !browser.devDetached, side: browser.devSide, rim: devRim, height: devSize.height, width: devSize.width) {
                         SplitRoom(drag: browser.splitDrag, preview: browser.splitPreview, share: browser.stagePair?.share ?? 0.5, book: browser.splitBook, measured: { browser.floorWindow() }) {
                             ForEach(0..<2, id: \.self) { slot in
@@ -1081,22 +1081,7 @@ struct ContentView: View {
                                 browser.measuredDevRoom(size.width)
                                 devSize.room = size.height
                             }
-                            if browser.chatOpen || browser.chatMoving || !Extensions.all.allSatisfy({ $0.panelPages(in: browser).isEmpty }) {
-                                // Moved by Core Animation, in a hosting view
-                                // of its own, the air on its left its edge's.
-                                ChatColumnHost(browser: browser, shown: browser.chatOpen, corner: devRim.corner, width: chatShown, leading: browser.chatLeads)
-                                    .padding(browser.chatLeads ? .trailing : .leading, -Backdrop.inset)
-                            }
                         }
-                            // How wide the column may be beside the page,
-                            // which keeps 400 as beside the developer tools.
-                            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { room in
-                                let widest = room - devRim.gap - devRim.inset - DevLook.pageBeside
-                                ChatLook.widest = widest
-                                let was = chatRoom.widest
-                                chatRoom.widest = widest
-                                if abs(min(browser.chatWidth, was) - min(browser.chatWidth, widest)) > 0.5 { chatWidest = widest }
-                            }
                             // Where Open in Chat lands (ChatFlight).
                             .background(FlightMark(kind: .room, inset: devRim.inset))
                             .padding(margins)
@@ -1141,6 +1126,7 @@ struct ContentView: View {
                                 }
                             }
                     } else {
+                        sharedColumn {
                         Group {
                             if let under = browser.underTab, !carded || browser.spaceVisiting {
                                 // No tab in front: the page you were on as
@@ -1175,6 +1161,7 @@ struct ContentView: View {
                             if navigationHeaderHeight > 0 && !browser.showsHomeField {
                                 NavigationHeader(browser: browser, tab: nil, corner: corner, topInset: margins.top, emptyTone: backdropTone)
                             }
+                        }
                         }
                         .padding(margins)
                         .overlay(alignment: .topTrailing) {
@@ -1441,6 +1428,24 @@ struct ContentView: View {
         return chat + DevLook.width(in: browser.devRoomWidth, wanted: devSize.width) + rim.gap + rim.inset
     }
 
+    private func sharedColumn<Page: View>(@ViewBuilder page: () -> Page) -> some View {
+        let rim = DevRoom.Rim(card: laid)
+        return ChatRoom(open: browser.chatOpen, rim: rim, width: chatShown, leading: browser.chatLeads) {
+            page()
+            if browser.chatOpen || browser.chatMoving || !Extensions.all.allSatisfy({ $0.panelPages(in: browser).isEmpty }) {
+                ChatColumnHost(browser: browser, shown: browser.chatOpen, corner: rim.corner, width: chatShown, leading: browser.chatLeads)
+                    .padding(browser.chatLeads ? .trailing : .leading, -Backdrop.inset)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { room in
+            let widest = room - rim.gap - rim.inset - DevLook.pageBeside
+            ChatLook.widest = widest
+            let was = chatRoom.widest
+            chatRoom.widest = widest
+            if abs(min(browser.chatWidth, was) - min(browser.chatWidth, widest)) > 0.5 { chatWidest = widest }
+        }
+    }
+
     /// The chat's column as wide as dragged, less in a room too narrow for
     /// it, as the developer tools beside the page (DevLook.width(in:)).
     private var chatShown: CGFloat { max(ChatLook.least, min(browser.chatWidth, chatRoom.widest)) }
@@ -1641,7 +1646,11 @@ struct ContentView: View {
             let (lead, trail) = fieldRoom(in: space.width)
             let top = band + shelfRoom + margins.top
             let homeHeaderTop = navigationHeaderHeight > 0 ? top : nil
-            Omnibox(browser: browser, inset: lead, trail: trail,
+            let column = browser.showsHomeField && browser.chatOpen ? ChatRoom.room(DevRoom.Rim(card: laid), width: chatShown) : 0
+            let homeLead = browser.leadingSidebarRoom + (browser.chatLeads ? column : 0)
+            let homeTrail = browser.trailingSidebarRoom + (browser.chatLeads ? 0 : column)
+            Omnibox(browser: browser, inset: browser.showsHomeField ? max(lead, homeLead) : lead,
+                    trail: browser.showsHomeField ? max(trail, homeTrail) : trail,
                     pageTop: top + navigationHeaderHeight + barHeight, pageBottom: margins.bottom,
                     homeHeaderTop: homeHeaderTop, homeHeaderInset: margins.top)
                 // Keep the native editor and glass prepared with the window.

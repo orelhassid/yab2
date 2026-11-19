@@ -2447,6 +2447,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     var trackingSize: Bool { splitHeld || devSizing || chatSizing || devMoving || (sideSizing && !prefs.sideShut) }
 
     /// The chat column is out on the right (ChatColumn.swift).
+    var homeSettingsInColumn = false
     var chatOpen = false {
         willSet { relay.send(\.chatOpen, newValue) }
     }

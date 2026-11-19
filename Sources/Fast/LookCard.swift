@@ -515,6 +515,7 @@ struct LookControls: View {
     var bare = false
     /// The welcome's window has no site to take a color from.
     var offersSite = true
+    var backgroundControls: AnyView? = nil
     /// What a head held, in the field's top corner (LookCorner).
     var corner: AnyView? = nil
     /// A color moved by hand.
@@ -527,7 +528,7 @@ struct LookControls: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ColorEditor(color: look.color, transparency: look.transparency, grain: look.grain,
                                 colors: look.colors, mode: look.mode, corner: corner, glass: look.glass, plain: look.plain,
-                                width: width, onPick: picked)
+                                width: width, showsSurfaceSliders: backgroundControls == nil, onPick: picked)
                     if !look.colors.wrappedValue.isEmpty || offersSite {
                         VStack(spacing: 0) {
                             if !look.colors.wrappedValue.isEmpty {
@@ -541,6 +542,7 @@ struct LookControls: View {
                     }
                 }
             }
+            if let backgroundControls { backgroundControls.padding(.top, 12) }
             let drawings = look.drawings.wrappedValue
             let strength = look.strength.wrappedValue
             section("Drawings", value: drawings.isEmpty ? nil : "\(Int((strength * 100).rounded()))%") {

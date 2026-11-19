@@ -313,7 +313,8 @@ extension Browser {
 
     /// The menu command or column controls put the chat out or away.
     func toggleChat() {
-        if chatMovement.target ?? chatOpen { hideChat() }
+        if homeSettingsInColumn && AIUse.chats { moveChat(open: true) }
+        else if chatMovement.target ?? chatOpen { hideChat() }
         // AI off, or no agent and no chat yet: nothing for the column to show.
         else if AIUse.chats || panelExtension != nil { moveChat(open: true) }
     }
@@ -365,12 +366,19 @@ extension Browser {
     /// the width shown along the way and is let go after they arrive.
     /// Open requests reach this coordinator even while a queued close
     /// still has the model open; it owns the latest intent, not that frame.
-    func moveChat(open: Bool) {
+    func moveChat(open: Bool, homeSettings: Bool = false) {
+        if open {
+            homeSettingsInColumn = homeSettings
+            if homeSettings { panelExtension = nil }
+        }
         if !open { FeedbackDiagnostics.shared.chatClose(.intent, open: chatOpen, moving: chatMoving) }
         let move: Int
         switch chatMovement.request(open: open, current: chatOpen, moving: chatMoving) {
         case .unchanged:
-            if !open { chatColumnView?.slide(shown: false) }
+            if !open {
+                chatColumnView?.slide(shown: false)
+                if !chatMoving { homeSettingsInColumn = false }
+            }
             if !open, !chatOpen, chatRestoration != nil || chatAttach.typing { restoreAfterChat() }
             if !open { FeedbackDiagnostics.shared.chatClose(.skipped, open: chatOpen, moving: chatMoving) }
             return
@@ -380,8 +388,9 @@ extension Browser {
             if open {
                 // The superseded opening completion can no longer give
                 // the field its keys. Finish that handoff on the reversal.
-                chatFocus += 1
+                if !homeSettingsInColumn { chatFocus += 1 }
             } else {
+                homeSettingsInColumn = false
                 if chatAttach.typing { restoreAfterChat() }
                 else { chatRestoration = nil }
             }
@@ -435,7 +444,8 @@ extension Browser {
                     if !open { FeedbackDiagnostics.shared.chatClose(.completed, open: chatOpen, moving: chatMoving) }
                     Reshape.pace = .reshape
                     // Out: the cursor in its field, to say something at once.
-                    if open { chatFocus += 1 }
+                    if open && !homeSettingsInColumn { chatFocus += 1 }
+                    if !open { homeSettingsInColumn = false }
                 }
             }
         }
@@ -534,10 +544,16 @@ private struct ChatColumnRoot: View {
 
     var body: some View {
         ZStack {
-            ChatColumn(browser: browser, corner: look.corner, width: look.width, feed: feed)
+            if browser.homeSettingsInColumn {
+                HomeSettingsPanel(browser: browser, width: look.width, close: browser.hideChat)
+                    .modifier(ChatColumnFrame(browser: browser, width: look.width))
+                    .modifier(ChatColumnScheme(browser: browser))
+            } else {
+                ChatColumn(browser: browser, corner: look.corner, width: look.width, feed: feed)
                 .modifier(ChatColumnScheme(browser: browser))
                 .opacity(browser.panelExtension == nil ? 1 : 0)
                 .allowsHitTesting(browser.panelExtension == nil)
+            }
             // Every sign-in's panels in this window: one stays open as the
             // window goes to a space of another (ExtensionSignIns).
             ForEach(Extensions.all.flatMap { $0.panelPages(in: browser) }, id: \.contextID) { page in
@@ -1036,15 +1052,7 @@ struct ChatColumn: View {
             ChatColumn.take(providers, chat: history ? nil : feed.chat, browser: browser)
             return true
         }
-        .foregroundStyle(Palette.ink)
-        .frame(width: width, alignment: .top)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.surface, style: .continuous))
-        .background { ChatColumnGround(browser: browser) }
-        // Its edge, in the air between it and the page: dragged as a split's.
-        .overlay(alignment: browser.chatLeads ? .trailing : .leading) {
-            ChatEdge(browser: browser)
-                .offset(x: browser.chatLeads ? Backdrop.inset : -Backdrop.inset)
-        }
+        .modifier(ChatColumnFrame(browser: browser, width: width))
         .onAppear {
             feed.follow(browser.chatID)
             ChatColumn.asks(for: browser)
@@ -2481,6 +2489,24 @@ private struct ChatColumnScheme: ViewModifier {
         guard prefs.backdrop == .site, !prefs.wearsGlass else { return swatch.scheme }
         let site = browser.worn.color.map { Tone($0, lifted: true) }
         return (Worn<EmptyView>.worn(site, mode: .site, dark: dark) ? site : swatch)?.scheme
+    }
+}
+
+private struct ChatColumnFrame: ViewModifier {
+    let browser: Browser
+    let width: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(Palette.ink)
+            .frame(width: width, alignment: .top)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.surface, style: .continuous))
+            .background { ChatColumnGround(browser: browser) }
+            // Its edge, in the air between it and the page: dragged as a split's.
+            .overlay(alignment: browser.chatLeads ? .trailing : .leading) {
+                ChatEdge(browser: browser)
+                    .offset(x: browser.chatLeads ? Backdrop.inset : -Backdrop.inset)
+            }
     }
 }
 

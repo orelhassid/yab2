@@ -388,7 +388,7 @@ struct SpacePageSurface: ViewModifier {
                             CardGround(paint: paint, step: look.shift ? browser.lookStep : 0)
                                 .environment(browser)
                         } else { Palette.stage }
-                        if !library { HomePhoto(space: browser.spaceID) }
+                        HomePhoto(space: browser.spaceID)
                     }.allowsHitTesting(false)
                 }
                 .environment(\.tone, themedControls ? paint.map { SpaceSurface.tone(for: $0.color) } : nil)
@@ -460,6 +460,7 @@ private struct HomeHiddenTabs: View {
 
 struct HomeSettingsPanel: View {
     let browser: Browser
+    let width: CGFloat
     let close: () -> Void
     @AppStorage("home.hiddenLibraries", store: Store.settings) private var hidden = ""
 
@@ -475,21 +476,22 @@ struct HomeSettingsPanel: View {
             ScrollView {
                 SpacePageLook(browser: browser) { look, custom, reset in
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Background image").font(.subheadline.weight(.semibold))
-                        HomePhotoGallery(space: browser.spaceID)
-                        Divider()
-                        LookControls(look: .paint(look), bare: true, offersSite: false)
+                        Text("Accent").font(.headline)
+                        LookControls(look: .paint(look), width: width - 32, bare: true, offersSite: false,
+                                     backgroundControls: AnyView(VStack(alignment: .leading, spacing: 12) {
+                                         Divider()
+                                         Text("Background").font(.headline)
+                                         HomePhotoGallery(space: browser.spaceID)
+                                         HomePhotoEffects(space: browser.spaceID, base: .paint(look))
+                                     }))
                         if !hidden.isEmpty { Menu("Hidden tabs") { HomeHiddenTabs() } }
                         Button("Use Space Look", action: reset).disabled(!custom)
                     }
-                    .frame(width: LookCardView.inner)
                     .padding(16)
-                }
+                }.id(browser.spaceID)
             }
         }
-        .frame(width: LookCardView.inner + 32)
-        .background(Palette.ground)
-        .overlay(alignment: .leading) { Divider() }
+        .frame(width: width)
     }
 }
 
@@ -532,7 +534,6 @@ struct HomeNavigation: View {
     @AppStorage("home.shortcuts", store: Store.settings) private var savedShortcuts = Data()
     @State private var adding: HomeGroup?
     @State private var renaming: UUID?
-    @Binding var customizing: Bool
     private var groups: [HomeGroup] { (try? JSONDecoder().decode([HomeGroup].self, from: data)) ?? [] }
 
     var body: some View {
@@ -559,7 +560,10 @@ struct HomeNavigation: View {
                         }
                 }
             }.scrollIndicators(.hidden)
-            HomeControl(outline: navigationIconOutline, selected: customizing, action: { customizing.toggle() }) { navigationIcon("gearshape") }
+            HomeControl(outline: navigationIconOutline, selected: browser.homeSettingsInColumn && browser.chatOpen, action: {
+                if browser.homeSettingsInColumn && browser.chatOpen { browser.hideChat() }
+                else { browser.moveChat(open: true, homeSettings: true) }
+            }) { navigationIcon("gearshape") }
                 .accessibilityLabel("Customize Home")
                 .pointerTip("Customize Home")
 

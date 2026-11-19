@@ -23,6 +23,7 @@ struct ColorEditor: View {
     private let glass: Binding<Bool>?
     /// No Color, the Grays page's first dot; nil where a look can't wear it.
     private let plain: Binding<Bool>?
+    var showsSurfaceSliders = true
     var width: CGFloat = 260
     var onPick: () -> Void = {}
 
@@ -58,7 +59,7 @@ struct ColorEditor: View {
 
     init(color: Binding<NSColor>, transparency: Binding<Double>, grain: Binding<Double>, colors: Binding<[String]>? = nil,
          mode: Binding<String>? = nil, corner: AnyView? = nil, glass: Binding<Bool>? = nil, plain: Binding<Bool>? = nil,
-         width: CGFloat = 260, onPick: @escaping () -> Void = {}) {
+         width: CGFloat = 260, showsSurfaceSliders: Bool = true, onPick: @escaping () -> Void = {}) {
         _transparency = transparency
         _color = color
         _grain = grain
@@ -70,6 +71,7 @@ struct ColorEditor: View {
         self.plain = plain
         _openedGlass = State(initialValue: glass?.wrappedValue ?? false)
         _first = State(initialValue: LookPresets.index(of: color.wrappedValue, colors: colors?.wrappedValue ?? []))
+        self.showsSurfaceSliders = showsSurfaceSliders
         self.width = width
         self.onPick = onPick
         let (l, c, h) = Self.read(color.wrappedValue)
@@ -113,7 +115,7 @@ struct ColorEditor: View {
                     LookPresetRow(width: width, first: $first, plain: plain == nil ? nil : pickPlain) { pickPreset($0) }
                 }
             }
-            VStack(spacing: 4) { wave; dots }
+            if showsSurfaceSliders { VStack(spacing: 4) { wave; dots } }
         }
         .frame(width: width)
         // Changed from elsewhere, another space coming on screen: the editor
