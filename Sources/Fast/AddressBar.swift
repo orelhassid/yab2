@@ -45,7 +45,7 @@ private extension View {
 ///
 /// Nothing in it moves on the frequent path. Another tab is another site in
 /// the same frame; under the pointer the link shows on the site's left and
-/// the star on its right, and a copy from there turns the link into a tick
+/// the bookmark on its right, and a copy from there turns the link into a tick
 /// while the corner says it; the site stays where it is. Split View is the
 /// band's last door, as Arc keeps it.
 struct AddressBar: View {
@@ -114,7 +114,7 @@ struct AddressBar: View {
                             ColumnDoor(browser: browser, prefs: browser.prefs).bandControl()
                         }
                         if helmed {
-                            Helm(browser: browser, tab: half ? tab : nil, reads: false, showsBookmark: true, quiet: quiet, still: true)
+                            Helm(browser: browser, tab: half ? tab : nil, reads: false, quiet: quiet, still: true)
                                 .bandControl()
                         }
                     }
@@ -208,7 +208,7 @@ struct AddressBar: View {
                 }
             }
             if !tab.isBlank {
-                Site(browser: browser, tab: tab, copies: browser.copies, handles: !half, showsStar: !helmed)
+                Site(browser: browser, tab: tab, copies: browser.copies, handles: !half)
                     .bandControl()
             }
             // A share going on: its mark before the doors at the band's end,
@@ -316,7 +316,7 @@ struct AddressBar: View {
 /// asks for it: the band's site and nothing else, in the page's color, as
 /// tall as the band on a card. The buttons beside the panel keep closing,
 /// keeping and splitting it. A click on the site is ⌘L for the peek's
-/// page, its link copies that page's address, its star keeps it
+/// page, its link copies that page's address, its bookmark control keeps it
 /// (Browser.fieldPage, copyAddress). Drawn by PeekView inside the page's
 /// holder, so it grows, goes home and is kept with the page.
 struct PeekBand: View {
@@ -347,7 +347,7 @@ struct PeekBand: View {
 }
 
 /// The site, and under the pointer the link that copies its address on
-/// its left and the star that bookmarks it on its right, the same square
+/// its left and the bookmark control on its right, the same square
 /// each side, so the plate grows evenly and stays on the words.
 private struct Site: View {
     let browser: Browser
@@ -361,13 +361,10 @@ private struct Site: View {
     /// empty room drags the window and takes the title bar's double-click,
     /// and the site drags it too.
     let handles: Bool
-    let showsStar: Bool
 
     @Environment(\.tone) private var tone
     @State private var hovering = false
     @State private var linkHovering = false
-    @State private var starHovering = false
-    @ObservedObject private var bookmarks = Bookmarks.shared
     /// The tick, for a moment after a copy.
     @State private var ticked = false
     @State private var untick: DispatchWorkItem?
@@ -391,12 +388,11 @@ private struct Site: View {
     @State private var lockFrame: CGRect = .zero
     @State private var lockHovering = false
 
-    init(browser: Browser, tab: Tab, copies: Int, handles: Bool, showsStar: Bool = true) {
+    init(browser: Browser, tab: Tab, copies: Int, handles: Bool) {
         self.browser = browser
         self.tab = tab
         self.copies = copies
         self.handles = handles
-        self.showsStar = showsStar
         self.prefs = browser.prefs
     }
 
@@ -410,25 +406,30 @@ private struct Site: View {
 
     var body: some View {
         let copyable = tab.address.map(Self.copyable) ?? false
-        // A dev page's band is a workbench: no star there.
-        let starred = showsStar && copyable && !dev && tab.address.map(Bookmark.keepable) == true
+        // A dev page's band is a workbench: no bookmark control there.
+        let canBookmark = copyable && !dev && tab.address.map(Bookmark.keepable) == true
 
         Squeeze(edge: copyable ? Self.edge : Self.bare, gap: Self.gap) {
-            // The link on the left and the star on the right are the same
+            // The link on the left and the bookmark on the right are the same
             // square, kept at rest, so the words, not the words and the
             // doors, are what stand in the middle, and the doors coming and
             // going under the pointer move nothing. Site Controls are the
             // band's sliders. A dev page reads as its whole address from
             // the band's start, its lock before it, its link with its tools,
-            // and no star.
+            // and no bookmark control.
             if dev {
                 lock.bandControl()
             } else if copyable {
                 copy.bandControl()
             }
             name.bandControl()
-            if starred {
-                star.bandControl()
+            if canBookmark {
+                AddressBookmarkDoor(browser: browser, tab: tab, side: Self.slot, corner: Self.inner, glyph: 10)
+                    .opacity(shown ? 1 : 0)
+                    .allowsHitTesting(shown)
+                    .accessibilityHidden(!shown)
+                    .animation(Motion.quick, value: shown)
+                    .bandControl()
             } else if copyable && !dev {
                 Color.clear.frame(width: Self.slot, height: Self.slot)
             }
@@ -519,29 +520,6 @@ private struct Site: View {
         } else {
             Color.clear.frame(width: Self.slot, height: Self.slot)
         }
-    }
-
-    /// The star, under the pointer only: drawn filled on a page kept
-    /// already. Add This Page, and pressed again the bookmark taken out.
-    private var star: some View {
-        let kept = tab.address.map(bookmarks.contains) ?? false
-        return Button { browser.toggleBookmark(tab) } label: {
-            Symbol(kept ? "star.fill" : "star", size: 10, weight: .medium)
-                .foregroundStyle(starHovering ? Palette.ink : Palette.muted(on: tone))
-                .frame(width: Self.slot, height: Self.slot)
-                .background(
-                    RoundedRectangle(cornerRadius: Self.inner, style: .continuous)
-                        .fill(starHovering ? Palette.hover(on: tone) : .clear)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(Door.Give())
-        .focusable(false)
-        .keyTip(kept ? "Remove Bookmark" : "Bookmark This Page", shortcut: kept ? nil : "Add This Page")
-        .onHover { starHovering = $0 }
-        .opacity(shown ? 1 : 0)
-        .allowsHitTesting(shown)
-        .animation(Motion.quick, value: shown)
     }
 
     /// The link, under the pointer; the tick, for a moment after a copy.

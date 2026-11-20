@@ -204,7 +204,7 @@ struct SideBar: View {
     private var headFit: ColumnHead.Fit {
         ColumnHead.fit(width: headWidth, right: browser.flank == .right, size: helmSize, count: headCount)
     }
-    private var headCount: Int { prefs.sidebarButton ? 5 : 4 }
+    private var headCount: Int { prefs.sidebarButton ? 4 : 3 }
     private var headWidth: CGFloat {
         browser.flank == .right ? browser.sidebarContentWidth : browser.presentedSidebarWidth
     }
@@ -2053,7 +2053,7 @@ struct SideBar: View {
             let folded = headFit == .fold
             HStack(spacing: size.gap) {
                 if prefs.sidebarButton && !folded { ColumnDoor(browser: browser, prefs: prefs) }
-                Helm(browser: browser, reads: false, folded: folded, showsBookmark: true)
+                Helm(browser: browser, reads: false, folded: folded)
             }
             .environment(\.doorSize, size)
         }
@@ -2072,7 +2072,7 @@ struct SideBar: View {
         // A tab in front in mail's space has the doors any space has.
         guard helmRow else { return .zero }
         let size = helmSize
-        let count = headFit == .fold ? 4 : headCount
+        let count = headFit == .fold ? 3 : headCount
         return CGRect(x: SideBar.margin, y: (Metrics.strip - size.side) / 2, width: size.width(count), height: size.side)
     }
 
@@ -2748,7 +2748,7 @@ struct PagedDoors: View {
     var body: some View {
         let right = browser.flank == .right
         let width = right ? browser.sidebarContentWidth : browser.presentedSidebarWidth
-        let count = browser.prefs.sidebarButton ? 5 : 4
+        let count = browser.prefs.sidebarButton ? 4 : 3
         let size = ColumnHead.doors(width: width, right: right, count: count)
         let folded = ColumnHead.fit(width: width, right: right, size: size, count: count) == .fold
         HStack(spacing: 0) {
@@ -2784,14 +2784,11 @@ private struct StillHelm: View {
 
     var body: some View {
         let open = tab.map { !$0.isBlank } ?? false
-        let url = tab?.address
-        let kept = url.map(Bookmarks.shared.contains) ?? false
         HStack(spacing: size.gap) {
             if let column { mark(column, true) }
             mark("arrow.left", open && tab?.canGoBack == true)
             mark("arrow.right", open && tab?.canGoForward == true)
             mark(folded ? "ellipsis" : "arrow.clockwise", folded || open)
-            mark(kept ? "bookmark.fill" : "bookmark", open && url.map(Bookmark.keepable) == true)
         }
     }
 

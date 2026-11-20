@@ -72,7 +72,7 @@ struct NavigationHeader: View {
 
                 if showHelm, let tab {
                     if showToggle { ColumnDoor(browser: browser, prefs: browser.prefs) }
-                    Helm(browser: browser, tab: tab, reads: false, showsBookmark: true)
+                    Helm(browser: browser, tab: tab, reads: false)
                 }
 
                 Spacer(minLength: 0)

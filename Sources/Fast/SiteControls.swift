@@ -1040,7 +1040,7 @@ struct ExtensionAnchor: NSViewRepresentable {
 
 /// The address at the top of the column, over the pins, as Arc has it: the
 /// site alone at rest, as wide as the plate. With the pointer in the column
-/// the link and the sliders fade in over its end, the site fading out under
+/// bookmark, copy and site controls fade in over its end, the site fading out under
 /// them, so nothing moves, and the pinned extensions come in before them,
 /// all leaving together. A camera or microphone in use takes
 /// the sliders' place, the blocker off here has its shield. Pressed, the
@@ -1114,12 +1114,13 @@ struct SidePlate: View {
         } else {
             ids = (Extensions.unread(signIn) ?? []).filter { $0.enabled && $0.pinned == true }.map(\.id)
         }
-        let height = extensionLayout(width: browser.sidebarContentWidth, count: ids.count).height
+        let height = extensionLayout(width: browser.sidebarContentWidth, count: ids.count, url: tab.address).height
         return .init(shown: shown, extensionHeight: height, extensions: ids)
     }
 
-    private static func extensionLayout(width: CGFloat, count: Int) -> SideExtensionLayout {
-        SideExtensionLayout(width: width, count: count, door: door, margin: SideBar.margin,
+    private static func extensionLayout(width: CGFloat, count: Int, url: URL?) -> SideExtensionLayout {
+        let controls = url.map(Bookmark.keepable) == true ? 3 : 2
+        return SideExtensionLayout(width: width, count: count, door: door, controls: controls, margin: SideBar.margin,
                             columns: SideBar.pinColumns(count, width: width), gap: SideBar.pinGap)
     }
 
@@ -1127,7 +1128,7 @@ struct SidePlate: View {
         let facts = SiteFacts(tab: tab)
         let site = facts.site
         let pinned = tab.engineKind == .chromium ? column.buttons(for: tab) : extensions.buttons.filter(\.pinned)
-        let layout = Self.extensionLayout(width: width, count: pinned.count)
+        let layout = Self.extensionLayout(width: width, count: pinned.count, url: tab.address)
         // A pin's popup up keeps the plate as it is under the pointer: the
         // popup hangs from the pin, and the pointer going down into the
         // popup took the pin away, and the popup with it, before a password
@@ -1168,9 +1169,11 @@ struct SidePlate: View {
         let chip = facts.isSite && !tab.windows.blocked.isEmpty
         let link = facts.isSite && up && !chip
         let sliders = up || extensions.dotted || live != nil
-        let doors = (blocker ? 1 : 0) + shownPins.count + (link ? 1 : 0) + (sliders ? 1 : 0)
+        let bookmark = !asking && up && tab.address.map(Bookmark.keepable) == true
+        let beforeLink = (blocker ? 1 : 0) + shownPins.count + (bookmark ? 1 : 0)
+        let doors = beforeLink + (link ? 1 : 0) + (sliders ? 1 : 0)
         // What the doors cover of the site's end, the site fading out under it.
-        let cover = chip ? WindowChip.cover(after: (blocker ? 1 : 0) + shownPins.count)
+        let cover = chip ? WindowChip.cover(after: beforeLink)
             : doors == 0 ? 0 : CGFloat(doors) * (Self.door + 2) - 2 + Self.air
 
         // The site's own inset is under the doors' cover too.
@@ -1199,6 +1202,10 @@ struct SidePlate: View {
                             press(button.id)
                         }
                         .transition(.opacity)
+                    }
+                    if bookmark {
+                        AddressBookmarkDoor(browser: browser, tab: tab)
+                            .transition(.opacity)
                     }
                     if chip {
                         WindowChip(browser: browser, tab: tab)
@@ -1545,6 +1552,8 @@ private struct PlateDoor<Glyph: View>: View {
     let tip: String
     var shortcut: String?
     var tint: Color?
+    var side = SidePlate.door
+    var corner = SidePlate.inner
     let act: () -> Void
     @ViewBuilder let glyph: Glyph
     @Environment(\.tone) private var tone
@@ -1554,8 +1563,8 @@ private struct PlateDoor<Glyph: View>: View {
         Button(action: act) {
             glyph
                 .foregroundStyle(tint ?? (hovering ? Palette.ink : Palette.muted(on: tone)))
-                .frame(width: SidePlate.door, height: SidePlate.door)
-                .background(RoundedRectangle(cornerRadius: SidePlate.inner, style: .continuous)
+                .frame(width: side, height: side)
+                .background(RoundedRectangle(cornerRadius: corner, style: .continuous)
                     .fill(hovering ? Palette.hover(on: tone) : .clear))
                 .contentShape(Rectangle())
         }
@@ -1569,6 +1578,27 @@ private struct PlateDoor<Glyph: View>: View {
 extension PlateDoor where Glyph == Symbol {
     init(symbol: String, tip: String, shortcut: String? = nil, tint: Color? = nil, act: @escaping () -> Void) {
         self.init(tip: tip, shortcut: shortcut, tint: tint, act: act) { Symbol(symbol, size: SidePlate.glyph, weight: .medium) }
+    }
+}
+
+struct AddressBookmarkDoor: View {
+    let browser: Browser
+    let tab: Tab
+    var side = SidePlate.door
+    var corner = SidePlate.inner
+    var glyph = SidePlate.glyph
+    @ObservedObject private var bookmarks = Bookmarks.shared
+
+    var body: some View {
+        let kept = tab.address.map(bookmarks.contains) ?? false
+        let title = kept ? "Remove Bookmark" : "Bookmark This Page"
+        PlateDoor(tip: title, shortcut: kept ? nil : "Add This Page", side: side, corner: corner,
+                  act: { browser.toggleBookmark(tab) }) {
+            Symbol(kept ? "bookmark.fill" : "bookmark", size: glyph, weight: .medium)
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(kept ? .isSelected : [])
+        .benchSpot("page bookmark")
     }
 }
 

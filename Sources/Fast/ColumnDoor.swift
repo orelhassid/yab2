@@ -81,27 +81,6 @@ struct ColumnDoor: View {
     }
 }
 
-/// The bookmark for the page whose navigation controls are in this row.
-struct PageBookmarkDoor: View {
-    let browser: Browser
-    let tab: Tab?
-    @ObservedObject private var bookmarks = Bookmarks.shared
-
-    var body: some View {
-        let url = tab?.address.flatMap { Bookmark.keepable($0) ? $0 : nil }
-        let kept = url.map(bookmarks.contains) ?? false
-        let title = kept ? "Remove Bookmark" : "Bookmark This Page"
-        Door(icon: kept ? "bookmark.fill" : "bookmark", on: kept, help: title,
-             shortcut: kept ? nil : "Add This Page") {
-            if let tab { browser.toggleBookmark(tab) }
-        }
-        .disabled(url == nil || tab?.isBlank == true)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(kept ? .isSelected : [])
-        .benchSpot("page bookmark")
-    }
-}
-
 /// "⋯" in reload's place, a narrow column's: reload or stop and the
 /// column's door, in the Mac's own menu under it. A cross while it is
 /// open, as Arc's.

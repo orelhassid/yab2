@@ -4,8 +4,8 @@ import Testing
 
 @MainActor
 struct SideExtensionLayoutTests {
-    private func layout(width: CGFloat, count: Int, door: CGFloat) -> SideExtensionLayout {
-        SideExtensionLayout(width: width, count: count, door: door, margin: SideBar.margin,
+    private func layout(width: CGFloat, count: Int, door: CGFloat, controls: Int = 3) -> SideExtensionLayout {
+        SideExtensionLayout(width: width, count: count, door: door, controls: controls, margin: SideBar.margin,
                             columns: SideBar.pinColumns(count, width: width), gap: SideBar.pinGap)
     }
 
@@ -25,6 +25,11 @@ struct SideExtensionLayoutTests {
         #expect(narrow.cell >= 28)
         #expect(!wide.separate)
         #expect(wide.height == 0)
+    }
+
+    @Test func bookmarkControlReservesRoomForTheAddress() {
+        #expect(!layout(width: 240, count: 2, door: 28, controls: 2).separate)
+        #expect(layout(width: 240, count: 2, door: 28, controls: 3).separate)
     }
 
     @Test func spacePlateReservesTheWrappedPinRowWhenResizedBesideTheTrail() throws {

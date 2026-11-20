@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Fast
 
-// The navigation and page actions share the column's top row.
+// The navigation controls and sidebar toggle share the column's top row.
 @MainActor
 @Suite(.serialized)
 struct ColumnHeadTests {
@@ -21,18 +21,18 @@ struct ColumnHeadTests {
         Density.current = density
         defer { Density.current = before }
         let width = Metrics.sideMin - (right ? SideBar.row + 2 * SideBar.margin : 0)
-        let size = ColumnHead.doors(width: width, right: right, count: 5)
-        #expect(ColumnHead.full(right: right, size: size, count: 5) <= width)
-        #expect(ColumnHead.fit(width: width, right: right, size: size, count: 5) == .full)
-        if density == .comfortable && !right { #expect(size.side == Door.Size.tight.side) }
+        let size = ColumnHead.doors(width: width, right: right, count: 4)
+        #expect(ColumnHead.full(right: right, size: size, count: 4) <= width)
+        #expect(ColumnHead.fit(width: width, right: right, size: size, count: 4) == .full)
+        #expect(size.side == Door.Size.header.side)
     }
 
     @Test func overflowBeginsWhenTheWholeGroupDoesNotFit() {
         let size = Self.comfortable
-        let full = ColumnHead.full(right: false, size: size, margin: 8, count: 5)
-        #expect(full == 248)
-        #expect(ColumnHead.fit(width: full, right: false, size: size, margin: 8, count: 5) == .full)
-        #expect(ColumnHead.fit(width: full - 1, right: false, size: size, margin: 8, count: 5) == .fold)
+        let full = ColumnHead.full(right: false, size: size, margin: 8, count: 4)
+        #expect(full == 214)
+        #expect(ColumnHead.fit(width: full, right: false, size: size, margin: 8, count: 4) == .full)
+        #expect(ColumnHead.fit(width: full - 1, right: false, size: size, margin: 8, count: 4) == .fold)
     }
 
     /// Arc's arrows and mark are larger than the rest of the row's glyphs.
@@ -83,10 +83,10 @@ struct ColumnHeadTests {
 
     @Test func hidingSidebarDoorLeavesRoomForTheOtherActions() {
         let size = Self.comfortable
-        let width = ColumnHead.full(right: false, size: size, margin: 8, count: 4)
-        #expect(width == 214)
-        #expect(ColumnHead.fit(width: width, right: false, size: size, margin: 8, count: 4) == .full)
-        #expect(ColumnHead.fit(width: width, right: false, size: size, margin: 8, count: 5) == .fold)
+        let width = ColumnHead.full(right: false, size: size, margin: 8, count: 3)
+        #expect(width == 180)
+        #expect(ColumnHead.fit(width: width, right: false, size: size, margin: 8, count: 3) == .full)
+        #expect(ColumnHead.fit(width: width, right: false, size: size, margin: 8, count: 4) == .fold)
     }
 
     @Test func sidebarButtonStartsVisibleAndPersistsTheChoice() {

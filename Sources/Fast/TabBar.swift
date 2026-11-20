@@ -215,7 +215,7 @@ struct TabBar: View {
     /// for the book: it is in the address bar's band, or reached by ⌥⌘R.
     private var corner: CGFloat {
         if browser.bandDoors { return lit ? Metrics.lights : 12 }
-        return (lit ? Metrics.helmLead : 12) + Door.Size().width(4) + 2 + Metrics.tabGap
+        return (lit ? Metrics.helmLead : 12) + Door.Size().helm + 2 + Metrics.tabGap
     }
 
     var body: some View {
@@ -253,7 +253,7 @@ struct TabBar: View {
                         .transition(.opacity)
                 }
                 if !browser.bandDoors {
-                    Helm(browser: browser, reads: false, showsBookmark: true)
+                    Helm(browser: browser, reads: false)
                         .padding(.leading, lit ? Metrics.helmLead : 12)
                 }
                 // The space on screen, at the head of the row, after the
@@ -1845,8 +1845,6 @@ struct Helm: View {
     /// column's own door (HelmMore, ColumnHead).
     var folded = false
 
-    var showsBookmark = false
-
     /// A half behind its pair's front one: back, forward and nothing else,
     /// reload and the book kept in their room but out of sight.
     var quiet = false
@@ -1892,8 +1890,7 @@ struct Helm: View {
         if let steer, let tab {
             Steered(browser: browser, tab: tab, steer: steer, reads: reads, resting: resting, reloadFirst: reloadFirst)
         } else if let tab = tab ?? peek ?? browser.active {
-            Wheel(browser: browser, tab: tab, own: self.tab != nil, reads: reads, quiet: quiet, folded: folded,
-                  showsBookmark: showsBookmark, still: still)
+            Wheel(browser: browser, tab: tab, own: self.tab != nil, reads: reads, quiet: quiet, folded: folded, still: still)
         } else {
             // Nowhere to go and nothing to reload: the doors stay in place,
             // grayed, so the row doesn't shift when a tab arrives.
@@ -1905,7 +1902,6 @@ struct Helm: View {
                 }
                 .disabled(true)
                 if folded { HelmMore(browser: browser, tab: nil) }
-                if showsBookmark { PageBookmarkDoor(browser: browser, tab: nil) }
             }
         }
     }
@@ -1941,7 +1937,6 @@ struct Helm: View {
         let reads: Bool
         let quiet: Bool
         var folded = false
-        var showsBookmark = false
         var resting = false
         var reloadFirst = false
         var still = false
@@ -1984,12 +1979,6 @@ struct Helm: View {
                     HelmMore(browser: browser, tab: tab, own: own)
                 } else if !reloadFirst {
                     reload(mine, pulses)
-                }
-                if showsBookmark {
-                    PageBookmarkDoor(browser: browser, tab: tab)
-                        .opacity(quiet ? 0 : 1)
-                        .allowsHitTesting(!quiet)
-                        .accessibilityHidden(quiet)
                 }
             }
         }

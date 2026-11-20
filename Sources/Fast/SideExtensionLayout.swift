@@ -9,10 +9,10 @@ struct SideExtensionLayout {
     let height: CGFloat
     let gap: CGFloat
 
-    init(width: CGFloat, count: Int, door: CGFloat, margin: CGFloat, columns: Int, gap: CGFloat) {
+    init(width: CGFloat, count: Int, door: CGFloat, controls: Int, margin: CGFloat, columns: Int, gap: CGFloat) {
         self.gap = gap
         let available = max(door, width - 2 * margin)
-        let inline = max(0, Int((available - 96 - door * 2) / (door + 2)))
+        let inline = max(0, Int((available - 96 - door * CGFloat(controls)) / (door + 2)))
         separate = count > inline && count > 0
         self.columns = max(1, columns)
         cell = (available - CGFloat(self.columns - 1) * gap) / CGFloat(self.columns)
