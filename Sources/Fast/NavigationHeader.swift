@@ -42,11 +42,12 @@ struct NavigationHeader: View {
     private var row: some View {
         let size = self.size
         let sidebarHidden = browser.sideShown == 0 && !sidebarPeeking
+        let showHelm = sidebarHidden && !browser.bandDoors && tab?.isBlank == false
+        let showToggle = sidebarHidden && browser.prefs.sidebarButton && (!browser.prefs.sidebar || !browser.bandDoors)
         return GeometryReader { room in
             HStack(spacing: size.gap) {
-                if sidebarHidden {
-                    RailButton(browser.columnTitle, icon: ColumnDoor.mark(browser.flank), doorSize: size) { browser.toggleColumn() }
-                        .keyTip(browser.columnTitle)
+                if showToggle && !showHelm {
+                    ColumnDoor(browser: browser, prefs: browser.prefs)
                 }
                 RailButton("New Tab", icon: "plus", doorSize: size) { browser.newTab() }
                     .keyTip("New Tab")
@@ -69,9 +70,9 @@ struct NavigationHeader: View {
                 .disabled(browser.tabs.isEmpty)
                 .popover(isPresented: presented(.tabs), arrowEdge: .bottom) { tabs }
 
-                if sidebarHidden, let tab, !tab.isBlank {
-                    Helm(browser: browser, tab: tab, reads: false)
-                        .environment(\.doorSize, size)
+                if showHelm, let tab {
+                    if showToggle { ColumnDoor(browser: browser, prefs: browser.prefs) }
+                    Helm(browser: browser, tab: tab, reads: false, showsBookmark: true)
                 }
 
                 Spacer(minLength: 0)
@@ -80,6 +81,7 @@ struct NavigationHeader: View {
                                                available: room.size.width / 3, size: size)
                 }
             }
+            .environment(\.doorSize, size)
             .padding(.horizontal, SideBar.margin)
             .frame(height: size.side)
             // The card begins below the window edge. Measure the controls

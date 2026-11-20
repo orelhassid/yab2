@@ -1,11 +1,8 @@
 import AppKit
 import SwiftUI
 
-// The column's own door, Arc's sidebar mark (feedback #250, #287): right
-// after the lights, a door like back, forward and reload, doing what ⌘S
-// does. The same mark in the card the column comes out over the page as,
-// where it puts the column back, as Arc's does. With the column on the
-// right it stands at the outer edge, the mark's pane on that side.
+// The column's own door, a door like back, forward and reload, doing
+// what ⌘S does. The mark's pane follows the column's side.
 //
 // The row it stands in folds as the column narrows, as Arc's does: reload
 // and this door go into "⋯" beside back and forward. Where it folds is
@@ -17,7 +14,7 @@ import SwiftUI
 enum ColumnHead {
     /// How much of the row's doors fit beside the lights.
     enum Fit: Equatable {
-        /// Back, forward, reload and the column's door.
+        /// All of the toolbar's controls.
         case full
         /// Back, forward and "⋯", which holds reload and the column's door.
         case fold
@@ -36,15 +33,9 @@ enum ColumnHead {
         green + fromGreen - size.side / 2
     }
 
-    /// The narrowest column with everything in the row: the lights, the
-    /// door, a gap, back, forward and reload, and the margin. With the
-    /// column on the right the lights are over the page (HeadBand) and the
-    /// door at the far end: the margin, the three, a gap, the door, the
-    /// margin. 218 and 148, Compact 211 and 140.
-    static func full(right: Bool, size: Door.Size = .header, margin: CGFloat = SideBar.margin, showSidebarButton: Bool = true) -> CGFloat {
-        if !showSidebarButton { return margin + (right ? 0 : Metrics.sideLights) + size.helm + margin }
-        return right ? margin + size.helm + size.gap + size.side + margin
-              : doorX(size) + size.side + size.gap + size.helm + margin
+    /// With the column on the right the lights are over the page (HeadBand).
+    static func full(right: Bool, size: Door.Size = .header, margin: CGFloat = SideBar.margin, count: Int) -> CGFloat {
+        2 * margin + (right ? 0 : Metrics.sideLights) + size.width(count)
     }
 
     /// The doors' size in the row at this width: the header's, or, in a
@@ -53,16 +44,14 @@ enum ColumnHead {
     /// (Arc's 164 pt sidebar, 2026-10-24: back, forward and "⋯" centered
     /// 88, 116 and 144 from the window's edge), which fits the lights,
     /// back, forward and "⋯" at 164.
-    static func doors(width: CGFloat, right: Bool, margin: CGFloat = SideBar.margin) -> Door.Size {
+    static func doors(width: CGFloat, right: Bool, margin: CGFloat = SideBar.margin, count: Int = 3) -> Door.Size {
         let header = Door.Size.header
-        if right || width >= margin + Metrics.sideLights + header.helm + margin { return header }
-        return .tight
+        return width >= full(right: right, size: header, margin: margin, count: count) ? header : .tight
     }
 
-    /// What the row holds at this width. On the right, everything fits at
-    /// the column's narrowest.
-    static func fit(width: CGFloat, right: Bool, size: Door.Size = .header, margin: CGFloat = SideBar.margin, showSidebarButton: Bool = true) -> Fit {
-        if width >= full(right: right, size: size, margin: margin, showSidebarButton: showSidebarButton) { return .full }
+    /// Whether the controls fit in the title row at the chosen size.
+    static func fit(width: CGFloat, right: Bool, size: Door.Size, margin: CGFloat = SideBar.margin, count: Int) -> Fit {
+        if width >= full(right: right, size: size, margin: margin, count: count) { return .full }
         return .fold
     }
 }
@@ -89,6 +78,27 @@ struct ColumnDoor: View {
         .accessibilityLabel(title)
         .accessibilityAddTraits(shut ? .isSelected : [])
         .benchSpot("column door")
+    }
+}
+
+/// The bookmark for the page whose navigation controls are in this row.
+struct PageBookmarkDoor: View {
+    let browser: Browser
+    let tab: Tab?
+    @ObservedObject private var bookmarks = Bookmarks.shared
+
+    var body: some View {
+        let url = tab?.address.flatMap { Bookmark.keepable($0) ? $0 : nil }
+        let kept = url.map(bookmarks.contains) ?? false
+        let title = kept ? "Remove Bookmark" : "Bookmark This Page"
+        Door(icon: kept ? "bookmark.fill" : "bookmark", on: kept, help: title,
+             shortcut: kept ? nil : "Add This Page") {
+            if let tab { browser.toggleBookmark(tab) }
+        }
+        .disabled(url == nil || tab?.isBlank == true)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(kept ? .isSelected : [])
+        .benchSpot("page bookmark")
     }
 }
 

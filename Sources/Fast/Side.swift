@@ -202,18 +202,20 @@ struct SideBar: View {
     /// narrow, reload and the column's door go into "⋯". Reading mode has
     /// no door here; its key and menus have it.
     private var headFit: ColumnHead.Fit {
-        ColumnHead.fit(width: browser.presentedSidebarWidth, right: browser.flank == .right, showSidebarButton: prefs.sidebarButton)
+        ColumnHead.fit(width: headWidth, right: browser.flank == .right, size: helmSize, count: headCount)
+    }
+    private var headCount: Int { prefs.sidebarButton ? 5 : 4 }
+    private var headWidth: CGFloat {
+        browser.flank == .right ? browser.sidebarContentWidth : browser.presentedSidebarWidth
     }
     /// The row has back, forward and reload of its own (Helm). Not while
     /// the address bar is shown: they stand at its start, as Arc's toolbar
     /// takes them from its sidebar.
-    private var helmRow: Bool { !ColumnKit.cut.contains("head") && !prefs.helmInBand && (helmed || mailPaging) }
+    private var helmRow: Bool { !ColumnKit.cut.contains("head") && !browser.bandDoors && (helmed || mailPaging) }
     /// The column's own door stands in the row, but where "⋯" holds it.
     /// Full screen too, docked or out as a card, as Arc keeps it there
     /// (feedback #274): the column is the same column there, ⌘S and all.
-    private var columnDoored: Bool {
-        prefs.sidebarButton && browser.railInsideColumn == 0 && !(helmRow && headFit == .fold)
-    }
+    private var columnDoored: Bool { prefs.sidebarButton && !helmRow && !browser.bandDoors && browser.railInsideColumn == 0 }
     /// The column's own doors, none with two side by side: each half has
     /// its own in its band, and a third set here would act on whichever
     /// half was last clicked. None in mail: its one page has nowhere to go
@@ -287,7 +289,7 @@ struct SideBar: View {
 
             // The band the lights sit in is this mode's title bar: the window
             // is dragged by it and a double-click fills the screen with it,
-            // everywhere but over the three doors at its far end, which take
+            // everywhere but over the toolbar at its far end, which takes
             // their own clicks, when they are there. The lights answer first
             // wherever they are.
             band
@@ -303,13 +305,8 @@ struct SideBar: View {
             }
 
             VStack(alignment: .leading, spacing: 0) {
-                // The traffic lights in their corner, and back, forward and
-                // reload held against the right edge of the column, reload's
-                // plate flush with the address plate's edge under it, as Arc
-                // has it.
-                // The column's own door right after the lights, as Arc has
-                // it; with the column on the right, the lights over the page,
-                // at the outer end, and the doors at the inner one.
+                // The traffic lights and the toolbar share the title row.
+                // With the column on the right, its toolbar faces the page.
                 HStack(spacing: 0) {
                     if browser.flank == .left {
                         Lights()
@@ -2049,14 +2046,16 @@ struct SideBar: View {
             .frame(height: Metrics.strip)
     }
 
-    /// The doors at the header's far end, back, forward and reload, or
-    /// New Mail over mail's page.
+    /// The toolbar at the header's page edge, or New Mail over mail's page.
     @ViewBuilder private var headDoors: some View {
         if helmRow {
-            // A page of mail's space in front: its doors, at once,
-            // where any space has them, and never its book.
-            Helm(browser: browser, reads: false, folded: headFit == .fold)
-                .environment(\.doorSize, helmSize)
+            let size = helmSize
+            let folded = headFit == .fold
+            HStack(spacing: size.gap) {
+                if prefs.sidebarButton && !folded { ColumnDoor(browser: browser, prefs: prefs) }
+                Helm(browser: browser, reads: false, folded: folded, showsBookmark: true)
+            }
+            .environment(\.doorSize, size)
         }
         if mailNew {
             MailNewButton()
@@ -2073,12 +2072,13 @@ struct SideBar: View {
         // A tab in front in mail's space has the doors any space has.
         guard helmRow else { return .zero }
         let size = helmSize
-        return CGRect(x: SideBar.margin, y: (Metrics.strip - size.side) / 2, width: size.helm, height: size.side)
+        let count = headFit == .fold ? 4 : headCount
+        return CGRect(x: SideBar.margin, y: (Metrics.strip - size.side) / 2, width: size.width(count), height: size.side)
     }
 
     /// The size of the doors at the header's far end at the column's width.
     private var helmSize: Door.Size {
-        ColumnHead.doors(width: browser.presentedSidebarWidth, right: browser.flank == .right)
+        ColumnHead.doors(width: headWidth, right: browser.flank == .right, count: headCount)
     }
 
     /// Where the column's own door stands, from the corner of its end.
@@ -2746,8 +2746,13 @@ struct PagedDoors: View {
     @Environment(\.tone) private var tone
 
     var body: some View {
+        let right = browser.flank == .right
+        let width = right ? browser.sidebarContentWidth : browser.presentedSidebarWidth
+        let count = browser.prefs.sidebarButton ? 5 : 4
+        let size = ColumnHead.doors(width: width, right: right, count: count)
+        let folded = ColumnHead.fit(width: width, right: right, size: size, count: count) == .fold
         HStack(spacing: 0) {
-            Spacer(minLength: 0)
+            if !right { Spacer(minLength: 0) }
             if mail {
                 // New Mail at rest: its glass doesn't draw in a picture.
                 Symbol("square.and.pencil", size: 12)
@@ -2756,29 +2761,37 @@ struct PagedDoors: View {
                     .background(RoundedRectangle(cornerRadius: Radius.control, style: .continuous).fill(Palette.wash(on: tone)))
             } else if !paired && !browser.prefs.helmInBand {
                 // With the address bar shown, they are in the band.
-                StillHelm(tab: tab)
-                    .environment(\.doorSize, ColumnHead.doors(width: browser.presentedSidebarWidth, right: browser.flank == .right))
+                StillHelm(tab: tab, column: browser.prefs.sidebarButton && !folded ? ColumnDoor.mark(browser.flank) : nil,
+                          folded: folded)
+                    .environment(\.doorSize, size)
             }
+            if right { Spacer(minLength: 0) }
         }
         .frame(height: Metrics.strip)
         .padding(.horizontal, SideBar.margin)
     }
 }
 
-/// Back, forward and reload as Helm draws them at rest, for a page: the
+/// The toolbar as Helm draws it at rest, for a page: the
 /// glyphs alone, in the ink their doors would wear, none of the doors'
 /// anchors, lists or motion.
 private struct StillHelm: View {
     let tab: Tab?
+    let column: String?
+    let folded: Bool
     @Environment(\.doorSize) private var size
     @Environment(\.tone) private var tone
 
     var body: some View {
         let open = tab.map { !$0.isBlank } ?? false
+        let url = tab?.address
+        let kept = url.map(Bookmarks.shared.contains) ?? false
         HStack(spacing: size.gap) {
+            if let column { mark(column, true) }
             mark("arrow.left", open && tab?.canGoBack == true)
             mark("arrow.right", open && tab?.canGoForward == true)
-            mark("arrow.clockwise", open)
+            mark(folded ? "ellipsis" : "arrow.clockwise", folded || open)
+            mark(kept ? "bookmark.fill" : "bookmark", open && url.map(Bookmark.keepable) == true)
         }
     }
 
@@ -4323,7 +4336,8 @@ struct Door: View {
         /// Between doors in a row of them (Helm).
         var gap: CGFloat = SideBar.gap
         /// Back, forward and reload with the two gaps between them.
-        var helm: CGFloat { 3 * side + 2 * gap }
+        var helm: CGFloat { width(3) }
+        func width(_ count: Int) -> CGFloat { CGFloat(count) * side + CGFloat(count - 1) * gap }
         /// Its corner: a control's, but in the column's header a row's, the
         /// address plate's under it, which reload stands flush with; it is
         /// also the 8 in from the card's 18 when the column comes out over

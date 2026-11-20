@@ -446,7 +446,11 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// Add This Page: the page you are on, at the end of the list.
     func bookmarkCurrent() {
-        guard let tab = active, let url = tab.address else { return }
+        if let tab = active { bookmark(tab) }
+    }
+
+    private func bookmark(_ tab: Tab) {
+        guard let url = tab.address else { return }
         // The app's own pages, history, the bookmarks themselves, aren't
         // places to keep.
         guard Bookmark.keepable(url) else {
@@ -474,14 +478,12 @@ final class Browser: NSObject, ObservableObject, Relaying {
         else { toaster.pop("Bookmarked", mark: "bookmark.check", keys: Teach.shared.keys(after: .bookmark, action: .bookmark)) }
     }
 
-    /// The address's star (AddressBar, SidePlate): Add This Page, and on a
-    /// page kept already the bookmark taken out again, ⌘Z putting it back.
-    /// The star going hollow says it; the corner says nothing more.
+    /// Add the toolbar's page or remove its existing bookmark with undo.
     func toggleBookmark(_ tab: Tab) {
-        guard let url = tab.address else { return }
+        guard let url = tab.address, Bookmark.keepable(url) else { return }
         focus(tab)
         guard let id = bookmarks.id(for: url) else {
-            bookmarkCurrent()
+            bookmark(tab)
             return
         }
         did(bookmarks.removeUndoably(id))

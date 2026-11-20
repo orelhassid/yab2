@@ -89,11 +89,10 @@ struct AddressBar: View {
     /// top, a half's own, or the column's while the bar is shown.
     private var helmed: Bool { half || (takes && (strip || browser.prefs.helmInBand)) }
 
-    /// The same column door comes over while the column is put away. A
-    /// column brought out from the edge already has its own, and the tabs
-    /// across the top never get a sidebar door.
-    private var hiddenColumn: Bool {
-        columnDoor && browser.prefs.sidebarButton && !strip && browser.prefs.sideShut && !peek.out
+    /// The sidebar toggle follows the navigation controls into the band.
+    /// The developer-only band keeps a way to reopen a hidden sidebar.
+    private var columnToggle: Bool {
+        columnDoor && browser.prefs.sidebarButton && !strip && (helmed || (browser.prefs.sideShut && !peek.out))
     }
 
     var body: some View {
@@ -109,15 +108,13 @@ struct AddressBar: View {
                 // band alone leaves them where the layout keeps them. With
                 // the sidebar, here only when asked for (Settings ›
                 // Appearance › Back and forward), as Arc's toolbar has them.
-                if helmed || hiddenColumn {
+                if helmed || columnToggle {
                     HStack(spacing: Door.Size.band.gap) {
-                        if hiddenColumn {
-                            ColumnDoor(browser: browser, prefs: browser.prefs)
-                                .environment(\.doorSize, .header)
-                                .bandControl()
+                        if columnToggle {
+                            ColumnDoor(browser: browser, prefs: browser.prefs).bandControl()
                         }
                         if helmed {
-                            Helm(browser: browser, tab: half ? tab : nil, reads: false, quiet: quiet, still: true)
+                            Helm(browser: browser, tab: half ? tab : nil, reads: false, showsBookmark: true, quiet: quiet, still: true)
                                 .bandControl()
                         }
                     }
@@ -211,7 +208,7 @@ struct AddressBar: View {
                 }
             }
             if !tab.isBlank {
-                Site(browser: browser, tab: tab, copies: browser.copies, handles: !half)
+                Site(browser: browser, tab: tab, copies: browser.copies, handles: !half, showsStar: !helmed)
                     .bandControl()
             }
             // A share going on: its mark before the doors at the band's end,
@@ -364,6 +361,7 @@ private struct Site: View {
     /// empty room drags the window and takes the title bar's double-click,
     /// and the site drags it too.
     let handles: Bool
+    let showsStar: Bool
 
     @Environment(\.tone) private var tone
     @State private var hovering = false
@@ -393,11 +391,12 @@ private struct Site: View {
     @State private var lockFrame: CGRect = .zero
     @State private var lockHovering = false
 
-    init(browser: Browser, tab: Tab, copies: Int, handles: Bool) {
+    init(browser: Browser, tab: Tab, copies: Int, handles: Bool, showsStar: Bool = true) {
         self.browser = browser
         self.tab = tab
         self.copies = copies
         self.handles = handles
+        self.showsStar = showsStar
         self.prefs = browser.prefs
     }
 
@@ -412,7 +411,7 @@ private struct Site: View {
     var body: some View {
         let copyable = tab.address.map(Self.copyable) ?? false
         // A dev page's band is a workbench: no star there.
-        let starred = copyable && !dev && tab.address.map(Bookmark.keepable) == true
+        let starred = showsStar && copyable && !dev && tab.address.map(Bookmark.keepable) == true
 
         Squeeze(edge: copyable ? Self.edge : Self.bare, gap: Self.gap) {
             // The link on the left and the star on the right are the same

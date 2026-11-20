@@ -499,15 +499,7 @@ enum Metrics {
     /// in the address bar: just past the lights' edge (73), close enough to
     /// read as the window's own buttons.
     static let helmLead: CGFloat = 83
-    /// Back, forward and reload beside the lights: three doors and the air
-    /// before the tabs. Reading mode's book is in the open tab, at its end.
-    static let helm: CGFloat = 3 * 26 + 2 * 2 + 8
-    /// The same three doors again, in the sidebar, where they sit right of
-    /// the lights instead. The column already has 10 of horizontal padding
-    /// of its own before this even starts, so this is the lights' own edge
-    /// (73) less that padding, plus a sliver of air, not the full breathing
-    /// room a tab row gets, because the sidebar's minimum width doesn't have
-    /// it to give.
+    /// Room for the traffic lights at the start of the sidebar title row.
     static let sideLights: CGFloat = 66
     /// The band left at the top when there is no strip: just enough for the
     /// traffic lights to sit in, and nothing else.
