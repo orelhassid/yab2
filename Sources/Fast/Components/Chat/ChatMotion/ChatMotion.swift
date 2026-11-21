@@ -422,11 +422,17 @@ private final class SendSky: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
+extension EnvironmentValues {
+    @Entry var projectChatStyle = false
+}
+
 /// Your words as sent, on their ground at the right: the line a message
 /// becomes in the column and in the ⌘J field alike. Hidden while the
 /// words are still on their way to it (SendFlight). In the column they
 /// are a message as Messages draws one: on the accent, with its tail.
 struct SentWords: View {
+    @Environment(\.projectChatStyle) private var projectStyle
+    @Environment(\.tone) private var tone
     let text: String
     var lines = 14
     var bubble = false
@@ -441,7 +447,13 @@ struct SentWords: View {
 
     var body: some View {
         Group {
-            if bubble {
+            if projectStyle {
+                Text(text)
+                    .foregroundStyle(Palette.strong(on: tone))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Palette.wash(on: tone), in: RoundedRectangle(cornerRadius: Radius.card))
+            } else if bubble {
                 Text(text)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
@@ -461,7 +473,7 @@ struct SentWords: View {
         .textSelection(.enabled)
         .background(SendFlight.Landing(text: text, waiting: hidden) { hidden = false })
         .opacity(hidden ? 0 : 1)
-        .padding(.bottom, bubble ? MessageBubble.tailDrop : 0) // design: its tail hangs under the foot
+        .padding(.bottom, bubble && !projectStyle ? MessageBubble.tailDrop : 0) // design: its tail hangs under the foot
     }
 }
 

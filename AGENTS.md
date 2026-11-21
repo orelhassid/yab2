@@ -104,3 +104,14 @@ project supplies that look. Pass the resolved tone into each hosting root,
 including the Trail, sidebar, popovers and embedded workspace. Use the
 shared palette for controls and interaction states. Check a light and a
 dark project with the Trail visible when changing these surfaces.
+
+## Project chat
+
+Use Codex as the visual reference for Development chat: plain assistant
+replies, rounded user messages, and a two-row composer with controls below
+the draft. Use T3 as a reference for provider and integration behavior.
+Development uses the shared native chat composer, transcript, and provider
+settings. Keep project drafts and conversation IDs with their project.
+Verify composer changes in the project pane as well as the browser column.
+For a live check, mention a file in a temporary project, read it with Codex,
+and switch projects and back to verify the conversation.

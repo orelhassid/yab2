@@ -88,6 +88,23 @@ struct CodexServerTests {
         #expect(input?["text"] as? String == "hello")
     }
 
+    @Test func developmentReferencesFollowTheirTurn() {
+        let (server, wire) = Self.opened()
+        let skill = DevelopmentReference(kind: .skill, name: "Review", path: "/project/.agents/skills/review/SKILL.md")
+        let plugin = DevelopmentReference(kind: .plugin, name: "Issues", path: "plugin://issues@local")
+        server.extraInputs = { $0 == "review" ? [skill.input] : [plugin.input] }
+        _ = Self.ready(server, wire)
+        server.say("review")
+        func lastInput() -> [String: String]? {
+            ((wire.last["params"] as? [String: Any])?["input"] as? [[String: Any]])?.last as? [String: String]
+        }
+        #expect(lastInput() == ["type": "skill", "name": skill.name, "path": skill.path])
+        server.steer("check issues")
+        _ = server.heard(["id": wire.last["id"]!, "result": ["turn": ["id": "U1"]]])
+        #expect(wire.last["method"] as? String == "turn/steer")
+        #expect(lastInput() == ["type": "mention", "name": plugin.name, "path": plugin.path])
+    }
+
     @Test func steerMidTurn() {
         let (server, wire) = Self.opened()
         _ = Self.ready(server, wire)

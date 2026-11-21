@@ -39,6 +39,7 @@ struct DevelopmentDetails: Codable, Equatable {
     var paint: SpacePaint?
     var createdAt: TimeInterval?
     var activity: [DevelopmentEvent]?
+    var chatID: String?
 
     mutating func record(_ title: String) {
         activity = (activity ?? []) + [DevelopmentEvent(title: title, time: Date().timeIntervalSince1970)]
@@ -125,6 +126,12 @@ struct DevelopmentProjects: View {
                             }
                         }
                     }
+                    SidebarSectionDivider()
+                    ForEach([("settings", "Settings", "gearshape"), ("integrations", "Integrations", "puzzlepiece.extension")], id: \.0) { item in
+                        SidebarTabButton(title: item.1, selected: browser.developmentContent.toolbar.active == item.0 && browser.developmentContent.toolbar.mode != "chat", prefs: browser.prefs, action: {
+                            browser.developmentContent.view.callAsyncJavaScript("go(route)", arguments: ["route": item.0], in: nil, in: .page, completionHandler: nil)
+                        }) { Symbol(item.2, size: SideBar.mark) }
+                    }
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -138,7 +145,15 @@ struct DevelopmentProjects: View {
 final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     let toolbar = DevelopmentToolbarState()
     let terminals = DevelopmentTerminals()
-    weak var browser: Browser?
+    private var drafts: [DevelopmentProject: ChatAttach] = [:]
+    func draft(for project: DevelopmentProject) -> ChatAttach {
+        if let saved = drafts[project] { return saved }
+        let draft = ChatAttach()
+        draft.set([])
+        drafts[project] = draft
+        return draft
+    }
+    weak var browser: Browser? { didSet { toolbar.browser = browser } }
     private(set) var ready = false
     private var sentEntries: [String: DevelopmentDetails]?
     private var sentColors: [String: String]?
@@ -232,6 +247,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
 
 @MainActor @Observable
 final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
+    weak var browser: Browser?
     var active = "overview"
     var mode = "split"
     var chatWidth: CGFloat = 300
@@ -240,6 +256,12 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let info = message.body as? [String: Any] else { return }
+        if let label = info["discuss"] as? String, let browser, info["project"] as? String == browser.developmentProject.rawValue {
+            let project = browser.developmentProject
+            let chat = DevelopmentDirectory.shared.details(project).chatID.flatMap { Chats.shared.chat($0) }
+            browser.developmentContent.draft(for: project).add(.quote(String(label.prefix(500))), chat: chat, browser: browser)
+            return
+        }
         if message.name == "activity" {
             let directory = DevelopmentDirectory.shared
             guard let id = info["project"] as? String,
@@ -282,7 +304,7 @@ struct DevelopmentPane: View {
         ("specs", "Spec", "doc.text"), ("pitch", "Pitch board", "rectangle.3.group"),
         ("tasks", "Tasks", "checklist"), ("agents", "Agents", "person.2"),
         ("review", "Code", "chevron.left.forwardslash.chevron.right"), ("preview", "Preview", "globe"),
-        ("terminal", "Terminal", "terminal"), ("settings", "Settings", "gearshape")
+        ("terminal", "Terminal", "terminal")
     ]
 
     var body: some View {
@@ -331,11 +353,13 @@ struct DevelopmentPane: View {
             Divider()
             DevelopmentWebPane(browser: browser, project: project, entries: entries)
                 .overlay(alignment: .topLeading) {
-                    if ["settings", "terminal"].contains(state.active), state.reportedProject == project.rawValue,
+                    if ["settings", "integrations", "terminal"].contains(state.active), state.reportedProject == project.rawValue,
                        !state.toolFrame.isEmpty, state.mode != "chat" {
                         Group {
                             if state.active == "settings" {
                                 DevelopmentSettings(project: project, prefs: browser.prefs)
+                            } else if state.active == "integrations" {
+                                DevelopmentIntegrations(browser: browser, project: project)
                             } else {
                                 DevelopmentTerminalPane(terminals: content.terminals, project: project,
                                                         folder: entries[project.rawValue]?.folder ?? "") {
@@ -346,6 +370,16 @@ struct DevelopmentPane: View {
                         .id(project)
                         .frame(width: state.toolFrame.width, height: state.toolFrame.height)
                         .offset(x: state.toolFrame.minX, y: state.toolFrame.minY)
+                    }
+                }
+                .overlay(alignment: state.mode == "full" ? .bottom : .leading) {
+                    if state.reportedProject == project.rawValue {
+                        GeometryReader { room in
+                            DevelopmentChat(browser: browser, project: project, attach: content.draft(for: project), compact: state.mode == "full")
+                                .id(project)
+                                .frame(width: state.mode == "split" ? max(0, min(room.size.width, state.chatWidth) - 5) : min(room.size.width, state.mode == "full" ? 680 : room.size.width))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: state.mode == "split" ? .leading : .bottom)
+                        }
                     }
                 }
         }

@@ -969,6 +969,7 @@ struct ContentView: View {
                     Color(nsColor: paint.color)
                     CardGround(paint: paint, step: look.shift ? browser.lookStep : 0).environment(browser)
                     if workspaceTheme.hasPhoto { HomePhoto(space: browser.spaceID) }
+                    if browser.developmentLook != nil { SpaceSurface.navigationShade(for: paint.color) }
                 }.allowsHitTesting(false)
             } else if let backdrop = backdrop ?? edgeBackdrop {
                 Worn(browser: browser, mode: privateWindow ? .color : browser.prefs.backdrop, swatch: Tone(backdrop, lifted: true, glass: glassActive), glassActive: glassActive) { tone in

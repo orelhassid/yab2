@@ -64,6 +64,7 @@ final class CodexServer {
     private var opening: (thread: String?, fork: String?, instructions: String, cwd: String)?
     private(set) var thread: String?
     /// Someone is there to answer its questions.
+    var extraInputs: (String) -> [[String: Any]] = { _ in [] }
     var asks = false
     /// The turn going on, once the server has named it.
     private(set) var turn: String?
@@ -98,7 +99,7 @@ final class CodexServer {
         guard let thread else { waiting.append(text); return }
         if turn != nil || starting != nil { steer(text, recovered: recovered); return }
         starting = nextID + 1
-        request("turn/start", ["threadId": thread, "input": [Self.input(text)]], .turn)
+        request("turn/start", ["threadId": thread, "input": [Self.input(text)] + extraInputs(text)], .turn)
     }
 
     /// Words for the turn going on, read at its next step.
@@ -106,7 +107,7 @@ final class CodexServer {
         guard let thread else { waiting.append(text); return }
         if starting != nil { held.append((text, recovered)); return }
         guard let turn else { say(text, recovered: recovered); return }
-        request("turn/steer", ["threadId": thread, "expectedTurnId": turn, "input": [Self.input(text)]], .steer(text: text, turn: turn, recovered: recovered))
+        request("turn/steer", ["threadId": thread, "expectedTurnId": turn, "input": [Self.input(text)] + extraInputs(text)], .steer(text: text, turn: turn, recovered: recovered))
     }
 
     func interrupt() {

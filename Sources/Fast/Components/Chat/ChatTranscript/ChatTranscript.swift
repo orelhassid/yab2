@@ -362,6 +362,7 @@ struct ChatTranscript: View {
 /// One turn: what you asked, the agent's opening words, and its answer.
 /// While it works, only the typing bubble appears below its words.
 private struct ChatTurn: View, Equatable {
+    @Environment(\.projectChatStyle) private var projectStyle
     let browser: Browser
     let chat: Chat
     let turn: [ChatItem]
@@ -521,7 +522,7 @@ private struct ChatTurn: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: projectStyle ? 16 : 6) {
             if let report, let asked {
                 ChatSubagentCard(name: report.name, report: report)
                     .padding(.leading, MessageBubble.tailRoom) // design: on the bubbles' body, as the chat's plates stand
@@ -560,7 +561,7 @@ private struct ChatTurn: View, Equatable {
                         // The tail only on the last of its run: the next
                         // message, or the answer after it, carries it on.
                         let next = index + 1 < along.count ? Self.said(along[index + 1]) : (writing ?? answer) != nil
-                        ChatWords(text: item.text, streaming: false, bubbles: true, tail: !next)
+                        ChatWords(text: item.text, streaming: false, bubbles: !projectStyle, tail: !next)
                             .contextMenu { Button("Copy") { ChatCopy.put(item.text) } }
                             .padding(.bottom, next ? -2 : 0) // design: its messages in a run 4 apart, as within one answer
                     } else if item.kind == .widget {
@@ -576,8 +577,11 @@ private struct ChatTurn: View, Equatable {
                 // Waiting on you it says nothing more: its question stands
                 // in the turns, its choices or its yes over the field.
                 if working, writing == nil, wait == nil {
-                    ChatTyping()
+                    if projectStyle {
+                        Text("Working…").font(.callout).foregroundStyle(.secondary)
+                    } else { ChatTyping()
                         .transition(still ? .identity : ChatArrival.typing)
+                    }
                 }
                 let failed = !working && last && ending == "failed"
                 // The turn says why already, a status or an error of its own.
@@ -591,7 +595,7 @@ private struct ChatTurn: View, Equatable {
                     let grow = arriving && !still && ChatWords.opensSaid(shown.text)
                     let words = ChatWords(text: writing == nil && notebook ? KnowPage.linked(shown.text) : shown.text, streaming: writing != nil,
                                           partial: writing != nil && shown.state == .running,
-                                          fresh: arriving, bubbles: true, grow: grow)
+                                          fresh: arriving, bubbles: !projectStyle, grow: grow && !projectStyle)
                         // What you can do with it once it is all written out, in its menu.
                         .modifier(ChatAnswerMenu(browser: browser, chat: chat, asked: notebook || report != nil ? nil : asked?.text, answer: shown,
                                                  on: writing == nil && !writingOut && !failed))
@@ -605,7 +609,7 @@ private struct ChatTurn: View, Equatable {
                         .onPreferenceChange(ChatWords.Rendered.self) { renderedWords = $0 }
                         .transition(still || !arriving || grow ? .identity : ChatArrival.message)
                 } else if writing == nil, !working, !failed, messages.isEmpty, !fallen.isEmpty {
-                    ChatWords(text: fallen, streaming: false, bubbles: true)
+                    ChatWords(text: fallen, streaming: false, bubbles: !projectStyle)
                         .padding(.bottom, 2) // design: what follows the answer stands 8 under it
                         .onPreferenceChange(ChatWords.Rendered.self) { renderedWords = $0 }
                 }

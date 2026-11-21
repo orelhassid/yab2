@@ -258,11 +258,11 @@ function render() {
   lastProject = project;
   screen = parts.at(-1);
   const taskRoute = screen.startsWith('tasks-') && buildPlans.get(project)?.has(screen.slice(6));
-  if (!views.includes(screen) && !selectedFeature() && !taskRoute) screen = 'overview';
+  if (!(nativeSpace && screen === 'integrations') && !views.includes(screen) && !selectedFeature() && !taskRoute) screen = 'overview';
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  if (screen === 'settings' && nativeSpace) content.replaceChildren();
+  if (['settings','integrations'].includes(screen) && nativeSpace) content.replaceChildren();
   else if (screen === 'settings') renderSettings();
   else if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
   else if (screen === 'specs' || screen === 'pitch') content.innerHTML = productIndex();
@@ -291,6 +291,11 @@ function go(route) {
   location.hash = pathFor(project,route);
 }
 function discuss(label, route) {
+  if (nativeSpace) {
+    window.webkit.messageHandlers.toolbar.postMessage({project, discuss:label});
+    if (layoutMode !== 'full' && narrowLayout.matches) setLayout('chat');
+    return;
+  }
   const chip = document.querySelector('#context');
   chip.hidden = false;
   chip.replaceChildren();
@@ -461,7 +466,7 @@ function reportToolbar() {
   const bottom = layoutMode === 'full' ? document.querySelector('.composer').getBoundingClientRect().top - 8 : pane.bottom;
   window.webkit?.messageHandlers?.toolbar?.postMessage({
     project, toolFrame:[pane.x,pane.y,pane.width,Math.max(0,bottom-pane.y)],
-    active:document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
+    active:screen === 'integrations' ? screen : document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
     mode:layoutMode,width:document.querySelector('#chat').offsetWidth
   });
 }

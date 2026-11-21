@@ -299,6 +299,10 @@ enum SpaceSurface {
         return Tone(lift.mixed(over: base.page, 0.07), lifted: true)
     }
 
+    static func navigationShade(for color: NSColor) -> Color {
+        Color.black.opacity(Tone(color).scheme == .dark ? 0.22 : 0.06)
+    }
+
     static func badge(on tone: Tone, emphasized: Bool = false) -> Color {
         Palette.pin(on: tone, dark: tone.scheme == .dark, hovering: emphasized)
     }

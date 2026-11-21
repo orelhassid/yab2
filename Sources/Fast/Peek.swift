@@ -173,7 +173,10 @@ struct Column: View {
                 // changes, on the row's spring (CardGround, SpaceWash).
                 .background {
                     ZStack {
-                        if let paint { ownGround(paint) }
+                        if let paint {
+                            ownGround(paint)
+                            if browser.developmentLook != nil { SpaceSurface.navigationShade(for: paint.color) }
+                        }
                     }
                     // Taken or given back at once when Window changes, with
                     // the window's ground (ContentView): faded, it let the
