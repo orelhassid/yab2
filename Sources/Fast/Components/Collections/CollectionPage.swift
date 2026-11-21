@@ -2,7 +2,6 @@ import SwiftUI
 
 struct CollectionPage: View {
     @Binding var collection: PageCollection
-    let prefs: Preferences
     @Binding var adding: Bool
     @State private var selection = Set<UUID>()
     let openRecord: (OpenRecord) -> Void
@@ -85,7 +84,7 @@ struct CollectionPage: View {
             }.padding(20).frame(width: 320).background(tone?.color ?? Palette.ground)
         }
         .sheet(isPresented: $adding) {
-            CollectionEntryForm(collection: collection, prefs: prefs, filters: view.filters) { entry in
+            CollectionEntryForm(collection: collection, filters: view.filters) { entry in
                 collection.entries.append(entry)
                 adding = false
             } cancel: { adding = false }
@@ -96,8 +95,9 @@ struct CollectionPage: View {
     private var toolbar: some View {
         HStack(spacing: SideBar.markGap) {
             ForEach(collection.views.prefix(2)) { item in
-                SidebarTabButton(title: item.name, selected: item.id == view.id, prefs: prefs, inTabStrip: true,
-                                 action: { collection.selectedView = item.id }) { Symbol("tablecells", size: 12) }
+                PageTabButton(title: item.name, symbol: "tablecells", selected: item.id == view.id) {
+                    collection.selectedView = item.id
+                }
             }
             RailMoreButton(title: "More views", selected: moreViews || index >= 2) { moreViews.toggle() }
                 .popover(isPresented: $moreViews) {

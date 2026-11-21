@@ -3103,6 +3103,30 @@ struct PrivateName: View {
     }
 }
 
+private struct SpaceHeadingStyle: ViewModifier {
+    @Environment(\.tabTitleSize) private var size
+    @Environment(\.tone) private var tone
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: .semibold)).foregroundStyle(Palette.muted(on: tone))
+    }
+}
+
+struct SpaceHeadingLabel<Mark: View>: View {
+    let title: String
+    @ViewBuilder let mark: () -> Mark
+
+    var body: some View {
+        HStack(spacing: SideBar.markGap) {
+            mark().frame(width: SideBar.mark, height: SideBar.mark)
+            Text(title).lineLimit(1)
+        }
+        .modifier(SpaceHeadingStyle())
+        .frame(height: SideBar.row)
+        .contentShape(Rectangle())
+    }
+}
+
 /// The name opens the Spaces tray. Its leading mark folds kept tabs.
 struct SpaceName: View {
     @Environment(\.sidebarSpaceActions) private var scope
@@ -3116,7 +3140,6 @@ struct SpaceName: View {
     @ObservedObject private var watched = Folders.shared
     private var folders: Folders { browser?.folderBook ?? .shared }
     @Environment(\.tone) private var tone
-    @Environment(\.tabTitleSize) private var titleSize
     @State private var onDots = false
     @State private var onStep: Int?
     @State private var hovering = false
@@ -3191,8 +3214,7 @@ struct SpaceName: View {
                 Text(space.name).lineLimit(1)
             }
         }
-        .font(.system(size: titleSize, weight: .semibold))
-        .foregroundStyle(Palette.muted(on: tone))
+        .modifier(SpaceHeadingStyle())
         .padding(.leading, SideBar.inner)
         .padding(.trailing, controlsWidth + CapsulePlan.gap) // design: reserve the hover controls at rest so the Space name never shifts.
         .frame(maxWidth: .infinity, alignment: .leading)

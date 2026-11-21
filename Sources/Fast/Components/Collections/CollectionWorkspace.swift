@@ -29,23 +29,10 @@ struct CollectionSidebar: View {
                     } rows: {
                         ForEach(library.collections) { collection in
                             SidebarTabButton(title: collection.name,
-                                             selected: browser.currentRecord == nil && (browser.collectionID ?? library.collections.first?.id) == collection.id,
+                                             selected: (browser.collectionID ?? library.collections.first?.id) == collection.id,
                                              prefs: browser.prefs, action: {
                                 browser.showCollection(collection.id)
                             }) { Symbol(collection.symbol, size: SideBar.mark) }
-                            ForEach(browser.recordTabs.filter { $0.collection == collection.id }) { tab in
-                                if let entry = collection.entries.first(where: { $0.id == tab.record }) {
-                                    HStack(spacing: 0) {
-                                        SidebarTabButton(title: entry.values["name"] ?? "", selected: browser.currentRecord == tab.id,
-                                                         prefs: browser.prefs, action: { browser.showRecord(tab) }) {
-                                            Symbol("doc", size: SideBar.mark)
-                                        }
-                                        RailButton("Close " + (entry.values["name"] ?? "record"), icon: "xmark", doorSize: .header) {
-                                            browser.closeRecord(tab)
-                                        }
-                                    }.padding(.leading, Folders.indent)
-                                }
-                            }
                         }
                     }
                 }
@@ -69,17 +56,10 @@ struct CollectionWorkspace: View {
                    let record = item.entries.first(where: { $0.id == tab.record }) {
                     RecordPage(browser: browser, collection: $library.collections[i], tab: tab, record: record)
                 } else {
-                    TabWindowHeader(selection: Optional<UUID>.none) {
-                        HStack(spacing: SideBar.markGap) {
-                            SidebarTabLabel(title: item.name) { Symbol(item.symbol, size: SideBar.mark) }
-                        }.padding(.horizontal, SideBar.inner)
-                    } tabs: { EmptyView() } actions: {
-                        ColumnDoor(browser: browser, prefs: browser.prefs).environment(\.doorSize, .header)
-                    }
-                    .padding(.horizontal, SideBar.margin)
-                    .frame(height: NavigationHeader.height(topInset: 0))
-                    Divider()
-                    CollectionPage(collection: $library.collections[i], prefs: browser.prefs, adding: $browser.creatingCollectionRecord,
+                    CollectionTemplateHeader(browser: browser) {
+                        SpaceHeadingLabel(title: item.name) { Symbol(item.symbol, size: SideBar.mark) }
+                    } actions: { EmptyView() }
+                    CollectionPage(collection: $library.collections[i], adding: $browser.creatingCollectionRecord,
                                    openRecord: { browser.showRecord($0) }, pagesByView: $browser.collectionPages)
                         .id(item.id)
                 }
@@ -99,5 +79,23 @@ struct CollectionWorkspace: View {
                 .environment(browser)
                 .background(Color(nsColor: paint.color))
         }
+    }
+}
+
+struct CollectionTemplateHeader<Heading: View, Actions: View>: View {
+    let browser: Browser
+    @ViewBuilder let heading: () -> Heading
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        TabWindowHeader(selection: Optional<UUID>.none) {
+            heading().padding(.horizontal, SideBar.inner)
+        } tabs: { EmptyView() } actions: {
+            actions()
+            ColumnDoor(browser: browser, prefs: browser.prefs).environment(\.doorSize, .header)
+        }
+        .padding(.horizontal, SideBar.margin)
+        .frame(height: NavigationHeader.height(topInset: 0))
+        Divider()
     }
 }

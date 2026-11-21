@@ -52,6 +52,10 @@ The Collections window header shows the collection switcher. Keep saved-view tab
 
 Record pages reuse the shared window switcher, themed search, card fields, dropdowns and Yab buttons. Use these components for inputs in place of stock form controls.
 
+Use the Home capsule `PageTabButton` for collection views, record tabs and
+record creation templates. Keep record destinations inside the collection.
+Both templates use `CollectionTemplateHeader`.
+
 ## Collection grids
 
 In `CollectionDataGrid`, header, value and calculation cells share square,

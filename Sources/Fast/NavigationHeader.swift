@@ -143,6 +143,7 @@ struct TabWindowSwitcher<Item: Identifiable, Icon: View, RowIcon: View>: View {
     let title: String
     let prefs: Preferences
     let items: [Item]
+    var spaceHeading = false
     var searchPrompt: String? = nil
     @State private var search = ""
     @FocusState private var searchFocused: Bool
@@ -155,8 +156,15 @@ struct TabWindowSwitcher<Item: Identifiable, Icon: View, RowIcon: View>: View {
     @Environment(\.tone) private var tone
 
     var body: some View {
-        SidebarTabButton(title: title, selected: open, prefs: prefs, inTabStrip: true,
-                         showsDisclosure: true, action: { open.toggle() }, mark: icon)
+        Group {
+            if spaceHeading {
+                Button { open.toggle() } label: { SpaceHeadingLabel(title: title, mark: icon) }
+                    .buttonStyle(.plain)
+            } else {
+                SidebarTabButton(title: title, selected: open, prefs: prefs, inTabStrip: true,
+                                 showsDisclosure: true, action: { open.toggle() }, mark: icon)
+            }
+        }
             .popover(isPresented: $open, arrowEdge: .bottom) {
                 let matches = search.isEmpty ? items : items.filter { label($0).localizedCaseInsensitiveContains(search) }
                 VStack(alignment: .leading, spacing: 4) {

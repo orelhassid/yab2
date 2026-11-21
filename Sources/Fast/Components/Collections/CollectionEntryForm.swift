@@ -2,7 +2,6 @@ import SwiftUI
 
 struct CollectionEntryForm: View {
     let collection: PageCollection
-    let prefs: Preferences
     let filters: [CollectionFilter]
     let save: (CollectionEntry) -> Void
     let cancel: () -> Void
@@ -43,10 +42,8 @@ struct CollectionEntryForm: View {
             Divider()
             HStack(spacing: SideBar.markGap) {
                 ForEach(["Blank", collection.creationTemplateName].compactMap { $0 }, id: \.self) { title in
-                    SidebarTabButton(title: title, selected: title == active, prefs: prefs, inTabStrip: true,
-                                     action: { active = title }) {
-                        Symbol(title == "Blank" ? "doc" : collection.symbol, size: SideBar.mark)
-                    }
+                    PageTabButton(title: title, symbol: title == "Blank" ? "doc" : collection.symbol,
+                                  selected: title == active) { active = title }
                 }
             }.padding(.horizontal, 12).padding(.vertical, 6)
             Divider()

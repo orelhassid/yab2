@@ -45,8 +45,26 @@ struct CollectionPageTests {
         #expect(reopened.recordTemplate == layout)
         #expect(layout.groups.last?.fields.contains("client") == true)
         #expect(!layout.groups[0].fields.contains("client"))
-        #expect(layout.buttons.map(\.title) == ["Mark paid", "Copy invoice number"])
+        #expect(layout.buttons.isEmpty)
         #expect(RecordTemplate(collection: CollectionTemplate.blank.make(name: "Notes")).buttons.isEmpty)
+    }
+
+    @Test func untouchedLegacyInvoiceButtonsAreRemovedAndConfiguredActionsSurvive() throws {
+        var collection = CollectionTemplate.invoices.make(name: "Bills")
+        var layout = RecordTemplate(collection: collection)
+        layout.configuredButtons = nil
+        layout.buttons = [.init(title: "Mark paid", command: .set, field: "status", value: "Paid"),
+                          .init(title: "Copy invoice number", command: .copy, field: "name")]
+        collection.recordTemplate = layout
+        let reopened = try JSONDecoder().decode(PageCollection.self, from: JSONEncoder().encode(collection))
+        #expect(reopened.resolvedRecordTemplate.buttons.isEmpty)
+        layout.buttons[1].title = "Copy reference"
+        collection.recordTemplate = layout
+        #expect(collection.resolvedRecordTemplate.buttons == layout.buttons)
+        layout.buttons[1].title = "Copy invoice number"
+        layout.configuredButtons = true
+        collection.recordTemplate = layout
+        #expect(collection.resolvedRecordTemplate.buttons == layout.buttons)
     }
 
     @Test func savedViewSurvivesReloadWithFilteredCalculations() throws {

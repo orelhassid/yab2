@@ -12,7 +12,7 @@ struct RecordTemplateEditor: View {
         self.collection = collection
         self.save = save
         self.cancel = cancel
-        _draft = State(initialValue: collection.recordTemplate ?? RecordTemplate(collection: collection))
+        _draft = State(initialValue: collection.resolvedRecordTemplate)
     }
 
     private var valid: Bool {

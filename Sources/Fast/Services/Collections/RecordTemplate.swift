@@ -22,6 +22,7 @@ struct RecordTemplate: Codable, Equatable {
     var groups: [RecordGroup]
     var buttons: [RecordButtonProperty]
     var tabs: [String]
+    var configuredButtons: Bool? = true
 
     init(collection: PageCollection) {
         order = collection.properties.dropFirst().map(\.id)
@@ -36,16 +37,35 @@ struct RecordTemplate: Codable, Equatable {
             let payment = fields.filter { ["status", "amount"].contains($0) }
             groups = [RecordGroup(title: "Invoice details", fields: fields.filter { !payment.contains($0) }),
                       RecordGroup(title: "Payment", fields: payment)].filter { !$0.fields.isEmpty }
-            if fields.contains("status") {
-                buttons.append(.init(title: "Mark paid", command: .set, field: "status", value: "Paid"))
-            }
-            buttons.append(.init(title: "Copy invoice number", command: .copy, field: "name"))
         }
     }
 
     mutating func move(field: String, to group: UUID?) {
         for i in groups.indices { groups[i].fields.removeAll { $0 == field } }
         if let i = groups.firstIndex(where: { $0.id == group }) { groups[i].fields.append(field) }
+    }
+}
+
+extension PageCollection {
+    var resolvedRecordTemplate: RecordTemplate {
+        guard var saved = recordTemplate else { return RecordTemplate(collection: self) }
+        guard saved.configuredButtons == nil else { return saved }
+        let initial = RecordTemplate(collection: self)
+        // Older builds saved the untouched invoice preset on first open.
+        // Preserve edited layouts and buttons deliberately configured in newer builds.
+        if !initial.groups.isEmpty,
+           saved.order == initial.order, saved.tabs == initial.tabs,
+           saved.groups.map(\.title) == initial.groups.map(\.title),
+           saved.groups.map(\.fields) == initial.groups.map(\.fields) {
+            let copy = RecordButtonProperty(title: "Copy invoice number", command: .copy, field: "name")
+            let paid = RecordButtonProperty(title: "Mark paid", command: .set, field: "status", value: "Paid")
+            let preset = properties.contains { $0.id == "status" } ? [paid, copy] : [copy]
+            if saved.buttons.count == preset.count && zip(saved.buttons, preset).allSatisfy({ old, expected in
+                old.title == expected.title && old.command == expected.command && old.field == expected.field && old.value == expected.value
+            }) { saved.buttons = [] }
+        }
+        saved.configuredButtons = true
+        return saved
     }
 }
 

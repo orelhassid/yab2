@@ -450,6 +450,26 @@ private struct HomeControl<Outline: InsettableShape, Label: View>: View {
     }
 }
 
+/// Compact page navigation shared by Home and template views.
+struct PageTabButton: View {
+    let title: String
+    var symbol: String?
+    var showsTitle = true
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HomeControl(outline: Capsule(), selected: selected, action: action) {
+            HStack(spacing: 6) {
+                if let symbol { Image(systemName: symbol) }
+                if showsTitle { Text(title).lineLimit(1) }
+            }.font(CardFrame.title).padding(.horizontal, 12).padding(.vertical, 8)
+        }
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 private struct HomeHiddenTabs: View {
     @AppStorage("home.hiddenLibraries", store: Store.settings) private var hidden = ""
     private var hiddenKeys: [String] { hidden.split(separator: ",").map(String.init) }
@@ -604,12 +624,10 @@ struct HomeNavigation: View {
     }
 
     private func tab(_ title: String, key: String) -> some View {
-        HomeControl(outline: Capsule(), selected: selected == key, action: { selected = key }) {
-            HStack(spacing: 6) {
-                if let page = LibraryPage(rawValue: key), display != "Text only" { Image(systemName: page.icon) }
-                if !Self.standard.contains(key) || display != "Icon only" { Text(title) }
-            }.font(CardFrame.title).padding(.horizontal, 12).padding(.vertical, 8)
-        }.accessibilityLabel(title + " Home tab").accessibilityAddTraits(selected == key ? .isSelected : [])
+        PageTabButton(title: title, symbol: display == "Text only" ? nil : LibraryPage(rawValue: key)?.icon,
+                      showsTitle: !Self.standard.contains(key) || display != "Icon only",
+                      selected: selected == key) { selected = key }
+        .accessibilityLabel(title + " Home tab")
         .modifier(HomeDropTarget(area: HomeDropArea(tabKey: UUID(uuidString: key) == nil ? nil : key, reorder: { reorder($0, onto: key) }, activate: { selected = key }) { source, _ in
             guard key == "overview" || UUID(uuidString: key) != nil else { return false }
             return moveShortcut(source, data: &savedShortcuts, to: UUID(uuidString: key))
