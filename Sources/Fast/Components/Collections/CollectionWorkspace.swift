@@ -29,14 +29,14 @@ struct CollectionSidebar: View {
                     } rows: {
                         ForEach(library.collections) { collection in
                             SidebarTabButton(title: collection.name,
-                                             selected: browser.currentRecord == nil && !browser.creatingCollection && (browser.collectionID ?? library.collections.first?.id) == collection.id,
+                                             selected: browser.currentRecord == nil && (browser.collectionID ?? library.collections.first?.id) == collection.id,
                                              prefs: browser.prefs, action: {
                                 browser.showCollection(collection.id)
                             }) { Symbol(collection.symbol, size: SideBar.mark) }
                             ForEach(browser.recordTabs.filter { $0.collection == collection.id }) { tab in
                                 if let entry = collection.entries.first(where: { $0.id == tab.record }) {
                                     HStack(spacing: 0) {
-                                        SidebarTabButton(title: entry.values["name"] ?? "", selected: browser.currentRecord == tab.id && !browser.creatingCollection,
+                                        SidebarTabButton(title: entry.values["name"] ?? "", selected: browser.currentRecord == tab.id,
                                                          prefs: browser.prefs, action: { browser.showRecord(tab) }) {
                                             Symbol("doc", size: SideBar.mark)
                                         }
@@ -63,12 +63,7 @@ struct CollectionWorkspace: View {
         let look = browser.developmentLook ?? SpacePaint(browser.prefs)
         let paint = SpaceWash.painted(look)
         VStack(alignment: .leading, spacing: 0) {
-            if browser.creatingCollection {
-                CollectionSetup { collection in
-                    library.collections.append(collection)
-                    browser.showCollection(collection.id)
-                } cancel: { browser.creatingCollection = false }
-            } else if let i = library.collections.firstIndex(where: { $0.id == browser.collectionID }) ?? library.collections.indices.first {
+            if let i = library.collections.firstIndex(where: { $0.id == browser.collectionID }) ?? library.collections.indices.first {
                 let item = library.collections[i]
                 if let tab = browser.recordTabs.first(where: { $0.collection == item.id && $0.id == browser.currentRecord }),
                    let record = item.entries.first(where: { $0.id == tab.record }) {
@@ -94,83 +89,18 @@ struct CollectionWorkspace: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(isPresented: $browser.creatingCollection) {
+            CollectionSetup { collection in
+                library.collections.append(collection)
+                browser.showCollection(collection.id)
+            } cancel: { browser.creatingCollection = false }
+            .toned(SpaceSurface.tone(for: paint.color))
+        }
         .toned(SpaceSurface.tone(for: paint.color))
         .background {
             CardGround(paint: paint, step: look.shift ? browser.lookStep : 0)
                 .environment(browser)
                 .background(Color(nsColor: paint.color))
         }
-    }
-}
-
-private struct CollectionSetup: View {
-    let create: (PageCollection) -> Void
-    let cancel: () -> Void
-    @State private var template = CollectionTemplate.blank
-    @State private var name = ""
-    @State private var symbol = CollectionTemplate.blank.symbol
-    @State private var draft: PageCollection?
-    @State private var newProperty = ""
-    @State private var excluded: Set<String> = []
-
-    var body: some View {
-        Form {
-            if let draft {
-                Section("Properties") {
-                    ForEach(draft.properties) { property in
-                        HStack {
-                            Toggle(property.title, isOn: Binding(get: { !excluded.contains(property.id) }, set: { on in
-                                if on { excluded.remove(property.id) } else { excluded.insert(property.id) }
-                            })).disabled(property.id == "name")
-                            Spacer()
-                            Toggle("Required", isOn: Binding(get: { property.required }, set: { required in
-                                guard let i = self.draft?.properties.firstIndex(where: { $0.id == property.id }) else { return }
-                                self.draft?.properties[i].required = required
-                            })).disabled(property.id == "name" || excluded.contains(property.id))
-                        }
-                    }
-                    TextField("New property", text: $newProperty)
-                    Button("Add property") {
-                        self.draft?.properties.append(.init(id: UUID().uuidString, title: newProperty))
-                        newProperty = ""
-                    }.disabled(newProperty.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                HStack {
-                    Button("Back") { self.draft = nil }
-                    Button("Create Collection") {
-                        var result = draft
-                        result.properties.removeAll { excluded.contains($0.id) }
-                        let keys = Set(result.properties.map(\.id))
-                        for i in result.views.indices {
-                            result.views[i].filters.removeAll { !keys.contains($0.property) }
-                        }
-                        create(result)
-                    }
-                }
-            } else {
-                Section("New Collection") {
-                    Picker("Template", selection: $template) {
-                        ForEach(CollectionTemplate.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .onChange(of: template) { old, value in
-                        if name.isEmpty || name == old.rawValue { name = value == .blank ? "" : value.rawValue }
-                        symbol = value.symbol
-                    }
-                    TextField("Collection name", text: $name)
-                    Picker("Icon", selection: $symbol) {
-                        ForEach(CollectionTemplate.allCases, id: \.self) { Image(systemName: $0.symbol).tag($0.symbol) }
-                    }
-                }
-                HStack {
-                    Button("Cancel", action: cancel)
-                    Button(template == .blank ? "Create Collection" : "Customize") {
-                        var item = template.make(name: name.trimmingCharacters(in: .whitespacesAndNewlines))
-                        item.symbol = symbol
-                        if template == .blank { create(item) } else { excluded.removeAll(); draft = item }
-                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
-        .formStyle(.grouped)
     }
 }

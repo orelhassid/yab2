@@ -93,16 +93,20 @@ enum CollectionTemplate: String, CaseIterable, Codable {
         }
     }
 
-    func make(name: String) -> PageCollection {
-        let fields: [String]
-        let filtered: [(String, String)]
+    private var configuration: (fields: [String], filters: [(String, String)]) {
         switch self {
-        case .blank: fields = []; filtered = []
-        case .contacts: fields = ["Company", "Status"]; filtered = [("Active", "Active")]
-        case .projects: fields = ["Owner", "Status"]; filtered = [("In progress", "In progress")]
-        case .tasks: fields = ["Assignee", "Status"]; filtered = [("Open", "Open")]
-        case .invoices: fields = ["Client", "Status", "Amount"]; filtered = [("Outstanding", "Unpaid"), ("Paid", "Paid")]
+        case .blank: return ([], [])
+        case .contacts: return (["Company", "Status"], [("Active", "Active")])
+        case .projects: return (["Owner", "Status"], [("In progress", "In progress")])
+        case .tasks: return (["Assignee", "Status"], [("Open", "Open")])
+        case .invoices: return (["Client", "Status", "Amount"], [("Outstanding", "Unpaid"), ("Paid", "Paid")])
         }
+    }
+
+    var fieldTitles: [String] { configuration.fields }
+
+    func make(name: String) -> PageCollection {
+        let (fields, filtered) = configuration
         let properties = ([name.singularCollectionTitle] + fields).enumerated().map { index, title in
             CollectionProperty(id: index == 0 ? "name" : title.lowercased(), title: title, required: index == 0, numeric: index > 0 && title == "Amount")
         }

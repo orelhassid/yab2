@@ -66,7 +66,7 @@ struct RecordTemplateEditor: View {
                         let id = button.id
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                RecordCardField("Button name", text: $button.title)
+                                YabFormField("Button name", text: $button.title)
                                 ordering(button.id, ids: draft.buttons.map(\.id), name: button.title) { draft.buttons.swapAt($0, $1) }
                                 remove(button.title) { draft.buttons.removeAll { $0.id == id } }
                             }
@@ -75,7 +75,7 @@ struct RecordTemplateEditor: View {
                                          selection: $button.command)
                                 DropMenu("Property", options: collection.properties.map { .init(title: $0.title, value: $0.id) },
                                          selection: $button.field)
-                                if button.command == .set { RecordCardField("Value", text: $button.value) }
+                                if button.command == .set { YabFormField("Value", text: $button.value) }
                             }
                         }
                     }
@@ -130,27 +130,10 @@ struct RecordTemplateEditor: View {
     private func addRow(_ type: String, name: Binding<String>, existing: [String], add: @escaping (String) -> Void) -> some View {
         let trimmed = name.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return HStack {
-            RecordCardField(type + " name", text: name)
+            YabFormField(type + " name", text: name)
             Button("Add " + type.lowercased()) { add(trimmed); name.wrappedValue = "" }
                 .buttonStyle(.yab(.secondary, .small))
                 .disabled(trimmed.isEmpty || existing.contains { $0.localizedCaseInsensitiveCompare(trimmed) == .orderedSame })
         }
-    }
-}
-
-private struct RecordCardField: View {
-    let title: String
-    @Binding var text: String
-    @FocusState private var typing: Bool
-
-    init(_ title: String, text: Binding<String>) {
-        self.title = title
-        _text = text
-    }
-
-    var body: some View {
-        TextField("", text: $text).textFieldStyle(.plain).focused($typing)
-            .modifier(CardField(hint: title, empty: text.isEmpty, typing: typing))
-            .accessibilityLabel(title)
     }
 }
