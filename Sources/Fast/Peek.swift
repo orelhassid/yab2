@@ -222,11 +222,12 @@ struct Column: View {
                             .transition(.identity)
                     }
                 }
-                // Above the column's clip and hairlines: open, the island
-                // can stand over its edge without the border crossing its
-                // card or its controls (PlayerBand.swift).
+                // Keep the island's glass above the column's clip, with
+                // the same Trail inset as the sidebar rows.
                 .overlay(alignment: left ? .bottomLeading : .bottomTrailing) {
-                    BandSlot(player: browser.player, prefs: prefs, room: browser.player.room, column: width, trailing: !left, edge: browser.bandEdge, foot: !ColumnKit.cut.contains("foot"))
+                    BandSlot(player: browser.player, prefs: prefs, room: browser.player.room, column: width,
+                             rail: browser.railInsideColumn, trailing: !left, edge: browser.bandEdge,
+                             foot: !ColumnKit.cut.contains("foot"))
                         .toned(ink ?? worn)
                         // The island stands outside the rows' clip, so it
                         // also needs their fade under the downloads stack.
@@ -391,12 +392,7 @@ final class ColumnView: NSView {
         // From the edge the column is on.
         let x = browser.flank == .left ? local.x : bounds.width - local.x
         guard x >= railWidth else { return nil }
-        // The island's open card may stand out over the page from the
-        // column's foot: there it takes the pointer where its glass is.
-        guard x <= width else {
-            let hit = super.hitTest(point)
-            return hit is BandView ? hit : nil
-        }
+        guard x <= width else { return nil }
         return super.hitTest(point)
     }
 
@@ -716,8 +712,7 @@ final class ColumnView: NSView {
         }
         let mask = CAShapeLayer()
         mask.frame = layer.bounds
-        // Far past the window on every side, for the island's card out over
-        // the page, with the band cut out of it.
+        // Keep the column and its floating shadow visible outside the band.
         let path = CGMutablePath()
         path.addRect(layer.bounds.insetBy(dx: -4000, dy: -4000))
         path.addRect(band)

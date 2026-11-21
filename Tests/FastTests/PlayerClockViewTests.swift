@@ -17,7 +17,6 @@ struct PlayerClockViewTests {
         let source = Fast.Tab(shy: true, configuration: Web.configuration(shy: true, extensions: false))
         let notes = Fast.Tab(shy: true, configuration: Web.configuration(shy: true, extensions: false))
         let view = BandView(frame: NSRect(x: 0, y: 0, width: 360, height: Band.reach))
-        view.rest = 360
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
         let window = NSWindow(contentRect: root.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

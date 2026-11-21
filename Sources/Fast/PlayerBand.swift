@@ -19,8 +19,7 @@ import SwiftUI
 // The curves are concentric, as Apple asks of glass in glass: the capsule's
 // is half its height, the cover in it is round on the same center (the
 // capsule's 14 less its 4 inset), a bud is a circle and its cover one too.
-// Open, the card is a card (Radius.card: CardFrame.inset plus a control's
-// corner) and the cover in it has a control's corner, CardFrame.inset in.
+// Open, the panel uses Radius.floating and its cover uses Radius.control.
 //
 // The glass is the system's: NSGlassEffectView in one container, so the
 // island and its buds melt together when near and part with a neck as they
@@ -34,19 +33,11 @@ import SwiftUI
 enum Band {
     /// The island at rest: a capsule a little taller than a tab row.
     static let row: CGFloat = 30
-    /// It stands this far in from the column's side, and this far over
-    /// the foot, which keeps the column's bottom as in Arc (row 1090): the
-    /// window's 18 less the capsule's 15. With no foot it hugs the
-    /// column's corner, the two curves sharing a center.
+    /// The vertical gap over the column's foot: the window's radius less
+    /// the capsule's. With no foot it keeps the capsule inside the corner.
     static let edge: CGFloat = Radius.window - foot
-    /// Its bottom corners: the capsule's half height, as its top ones, one
-    /// whole capsule; open, the card's top ones are the card's.
+    /// The capsule's corner radius.
     static let foot: CGFloat = row / 2
-    /// Open, the card is never narrower than this: in a column narrower
-    /// than the usual 240 it stands out over the page rather than squeezing
-    /// its buttons; in that one it is the island's width, inside the
-    /// column, the edge in from both of its sides.
-    static let minCard: CGFloat = 224
     /// The cover at rest, round, the capsule's inset in, so its curve and
     /// the capsule's share a center.
     static let inset: CGFloat = 4
@@ -103,10 +94,7 @@ enum Band {
 /// The island as SwiftUI places it.
 struct PlayerBand: NSViewRepresentable {
     let player: Player
-    /// The island's width at rest: the column's, less its insets.
-    let rest: CGFloat
-    /// The column is on the window's right: the view stands at its right
-    /// end and the open card grows leftward, over the page.
+    /// The column is on the window's right.
     let trailing: Bool
     @Environment(\.colorScheme) private var scheme
     @Environment(\.tone) private var tone
@@ -118,38 +106,36 @@ struct PlayerBand: NSViewRepresentable {
     }
 
     func updateNSView(_ view: BandView, context: Context) {
-        view.rest = rest
         view.trailing = trailing
         view.look(dark: scheme == .dark, toned: tone != nil)
     }
 }
 
-/// The island at the column's bottom, over the foot: laid over the column
-/// (Column, Peek.swift), outside its clip, so the open card can stand out
-/// over the page when the column is narrower than the card. The view is as
-/// tall as the island open with its rows and as wide as the card; it takes
-/// the pointer only where the glass is (BandView.hitTest).
+/// The island at the column's bottom, over the foot. Both shapes fit inside
+/// the sidebar content beside the Trail.
 struct BandSlot: View {
     let player: Player
     @ObservedObject var prefs: Preferences
     @ObservedObject var room: PlayerRoom
     /// The column's width now.
     let column: CGFloat
-    /// The column is on the window's right: the slot is pinned to its
-    /// right end, so the card's excess goes over the page, not past the
-    /// window's edge.
+    /// The Trail's width when it shares this edge.
+    var rail: CGFloat = 0
+    /// The column is on the window's right.
     var trailing = false
-    /// In from the column's side and over the foot (Browser.bandEdge).
+    /// The gap over the foot (Browser.bandEdge).
     var edge = Band.edge
     /// The column has its foot, which the island stands over (Band.base).
     var foot = true
 
     var body: some View {
-        if prefs.showsPlayer {
-            let rest = max(0, column - 2 * edge)
-            PlayerBand(player: player, rest: rest, trailing: trailing)
-                .frame(width: max(rest, Band.minCard), height: Band.reach)
-                .padding(trailing ? .trailing : .leading, edge)
+        let margin = max(edge, SideBar.margin)
+        let width = column - rail - 2 * margin
+        if prefs.showsPlayer, width > 0 {
+            PlayerBand(player: player, trailing: trailing)
+                .frame(width: width, height: Band.reach)
+                .padding(.horizontal, margin)
+                .padding(trailing ? .trailing : .leading, rail)
                 .padding(.bottom, Band.base(edge: edge, foot: foot))
         }
     }
@@ -802,16 +788,7 @@ final class BandView: NSView {
     // MARK: geometry
 
     private var width: CGFloat { bounds.width }
-    /// The island's width at rest, the column's less its insets; open, the
-    /// card takes the view's whole width, never less than Band.minCard.
-    var rest: CGFloat = 0 {
-        didSet { if rest != oldValue { repaint() } }
-    }
-
-    /// The column on the window's right: the view's right end is the
-    /// column's, and the island at rest is the left one mirrored, against
-    /// the window's edge with its buds toward the page, so the open card,
-    /// the view's whole width, grows from that corner leftward over it.
+    /// Mirror the collapsed island on the right so its buds face the page.
     var trailing = false {
         didSet { if trailing != oldValue { repaint() } }
     }
@@ -831,9 +808,9 @@ final class BandView: NSView {
     /// The island's width at rest: the column's, less its buds.
     private func pillWidth(_ others: Int) -> CGFloat {
         switch others {
-        case 0: return rest
-        case 1: return rest - Band.bud - Band.split
-        default: return rest - Band.bud - Band.split - Band.peek
+        case 0: return width
+        case 1: return max(0, width - Band.bud - Band.split)
+        default: return max(0, width - Band.bud - Band.split - Band.peek)
         }
     }
 
@@ -843,7 +820,7 @@ final class BandView: NSView {
         open ? CGRect(x: 0, y: 0, width: width, height: Band.card) : side(CGRect(x: 0, y: 0, width: pillWidth(others), height: Band.row))
     }
 
-    private var islandCorner: CGFloat { open ? Radius.card : Band.row / 2 }
+    private var islandCorner: CGFloat { open ? Radius.floating : Band.foot }
 
     /// The cover: round at rest, a control's corner open.
     private var coverFrame: CGRect {
@@ -858,7 +835,7 @@ final class BandView: NSView {
     private var openWords: CGFloat { max(0, width - openX - CardFrame.inset - BarsLayer.width - 8) }
     /// Open, the progress line's middle, 16 under the cover, and how long it is.
     private var lineY: CGFloat { Band.card - CardFrame.inset - Band.art - 16 }
-    private var lineWidth: CGFloat { width - 2 * CardFrame.inset }
+    private var lineWidth: CGFloat { max(0, width - 2 * CardFrame.inset) }
 
     /// The widths the words have at rest: the title's, and the artist's
     /// after it, both going out before the bars.
@@ -914,12 +891,14 @@ final class BandView: NSView {
             return CGRect(x: x, y: off, width: Band.small, height: Band.small)
         }
         let at: CGFloat = door === previous || door === back ? -1 : door === next || door === forward ? 1 : 0
-        // A door and 12 apart; in a narrow card the room between the way
-        // back and the sound shared out evenly, the gaps at the ends the
-        // same as between the doors.
+        // Share the space between the end controls, leaving four points
+        // between buttons for their two-point hit extensions.
         let ends = 2 * (mid - Band.small / 2 + Band.small)
-        let step = min(Band.door + 12, Band.door + (width - ends - 3 * Band.door) / 4)
-        return CGRect(x: width / 2 + at * step - Band.door / 2, y: mid - Band.door / 2, width: Band.door, height: Band.door)
+        let room = max(0, width - ends)
+        let gap: CGFloat = 4
+        let size = min(Band.door, max(0, room - 4 * gap) / 3)
+        let step = size + min(12, (room - 3 * size) / 4)
+        return CGRect(x: width / 2 + at * step - size / 2, y: mid - size / 2, width: size, height: size)
     }
 
     // MARK: laying it out
@@ -936,7 +915,7 @@ final class BandView: NSView {
             context.timingFunction = curve
             context.allowsImplicitAnimation = move
             if move { island.animator().frame = frame } else { island.frame = frame }
-            IslandGlass.corner(island, top: islandCorner, bottom: Band.foot)
+            IslandGlass.corner(island, top: islandCorner, bottom: islandCorner)
             let ids = face?.others.map(\.tab) ?? []
             for (i, id) in ids.enumerated() {
                 guard let glass = budGlass[id] else { continue }
@@ -958,7 +937,7 @@ final class BandView: NSView {
     private func placeLayers(animated: Bool, time: CFTimeInterval, curve: CAMediaTimingFunction) {
         let shape = islandFrame
         glide(faceLayer, to: shape, animated: animated, time: time, curve: curve)
-        faceLayer.cornerRadius = min(islandCorner, Band.foot)
+        faceLayer.cornerRadius = islandCorner
         glide(cover, to: coverFrame, animated: animated, time: time, curve: curve)
         cover.cornerRadius = coverCorner
         let slots = self.slots(for: face)
