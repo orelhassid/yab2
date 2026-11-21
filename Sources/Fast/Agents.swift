@@ -763,7 +763,7 @@ final class Agents: ObservableObject {
                               prompt: chat.items.first { $0.kind == .asked }?.text ?? chat.title, state: ended, remoteTask: chat.remoteTask)
         if session.remoteTask != nil { session.movable = false }
         if let details = DevelopmentDirectory.shared.entries.values.first(where: { $0.chatID == chat.id }), chat.cli == "codex" {
-            session.developmentFolder = details.folder
+            session.developmentFolder = details.availableSourceFolder
             session.full = false
             session.movable = false
         }
@@ -1065,7 +1065,7 @@ final class Agents: ObservableObject {
         }
         session.developmentWrite = cli == "codex" && development?.canWriteProject == true
         if let development {
-            session.developmentFolder = cli == "codex" ? development.folder : nil
+            session.developmentFolder = cli == "codex" ? development.availableSourceFolder : nil
             session.model = development.choice.model
             session.effort = development.choice.effort
         }

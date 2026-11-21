@@ -52,6 +52,13 @@ struct DevelopmentDetails: Codable, Equatable {
 
     var canWriteProject: Bool { workspaceWrite ?? true }
 
+    var availableSourceFolder: String? {
+        var directory: ObjCBool = false
+        guard !folder.isEmpty, FileManager.default.fileExists(atPath: folder, isDirectory: &directory),
+              directory.boolValue else { return nil }
+        return folder
+    }
+
     var cli: String { provider ?? "codex" }
     var choice: ModelChoice { modelChoices?[cli] ?? ModelChoice(cli: cli) }
     var selectedChatID: String? {

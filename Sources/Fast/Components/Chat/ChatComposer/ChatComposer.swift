@@ -590,6 +590,7 @@ struct ChatComposer: View {
         case 36, 76:
             if modifiers.contains(.shift) || modifiers.contains(.option) { return false }
             if words.isEmpty, let asking, choosing, ChatChoosing.shared.pickLit(asking) { return true }
+            if modifiers.isEmpty, mentionQuery != nil, pickMention() { return true }
             send(later: modifiers.contains(.command))
             return true
         case 48 where modifiers.isEmpty && activeMention != nil:
@@ -834,7 +835,6 @@ struct ChatComposer: View {
     private func send(later: Bool) {
         let text = trimmed
         if let development, asking == nil {
-            if mentionQuery != nil, pickMention() { return }
             guard trouble == nil, !text.isEmpty || alone else { return }
             let mentions = DevelopmentDraft.mentioned(in: projectDraft)
             let message = DevelopmentDraft.message(projectDraft)

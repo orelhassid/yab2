@@ -54,10 +54,8 @@ extension DevelopmentDirectory {
             browser.toaster.pop("Remove the disabled plugin or enable it in Development Settings", mark: "puzzlepiece.extension")
             return false
         }
-        var isDirectory: ObjCBool = false
-        guard details.cli != "codex" || (FileManager.default.fileExists(atPath: details.folder, isDirectory: &isDirectory) && isDirectory.boolValue) else {
-            browser.developmentContent.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
-            browser.toaster.pop("Choose a source folder for Codex", mark: "folder")
+        if !references.isEmpty, details.availableSourceFolder == nil {
+            browser.toaster.pop("Choose a source folder in Project settings to use skills or plugins", mark: "folder")
             return false
         }
         let tabs = ChatAttachment.tabs(context, in: browser)

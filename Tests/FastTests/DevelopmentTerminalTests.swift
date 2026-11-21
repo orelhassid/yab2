@@ -4,6 +4,23 @@ import Testing
 
 @MainActor
 struct DevelopmentTerminalTests {
+    @Test func browserChatWithoutAnAvailableSourceFolderDoesNotUseAProjectWorkspace() throws {
+        var project = DevelopmentDetails(name: "Example", icon: "", folder: "")
+        #expect(project.availableSourceFolder == nil)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        project.folder = root.path
+        #expect(project.availableSourceFolder == nil)
+
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(project.availableSourceFolder == root.path)
+
+        let file = root.appendingPathComponent("file.txt")
+        try Data().write(to: file)
+        project.folder = file.path
+        #expect(project.availableSourceFolder == nil)
+    }
+
     @Test func shellAndOutputSurviveProjectSwitching() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let a = root.appendingPathComponent("One's folder")
