@@ -272,7 +272,25 @@ struct SpaceAnchor: NSViewRepresentable {
 /// The active Space's palette for floating Space controls.
 enum SpaceSurface {
     @MainActor static func tone(in browser: Browser) -> Tone? {
-        SpaceWash.grounded(in: browser).map { tone(for: $0.color) }
+        if browser.windowPurpose == .privateOnly { return tone(for: ContentView.privateBackdrop) }
+        let prefs = browser.prefs
+        let look = browser.developmentLook
+            ?? (browser.showingAllTabs ? browser.sidebarSpace.paint : nil)
+            ?? WorkspaceTheme.savedLook(for: browser.spaceID)
+        if let look { return tone(for: SpaceWash.painted(look).color) }
+
+        // A site-colored window has no transition wash. Its sidebar wears the
+        // live site color when eligible, falling back to the Space swatch.
+        if prefs.backdrop == .site {
+            let appearance = LookMode(rawValue: prefs.lookMode)?.appearance ?? NSApp.effectiveAppearance
+            let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let site = browser.worn.color.map { Tone($0, lifted: true) }
+            if !prefs.wearsGlass, Worn<EmptyView>.worn(site, mode: .site, dark: dark), let site {
+                return tone(for: site.page)
+            }
+            return tone(for: prefs.swatch.color(dark: dark, custom: prefs.backdropColor))
+        }
+        return SpaceWash.grounded(in: browser).map { tone(for: $0.color) }
     }
 
     static func tone(for color: NSColor) -> Tone {

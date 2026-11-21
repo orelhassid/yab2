@@ -22,6 +22,12 @@ private func photoURL(_ file: String) -> URL? {
 }
 
 struct WorkspaceTheme {
+    static func lookKey(_ space: UUID) -> String { "home.look." + space.uuidString }
+
+    static func savedLook(for space: UUID) -> SpacePaint? {
+        Store.settings.data(forKey: lookKey(space)).flatMap { try? JSONDecoder().decode(SpacePaint.self, from: $0) }
+    }
+
     var look: SpacePaint?
     var hasPhoto = false
     var active: Bool { look != nil || hasPhoto }
@@ -60,7 +66,7 @@ private struct StoredWorkspaceTheme<Content: View>: View {
         self.projectLook = projectLook
         self.privateWindow = privateWindow
         self.content = content
-        _look = AppStorage(wrappedValue: Data(), "home.look." + space.uuidString, store: Store.settings)
+        _look = AppStorage(wrappedValue: Data(), WorkspaceTheme.lookKey(space), store: Store.settings)
         _photo = AppStorage(wrappedValue: "", photoKey(space), store: Store.settings)
     }
 

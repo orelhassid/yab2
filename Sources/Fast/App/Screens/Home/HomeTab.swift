@@ -357,15 +357,14 @@ private struct SpacePageLook<Content: View>: View {
     init(browser: Browser, @ViewBuilder content: @escaping (Binding<SpacePaint>, Bool, @escaping () -> Void) -> Content) {
         self.browser = browser
         self.content = content
-        _stored = AppStorage(wrappedValue: Data(), "home.look." + browser.spaceID.uuidString, store: Store.settings)
+        _stored = AppStorage(wrappedValue: Data(), WorkspaceTheme.lookKey(browser.spaceID), store: Store.settings)
     }
 
     var body: some View {
         let custom = try? JSONDecoder().decode(SpacePaint.self, from: stored)
         content(Binding(get: {
             // The color field writes the main color and linked colors in one event.
-            let data = Store.settings.data(forKey: "home.look." + browser.spaceID.uuidString)
-            return data.flatMap { try? JSONDecoder().decode(SpacePaint.self, from: $0) } ?? SpacePaint(browser.prefs)
+            WorkspaceTheme.savedLook(for: browser.spaceID) ?? SpacePaint(browser.prefs)
         }, set: { value in
             if let data = try? JSONEncoder().encode(value) { stored = data }
         }), custom != nil, { stored = Data() })

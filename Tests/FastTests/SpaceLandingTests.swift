@@ -49,6 +49,29 @@ struct SpaceLandingTests {
         try body(browser, home, away.id, source, destination)
     }
 
+    @Test func spacesMenuUsesThePersonalLookInSiteColorMode() throws {
+        try world { browser, home, _, _, _ in
+            let key = WorkspaceTheme.lookKey(home)
+            let saved = Store.settings.data(forKey: key)
+            let backdrop = browser.prefs.backdrop
+            let mode = browser.prefs.lookMode
+            defer {
+                browser.prefs.backdrop = backdrop
+                browser.prefs.lookMode = mode
+                Store.settings.set(saved, forKey: key)
+            }
+            browser.prefs.backdrop = .site
+            browser.prefs.lookMode = "dark"
+            let look = SpacePaint(swatch: .sky, color: .blue, grain: 0, mode: "dark")
+            Store.settings.set(try JSONEncoder().encode(look), forKey: key)
+            #expect(SpaceSurface.tone(in: browser) == SpaceSurface.tone(for: SpaceWash.painted(look).color))
+
+            Store.settings.removeObject(forKey: key)
+            let fallback = browser.prefs.swatch.color(dark: true, custom: browser.prefs.backdropColor)
+            #expect(SpaceSurface.tone(in: browser) == SpaceSurface.tone(for: fallback))
+        }
+    }
+
     @Test func developmentIsAWindowSpaceWithNoTabOrNumberedShortcut() throws {
         try world { browser, home, _, source, _ in
             let sidebar = browser.prefs.sidebar
