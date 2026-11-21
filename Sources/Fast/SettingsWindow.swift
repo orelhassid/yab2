@@ -326,7 +326,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
             return "sync icloud devices another mac iphone account recovery key code join encrypted end to end cloud backup extensions plugins"
         case .privacy:
             return "ad block ads blocker trackers tracking shield site camera microphone permissions history clear cookies sign out cache data website"
-        case .mouse: return "mouse gestures mapping draw sensitivity stroke right click trackpad option alt"
+        case .mouse: return "mouse radial menu wheel dropdown sensitivity submenu right click trackpad"
         case .shortcuts:
             return "shortcuts keys keyboard commands hotkeys remap rebind change record " + Shortcut.items.map(\.does).joined(separator: " ")
         case .about:
@@ -3359,7 +3359,6 @@ struct SettingsDetail: View {
                 WebsitesPage(prefs: prefs, model: model)
             case .mouse:
                 RadialSettings(browser: browser)
-                MouseGestureSettings()
             case .shortcuts: EmptyView() // Own lazy list (pageRows).
             case .about:
                 UpdateSettingsSection(browser: browser)

@@ -2,33 +2,41 @@ import SwiftUI
 
 /// Angles increase clockwise in the wheel's flipped view.
 struct RadialSelection {
-    static let commands: [Command?] = [.forward, .downloads, .newTab, .back, .reload, nil]
+    static let commands: [RadialItem] = [.command(.forward), .command(.downloads), .command(.newTab),
+                                         .command(.back), .command(.reload), .spaces]
     static let hub: CGFloat = 58
     static let rim: CGFloat = 136
     static let outer: CGFloat = 183
     var wedge: Int?
-    var space: Int?
+    var child: Int?
     var slots = Self.commands
     var step: Double { 2 * .pi / Double(slots.count) }
-    var showsSpaces: Bool { wedge.map { slots[$0] == nil } ?? false }
+    var showsChildren: Bool { wedge.map { slots[$0].hasChildren } ?? false }
 
-    mutating func move(_ delta: CGPoint, spaceCount: Int) {
+    mutating func move(_ delta: CGPoint, childCount: Int, activationDistance: CGFloat? = nil) {
         let radius = hypot(delta.x, delta.y)
-        let angle = atan2(delta.y, delta.x)
-        func sector(_ count: Int, start: Double = 0) -> Int {
-            let turn = (angle - start) / (2 * .pi)
-            return (Int(floor(turn * Double(count) + 0.5)) + count * 2) % count
-        }
-        space = nil
-        if radius < Self.hub || radius > Self.outer {
+        child = nil
+        guard radius >= (activationDistance ?? Self.hub) else { wedge = nil; return }
+        if radius > Self.outer, showsChildren, childCount > 0 {
             wedge = nil
-        } else if radius <= Self.rim {
-            wedge = sector(slots.count)
-        } else if showsSpaces, spaceCount > 0 {
-            space = sector(spaceCount, start: Double(wedge ?? 0) * step)
+        } else if radius > Self.rim, showsChildren, childCount > 0 {
+            moveInChildRing(delta, count: childCount)
+        } else if radius <= Self.rim || activationDistance != nil {
+            wedge = Self.sector(at: delta, count: slots.count)
         } else {
             wedge = nil
         }
+    }
+
+    mutating func moveInChildRing(_ delta: CGPoint, count: Int) {
+        let radius = hypot(delta.x, delta.y)
+        guard radius > Self.rim, radius <= Self.outer, let wedge, count > 0 else { child = nil; return }
+        child = Self.sector(at: delta, count: count, start: Double(wedge) * step)
+    }
+
+    private static func sector(at delta: CGPoint, count: Int, start: Double = 0) -> Int {
+        let turn = (atan2(delta.y, delta.x) - start) / (2 * .pi)
+        return (Int(floor(turn * Double(count) + 0.5)) + count * 2) % count
     }
 }
 
@@ -43,7 +51,7 @@ struct RadialMenu: View {
         let colors = resolved.map { [$0.color] + $0.colors } ?? [Palette.NS.ground]
         return LinearGradient(colors: colors.map(Color.init(nsColor:)), startPoint: .topLeading, endPoint: .bottomTrailing)
     }
-    let spaces: [Space]
+    var rows: [RadialDropdownRow]
     let available: [Bool]
     var selection = RadialSelection()
     static let side = RadialSelection.outer * 2
@@ -64,14 +72,13 @@ struct RadialMenu: View {
     }
 
     private var title: String {
-        if let index = selection.space { return spaces[index].name }
+        if let index = selection.child { return rows[index].title }
         guard let index = selection.wedge else { return "" }
         switch selection.slots[index] {
-        case .reload: return "Reload"
-        case .back: return "Back"
-        case .forward: return "Forward"
-        case let command?: return command.title
-        case nil: return "Spaces"
+        case .command(.reload): return "Reload"
+        case .command(.back): return "Back"
+        case .command(.forward): return "Forward"
+        default: return selection.slots[index].title
         }
     }
 
@@ -88,37 +95,40 @@ struct RadialMenu: View {
                 shape.stroke(Palette.hairline, lineWidth: 0.65)
                 sector(128, RadialSelection.rim, angle, selection.step / 2)
                     .fill(selected ? Palette.faint.opacity(0.7) : Palette.ink.opacity(0.035))
-                Symbol(selection.slots[index]?.symbol ?? "square.stack.3d.up", size: 17)
+                Symbol(selection.slots[index].icon, size: 17)
                     .foregroundStyle(selected ? Palette.ink : Palette.muted)
                     .opacity(available[index] ? 1 : 0.35)
                     .position(point(94, angle))
                 if let select {
                     Button { select(index) } label: { shape.fill(Color.clear).contentShape(shape) }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(selection.slots[index]?.title ?? "Spaces")
+                        .accessibilityLabel(selection.slots[index].title)
                 }
             }
             Circle().stroke(Palette.hairline, lineWidth: 1)
                 .frame(width: 114, height: 114)
             Text(title).font(.system(size: 13.5, weight: .medium)).foregroundStyle(Palette.muted)
                 .multilineTextAlignment(.center).lineLimit(2).frame(width: 98)
-            if select == nil && selection.showsSpaces && !spaces.isEmpty {
-                ForEach(spaces.indices, id: \.self) { index in
-                    let step = 2 * Double.pi / Double(spaces.count)
+            if select == nil && selection.showsChildren && !rows.isEmpty {
+                ForEach(rows.indices, id: \.self) { index in
+                    let row = rows[index]
+                    let step = 2 * Double.pi / Double(rows.count)
                     let angle = Double(selection.wedge ?? 0) * selection.step + Double(index) * step
                     let shape = sector(141, RadialSelection.outer, angle, step / 2)
                     shape.fill(.regularMaterial)
                     shape.fill(tint.opacity(opaque ? 1 : 0.62))
-                    shape.fill(Palette.ink.opacity(selection.space == index ? 0.16 : 0.035))
+                    shape.fill(Palette.ink.opacity(selection.child == index ? 0.16 : 0.035))
                     shape.stroke(Palette.hairline, lineWidth: 0.65)
                     VStack(spacing: 2) {
-                        SpaceMark(icon: spaces[index].icon, size: min(16, 150 * step))
-                        if spaces.count <= 9 {
-                            Text(spaces[index].name).font(.system(size: 10, weight: .medium))
+                        if row.spaceIcon { SpaceMark(icon: row.icon, size: min(16, 150 * step)) }
+                        else { Symbol(row.icon, size: min(16, 150 * step)) }
+                        if rows.count <= 9 {
+                            Text(row.title).font(.system(size: 10, weight: .medium))
                                 .lineLimit(1).frame(maxWidth: 56)
                         }
                     }
                     .foregroundStyle(Palette.muted)
+                    .opacity(row.enabled ? 1 : 0.35)
                     .position(point(162, angle))
                 }
             }
@@ -132,12 +142,9 @@ struct RadialMenu: View {
 final class RadialMenuHost: NSHostingView<RadialMenu> {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func track(_ location: CGPoint) {
+    func delta(at location: CGPoint, from origin: CGPoint? = nil) -> CGPoint {
         let local = convert(location, from: nil)
-        let delta = CGPoint(x: local.x - bounds.midX,
-                            y: (local.y - bounds.midY) * (isFlipped ? 1 : -1))
-        var menu = rootView
-        menu.selection.move(delta, spaceCount: menu.spaces.count)
-        rootView = menu
+        let center = origin.map { convert($0, from: nil) } ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        return CGPoint(x: local.x - center.x, y: (local.y - center.y) * (isFlipped ? 1 : -1))
     }
 }

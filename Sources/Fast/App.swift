@@ -1390,7 +1390,7 @@ struct ContentView: View {
             // Animation on the same one, WebKit following.
             PageContent(browser: browser, preview: browser.splitPreview, tab: tab, corner: corner, showBar: showBar || (showNavigation && libraryNavigation == nil), front: front)
                 .environment(\.libraryNavigationInset, libraryNavigation)
-                .background { GestureSurface { MouseGestureInput.shared.registerPage($0) } }
+                .background { RadialMenuSurface { RadialMenuInput.shared.registerPage($0) } }
                 .transaction { if browser.splitRooming { $0.animation = nil } }
                 // No bar to hold reading mode's book and Aa: they stand in
                 // the page's corner while it is read (ReadingPlate).
@@ -2126,7 +2126,7 @@ struct ContentView: View {
         // see Lights.swift. The title bar's own are put away, but for full
         // screen, which is looked after by Brim.
         Lights.hideOwn(of: window)
-        MouseGestureInput.shared.install()
+        RadialMenuInput.shared.install()
         Brim.keep(window, for: browser)
         // Glass stays lit behind other apps, see Awake.swift.
         Awake.keep(window)

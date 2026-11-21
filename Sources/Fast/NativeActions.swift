@@ -101,18 +101,17 @@ struct NativeSetting {
             }
             Store.settings.set(layout, forKey: RadialPreferences.layoutKey)
         },
-        count("radial-count", "Radial menu command count", key: RadialPreferences.countKey, default: 6, values: [6, 8]),
-        stored("radial-commands", "Radial menu commands", ["type": "string", "description": "Command IDs for the current layout, separated by |, clockwise from the right. Use radial.spaces for Spaces."],
+        count("radial-count", "Radial menu command count", key: RadialPreferences.countKey, default: 6, values: RadialPreferences.counts),
+        count("radial-sensitivity", "Activation distance", key: RadialPreferences.sensitivityKey,
+              default: RadialPreferences.defaultSensitivity, values: Array(RadialPreferences.sensitivityRange)),
+        stored("radial-commands", "Radial menu commands", ["type": "string", "description": "Command IDs for the current layout, separated by |, clockwise from the right. Use radial.spaces for Spaces or radial.menu for a new submenu."],
                read: { .string(RadialPreferences.encode(RadialPreferences.saved)) }) { value in
-            guard case .string(let raw) = value, RadialPreferences.encode(RadialPreferences.decode(raw, defaults: RadialPreferences.saved)) == raw else {
+            guard case .string(let raw) = value, let slots = RadialPreferences.validated(raw, count: RadialPreferences.saved.count) else {
                 throw NativeFailure("invalid_arguments", "Choose a valid command for each slot")
             }
-            RadialPreferences.save(RadialPreferences.decode(raw, defaults: RadialPreferences.saved))
+            RadialPreferences.save(slots)
         },
-        flag("mouse-gestures", "Allow Gestures", key: MouseMappings.enabledKey, default: false),
-        flag("mouse-option", "Perform Gestures with Option Key", key: MouseMappings.optionKey, default: false),
         count("trail-space-limit", "Spaces on the trail", key: TrailSpaceLimit.key, default: TrailSpaceLimit.initial, values: Array(TrailSpaceLimit.range)),
-        count("mouse-minimum", "Minimum stroke length", key: MouseMappings.minimumKey, default: 20, values: Array(MouseMappings.minimumRange)),
         stored("settings-presentation", "Open Settings in", ["type": "string", "enum": SettingsPresentation.allCases.map(\.rawValue)],
                read: { .string(SettingsPresentation.saved.rawValue) }) { value in
             guard case .string(let raw) = value, let presentation = SettingsPresentation(rawValue: raw) else {

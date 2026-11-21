@@ -254,7 +254,7 @@ struct Omnibox: View {
                     : Self.top(in: space.size.height))
                 .frame(maxWidth: .infinity, alignment: .top)
         }
-        .background { if homeField { GestureSurface { MouseGestureInput.shared.registerPage($0) } } }
+        .background { if homeField { RadialMenuSurface { RadialMenuInput.shared.registerPage($0) } } }
         .transformEnvironment(\.tone) { if homeField { $0 = nil } }
         .overlay(alignment: .top) {
             if homeField, let homeHeaderTop {

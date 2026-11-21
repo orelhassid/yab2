@@ -8,11 +8,10 @@ struct RadialDropdownRow {
     var children = false
     var checked = false
 
-    @MainActor static func commands(_ slots: [Command?], browser: Browser, editing: Bool = false) -> [Self] {
-        slots.map { command in
-            Self(title: command?.title ?? "Spaces", icon: command?.symbol ?? "square.stack.3d.up",
-                 enabled: editing || (command?.available(in: browser) ?? (browser.spacesShown && !browser.spaces.isEmpty)),
-                 children: command == nil && !editing)
+    @MainActor static func commands(_ slots: [RadialItem], browser: Browser, editing: Bool = false) -> [Self] {
+        slots.map { item in
+            Self(title: item.title, icon: item.icon, enabled: editing || item.available(in: browser),
+                 children: item.hasChildren)
         }
     }
 }
@@ -60,7 +59,7 @@ struct RadialDropdown: View {
                         Text(row.title).lineLimit(1)
                         Spacer(minLength: 4)
                         if row.children { Image(systemName: "chevron.right") }
-                        else if row.checked || (scrolled == nil && selected == i) { Image(systemName: "checkmark") }
+                        if row.checked || (scrolled == nil && selected == i) { Image(systemName: "checkmark") }
                     }
                     .padding(.horizontal, 10).frame(maxWidth: .infinity).frame(height: Self.rowHeight)
                     .background { RoundedRectangle(cornerRadius: Radius.control).fill(Palette.ink.opacity(selected == i || (scrolled == nil && hover == i) ? 0.14 : 0)) }
@@ -74,7 +73,7 @@ struct RadialDropdown: View {
 }
 
 /// Reports actual layout bounds for native-tab eligibility and held-button tracking.
-struct GestureSurface: NSViewRepresentable {
+struct RadialMenuSurface: NSViewRepresentable {
     let register: (NSView) -> Void
     final class Marker: NSView {
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -97,6 +96,9 @@ final class RadialDropdownHost: NSHostingView<RadialDropdown> {
         let fromTop = isFlipped ? point.y - bounds.minY : bounds.maxY - point.y
         let index = Int(floor((fromTop - inset + scrollOffset) / RadialDropdown.rowHeight))
         return rootView.rows.indices.contains(index) ? index : nil
+    }
+    func topOffset(of row: Int) -> CGFloat {
+        RadialDropdown.inset + CGFloat(row) * RadialDropdown.rowHeight - scrollOffset
     }
     func highlight(_ row: Int?) {
         if rootView.selected != row { rootView.selected = row }
