@@ -147,6 +147,9 @@ struct CollectionPage: View {
                         if view.sortProperty != nil {
                             Toggle("Descending", isOn: Binding(get: { view.descending == true }, set: { collection.views[index].descending = $0 }))
                         }
+                        Text("Row height").font(CardFrame.detail)
+                        ChoiceMenu(title: "Row height", options: [("Comfortable", false), ("Compact", true)],
+                                   selection: Binding(get: { view.compactRows == true }, set: { collection.views[index].compactRows = $0 }))
                         Text("Rows per page").font(CardFrame.detail)
                         ChoiceMenu(title: "Rows per page", options: [10, 25, 50, 100].map { (String($0), $0) },
                                    selection: $collection.views[index].pageSize)

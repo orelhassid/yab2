@@ -98,6 +98,7 @@ struct CollectionTableView: Identifiable, Codable {
     var sortProperty: String?
     var descending: Bool?
 
+    var compactRows: Bool?
     var columnOrder: [String]?
 
     func orderedProperties(_ properties: [CollectionProperty]) -> [CollectionProperty] {
