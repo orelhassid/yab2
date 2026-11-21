@@ -5,6 +5,7 @@ import ctypes
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -27,7 +28,13 @@ def info(app):
     return plistlib.loads((app / "Contents/Info.plist").read_bytes())
 
 
-def refresh(source):
+def signing_requirement(identity):
+    if not re.fullmatch(r"[0-9A-Fa-f]{40}", identity):
+        raise ValueError("Expected the SHA-1 fingerprint of a code-signing certificate")
+    return f'identifier "{BUNDLE}" and certificate leaf = H"{identity.upper()}"'
+
+
+def refresh(source, identity=None):
     if not source.exists():
         return
     if info(source)["CFBundleIdentifier"] != "dev.serafim.fast.sidebar.dev":
@@ -37,9 +44,13 @@ def refresh(source):
         installed = info(DAILY)
         if installed["CFBundleIdentifier"] != BUNDLE:
             raise ValueError("Another application already occupies the destination")
-        if installed.get("YabDailySource") == revision:
+        # Manual refreshes and the background updater use the same identity.
+        identity = identity or installed.get("YabDailySigner")
+        if (installed.get("YabDailySource") == revision
+                and installed.get("YabDailySigner") == identity):
             return
 
+    requirement = signing_requirement(identity) if identity else None
     # Stage on the destination volume. A partially copied or unsigned build
     # never replaces a working bundle, even if the builder is running again.
     with tempfile.TemporaryDirectory(prefix=".yab-daily-", dir=DAILY.parent) as stage:
@@ -52,13 +63,20 @@ def refresh(source):
         metadata.update(CFBundleIdentifier=BUNDLE, CFBundleName="Yab Daily",
                         CFBundleDisplayName="Yab Daily", YabDataName="Yab Daily",
                         YabDailySource=revision)
+        if identity:
+            metadata["YabDailySigner"] = identity
         metadata.pop("YabFeed", None)
         (candidate / "Contents/Info.plist").write_bytes(plistlib.dumps(metadata))
         icon = candidate / "Contents/Resources/yab.icns"
         stock = Path("/Applications/yab.app/Contents/Resources/yab.icns")
         if not icon.exists() and stock.is_file():
             shutil.copyfile(stock, icon)
-        subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", candidate], check=True)
+        sign = ["/usr/bin/codesign", "--force", "--sign", identity or "-"]
+        if requirement:
+            sign.extend(["--requirements", "=designated => " + requirement])
+        subprocess.run([*sign, candidate], check=True)
+        if requirement:
+            subprocess.run(["/usr/bin/codesign", "--verify", "-R=" + requirement, candidate], check=True)
         subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", candidate], check=True)
         if DAILY.exists():
             # Darwin RENAME_SWAP changes both names atomically, including
@@ -72,10 +90,10 @@ def refresh(source):
         print("Installed Yab Daily", metadata["CFBundleShortVersionString"], revision, flush=True)
 
 
-def install(source):
+def install(source, identity=None):
     if not source.is_dir():
         raise FileNotFoundError(source)
-    refresh(source)
+    refresh(source, identity)
     SUPPORT.mkdir(parents=True, exist_ok=True)
     script = SUPPORT / "update.py"
     shutil.copyfile(__file__, script)
@@ -92,6 +110,7 @@ def install(source):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--install", action="store_true")
+    parser.add_argument("--identity", help="SHA-1 fingerprint of the persistent Daily signing certificate")
     parser.add_argument("source", type=Path)
     args = parser.parse_args()
-    (install if args.install else refresh)(args.source.resolve())
+    (install if args.install else refresh)(args.source.resolve(), args.identity.upper() if args.identity else None)
