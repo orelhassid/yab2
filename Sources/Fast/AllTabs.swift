@@ -151,7 +151,7 @@ extension Tab {
 extension Browser {
     var offersAllTabs: Bool { spacesShown && prefs.sidebar && !privateBrowsing && !blank }
     var showingAllTabs: Bool { allTabsSelected && offersAllTabs }
-    var sidebarSpace: Space { inDevelopment ? .development : showingAllTabs ? AllTabsConfiguration.shared.space : space }
+    var sidebarSpace: Space { workspaceSpace ?? (showingAllTabs ? AllTabsConfiguration.shared.space : space) }
     var sidebarSpaceID: UUID { sidebarSpace.id }
     var switcherSpaces: [Space] { offersAllTabs ? turnOrder + [AllTabsConfiguration.shared.space] : turnOrder }
 

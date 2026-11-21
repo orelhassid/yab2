@@ -216,7 +216,7 @@ struct SideBar: View {
     /// The column's own door stands in the row, but where "⋯" holds it.
     /// Full screen too, docked or out as a card, as Arc keeps it there
     /// (feedback #274): the column is the same column there, ⌘S and all.
-    private var columnDoored: Bool { browser.inDevelopment || prefs.sidebarButton && !helmRow && !browser.bandDoors && browser.railInsideColumn == 0 }
+    private var columnDoored: Bool { browser.workspaceSpace != nil || prefs.sidebarButton && !helmRow && !browser.bandDoors && browser.railInsideColumn == 0 }
     /// The column's own doors, none with two side by side: each half has
     /// its own in its band, and a third set here would act on whichever
     /// half was last clicked. None in mail: its one page has nowhere to go
@@ -275,7 +275,7 @@ struct SideBar: View {
     var body: some View {
         let _ = SpacePager.touched()
         ZStack(alignment: .top) {
-            if browser.showingAllTabs && !browser.inDevelopment, let paint = browser.sidebarSpace.paint {
+            if browser.showingAllTabs && browser.workspaceSpace == nil, let paint = browser.sidebarSpace.paint {
                 Color(nsColor: paint.color(dark: scheme == .dark)).allowsHitTesting(false)
             }
             // Under the last row the window is dragged by, and a right
@@ -298,7 +298,7 @@ struct SideBar: View {
             // The rows on AppKit (ColumnKit): each space's a page of its
             // own, under the head, the pins, the name and the foot, as
             // SideBar's own rows were.
-            if ColumnKit.on && !browser.showingAllTabs && !browser.inDevelopment {
+            if ColumnKit.on && !browser.showingAllTabs && browser.workspaceSpace == nil {
                 ColumnPagesHost(browser: browser, lead: lead, footRoom: pagesFootRoom, top: max(0, lead - SideBar.margin),
                                 foot: pagesFootRoom > 0, grain: tone == nil ? 0 : prefs.grain)
                     .opacity(browser.inMail ? 0 : 1)
@@ -346,7 +346,9 @@ struct SideBar: View {
                 .padding(.bottom, browser.sidePlated || browser.inMail ? 0 : -SidePlate.lift)
 
                 // The address, when nothing over the page has it.
-                if browser.inDevelopment {
+                if browser.inCollections {
+                    CollectionSidebar(browser: browser)
+                } else if browser.inDevelopment {
                     DevelopmentProjects(browser: browser)
                 } else {
                 if browser.sidePlated, !ColumnKit.cut.contains("plate") {
@@ -494,7 +496,7 @@ struct SideBar: View {
                 Spacer()
                 // Agents in One Row (experimental): what agents do out of
                 // the list, over the note and the foot.
-                if prefs.agentRow, !browser.inMail, !browser.inDevelopment {
+                if prefs.agentRow, !browser.inMail, browser.workspaceSpace == nil {
                     AgentRowView(browser: browser)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { agentRoom = $0 }
                         .onDisappear { agentRoom = 0 }
@@ -601,7 +603,7 @@ struct SideBar: View {
     /// The space's menu, made at the press (SpaceMenu); none in mail's
     /// space, whose column is mail's own.
     private var roomMenu: (@MainActor () -> NSMenu)? {
-        guard !browser.inMail, !browser.inDevelopment else { return nil }
+        guard !browser.inMail, browser.workspaceSpace == nil else { return nil }
         let browser = browser
         return { NSHostingMenu(rootView: SpaceMenu(browser: browser, space: browser.sidebarSpace)) }
     }
@@ -2067,7 +2069,7 @@ struct SideBar: View {
 
     /// The toolbar at the header's page edge, or New Mail over mail's page.
     @ViewBuilder private var headDoors: some View {
-        if !browser.inDevelopment && helmRow {
+        if browser.workspaceSpace == nil && helmRow {
             let size = helmSize
             let folded = headFit == .fold
             HStack(spacing: size.gap) {
@@ -2076,7 +2078,7 @@ struct SideBar: View {
             }
             .environment(\.doorSize, size)
         }
-        if !browser.inDevelopment && mailNew {
+        if browser.workspaceSpace == nil && mailNew {
             MailNewButton()
         }
     }
@@ -3131,7 +3133,7 @@ struct SpaceName: View {
     }
 
     private var controlsWidth: CGFloat {
-        if space.id == Space.development.id && !hovering && !onDots && onStep == nil {
+        if space.isWorkspace && !hovering && !onDots && onStep == nil {
             return Self.dotsInset
         }
         let count: CGFloat = stepsShown ? 3 : 1
@@ -3141,7 +3143,7 @@ struct SpaceName: View {
     private var live: Bool { browser != nil }
     /// Something to fold: the chevron shows, and a click folds.
     private var folds: Bool {
-        guard let browser, space.id != Space.allTabs.id, space.id != Space.development.id else { return false }
+        guard let browser, space.id != Space.allTabs.id, !space.isWorkspace else { return false }
         if let scope, scope.id != browser.spaceID {
             return browser.parked[scope.id]?.tabs.contains(where: \.kept) == true || !folders.empties(in: scope.id).isEmpty
         }
@@ -3222,7 +3224,7 @@ struct SpaceName: View {
         .contentShape(RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous))
         .onHover { hovering = live && $0 }
         .steadyMenu(actions: true, tone: browser.flatMap { SpaceSurface.tone(in: $0) }) {
-            if let browser, space.id != Space.development.id { SpaceMenu(browser: browser, space: space) }
+            if let browser, !space.isWorkspace { SpaceMenu(browser: browser, space: space) }
         }
     }
 
@@ -3267,7 +3269,7 @@ struct SpaceName: View {
     private func dots(_ browser: Browser) -> some View {
         // The searchable panel (ActionMenu.swift) from where it was pressed.
         Button {
-            if space.id == Space.development.id { openSpaces(browser); return }
+            if space.isWorkspace { openSpaces(browser); return }
             guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
             let at = NSApp.currentEvent.map { window.convertPoint(toScreen: $0.locationInWindow) } ?? NSEvent.mouseLocation
             ActionMenu.show(NSHostingMenu(rootView: SpaceMenu(browser: browser, space: space)), in: window, at: at, tone: SpaceSurface.tone(in: browser))

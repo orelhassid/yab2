@@ -27,6 +27,7 @@ enum MenuCommands {
         .moveTabToWindow, .smallWindow, .reopenWindow, .fullScreen, .exitFullScreen, .undoBrowserAction,
         .sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs, .collapseAllTabGroups, .expandAllTabGroups,
         .headerSpaceIcon, .headerColorDot, .headerSpaceBadge, .headerHairline,
+        .openCollections, .newCollection, .newCollectionRecord,
         .newSpace, .switchSpace, .nextSpace, .previousSpace, .moveToSpace, .changeSpaceIcon, .deleteSpace,
         .moveToFolder, .moveOutOfFolder, .renameFolder, .newFolderInside, .ungroupFolder, .newLiveFolder,
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
@@ -179,6 +180,19 @@ enum MenuCommands {
             let title = group == .none ? "Ungroup All Tabs" : "Group All Tabs by " + group.rawValue
             add(command, title, ["Group by " + group.rawValue], symbol: "rectangle.3.group",
                 when: { $0.showingAllTabs }) { _ in AllTabsConfiguration.shared.group = group }
+        }
+        add(.openCollections, "Open Collections", ["collections", "collections space"], symbol: "square.stack.3d.up",
+            opens: true, when: { $0.offersDevelopment }) { $0.switchSpace(to: Space.collections.id) }
+        add(.newCollection, "New Collection", ["create collection", "new data list"], symbol: "tablecells",
+            opens: true, when: { $0.offersDevelopment }) {
+            $0.switchSpace(to: Space.collections.id)
+            $0.creatingCollection = true
+        }
+        add(.newCollectionRecord, "New Record", ["create record", "new collection record"], symbol: "doc.badge.plus",
+            opens: true, when: { $0.offersDevelopment }) {
+            $0.switchSpace(to: Space.collections.id)
+            $0.creatingCollection = false
+            $0.creatingCollectionRecord = true
         }
         add(.newSpace, "New Space…", ["create space", "new space"], symbol: "plus.rectangle.on.rectangle",
             opens: true, when: spaces) { SpaceTray.open($0) }

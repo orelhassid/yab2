@@ -22,14 +22,18 @@ extension Browser {
     var offersDevelopment: Bool { windowPurpose == .normal && !blank && !privateBrowsing }
 
     func enterDevelopment() {
-        guard offersDevelopment, !inDevelopment else { return }
+        enterWorkspace(.development)
+    }
+
+    func enterWorkspace(_ target: Space) {
+        guard offersDevelopment, target.isWorkspace, workspaceSpace?.id != target.id else { return }
         hidePeek()
         editing = false
         allTabsSelected = false
-        previousDevelopmentSidebar = (prefs.sidebar, prefs.sideShut)
+        if workspaceSpace == nil { previousDevelopmentSidebar = (prefs.sidebar, prefs.sideShut) }
         prefs.sidebar = true
         prefs.sideShut = false
-        inDevelopment = true
+        workspaceSpace = target
     }
 }
 
@@ -325,6 +329,7 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
 
 extension Browser {
     var developmentLook: SpacePaint? {
+        if inCollections { return WorkspaceTheme.savedLook(for: Space.collections.id) ?? SpacePaint(prefs) }
         guard inDevelopment, windowPurpose != .privateOnly else { return nil }
         return DevelopmentDirectory.shared.details(developmentProject).paint ?? SpacePaint(prefs)
     }

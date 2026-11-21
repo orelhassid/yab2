@@ -760,11 +760,13 @@ extension Browser {
     /// `washed`: the fingers already have the new color over the window
     /// (SpacePull), and hand it over themselves.
     func switchSpace(to id: UUID, washed: Bool = false, keepingHome: Bool = false, preservingAllTabs: Bool = false) {
-        if inDevelopment && id == Space.allTabs.id {
+        if id == Space.collections.id { enterWorkspace(.collections); return }
+        if id == Space.development.id { enterDevelopment(); return }
+        if workspaceSpace != nil && id == Space.allTabs.id {
             // All Tabs lives in the sidebar, including when Development opened it.
             previousDevelopmentSidebar = nil
         }
-        inDevelopment = false
+        workspaceSpace = nil
         if id == Space.allTabs.id { showAllTabs(); return }
         if !preservingAllTabs { allTabsSelected = false }
         guard windowPurpose == .normal else { return }
@@ -1010,7 +1012,7 @@ extension Browser {
     /// The next space along, or the one before, round the ends, Mail's
     /// among them (turnOrder).
     func stepSpace(_ by: Int) {
-        if inDevelopment {
+        if workspaceSpace != nil {
             let neighbor = by < 0 ? switcherSpaces.last : switcherSpaces.first
             if let neighbor { switchSpace(to: neighbor.id) }
             return

@@ -1063,7 +1063,11 @@ struct ContentView: View {
                     // there: a pair coming together keeps the page in front
                     // on the stage it was on, so it can be held and drawn to
                     // its half rather than handed to another view.
-                    if browser.inDevelopment {
+                    if browser.inCollections {
+                        CollectionWorkspace(browser: browser)
+                            .clipShape(RoundedRectangle(cornerRadius: corner))
+                            .padding(margins)
+                    } else if browser.inDevelopment {
                         DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries)
                             .clipShape(RoundedRectangle(cornerRadius: corner))
                             .background {
@@ -1769,7 +1773,7 @@ struct ContentView: View {
                     // Raycast's window. A 0.22 s fade in read as slowness
                     // (row 1091). Held at nil, so a change made inside
                     // another animation is not faded either.
-                    GeometryReader { space in if !browser.inDevelopment { field(in: space.size) } }
+                    GeometryReader { space in if browser.workspaceSpace == nil { field(in: space.size) } }
                         .animation(nil, value: browser.fieldShowing)
                         .zIndex(1)
                 }
@@ -2330,7 +2334,7 @@ struct ContentView: View {
     }
 
     func take(_ event: NSEvent) -> Bool {
-        if browser.inDevelopment, SpaceTray.shown == nil { return false }
+        if browser.workspaceSpace != nil, SpaceTray.shown == nil { return false }
         // Words an input method is still composing, in a field or on a
         // page: Return, Escape, Space, Tab and the arrows are its, to
         // commit or pick a candidate (Find's Escape would close the bar).

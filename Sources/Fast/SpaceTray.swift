@@ -326,7 +326,7 @@ final class SpaceTray: NSView {
     /// Mail's lines over the list, in the order two fingers go.
     var specials: [Space] {
         let existing = browser.switcherSpaces.filter { $0.id == Space.mailID || $0.id == Space.allTabs.id }
-        return browser.offersDevelopment && !draft.taking && draft.carrying.isEmpty ? existing + [.development] : existing
+        return browser.offersDevelopment && !draft.taking && draft.carrying.isEmpty ? existing + [.development, .collections] : existing
     }
     /// Where the tray is, for the bench.
     var panelFrame: CGRect { panel.frame }
@@ -839,7 +839,6 @@ final class SpaceTray: NSView {
     func pick(_ id: UUID) {
         guard !busy else { return }
         leave()
-        if id == Space.development.id { browser.enterDevelopment(); return }
         guard id != browser.sidebarSpaceID else { return }
         CATransaction.flush()
         let browser = browser
@@ -1546,7 +1545,7 @@ struct SpaceLine: View {
                     }
                     if space.id == Space.mailID {
                         shortcut(.mail)
-                    } else if space.id != Space.development.id, let place = browser?.switcherSpaces.firstIndex(where: { $0.id == space.id }) ?? Optional(index), place < 9 {
+                    } else if !space.isWorkspace, let place = browser?.switcherSpaces.firstIndex(where: { $0.id == space.id }) ?? Optional(index), place < 9 {
                         // Counted as ⌃1 to ⌃9 count: Mail in its place among them.
                         if let action = Shortcut.numbered("space", place + 1) {
                             shortcut(action)
@@ -1587,7 +1586,7 @@ struct SpaceLine: View {
         .modifier(OwnSignInsTip(on: space.ownSignIns))
         // Its own menu at once on a right click: rename, emoji, delete.
         .steadyMenu(actions: true, tone: browser.flatMap { SpaceSurface.tone(in: $0) }) {
-            if let browser, space.id != Space.development.id { SpaceMenu(browser: browser, space: space) }
+            if let browser, !space.isWorkspace { SpaceMenu(browser: browser, space: space) }
         }
         .accessibilityLabel(space.name)
         .accessibilityAddTraits(current ? [.isSelected] : [])

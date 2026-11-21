@@ -46,11 +46,11 @@ struct NavigationHeader: View {
         let showToggle = sidebarHidden && browser.prefs.sidebarButton && (!browser.prefs.sidebar || !browser.bandDoors)
         return GeometryReader { room in
             TabWindowHeader(selection: tab?.id) {
-                let order = browser.switcherSpaces + (browser.offersDevelopment ? [.development] : [])
+                let order = browser.switcherSpaces + (browser.offersDevelopment ? [.development, .collections] : [])
                 TabWindowSwitcher(title: browser.sidebarSpace.name, prefs: browser.prefs, items: order,
                                   label: { $0.name }, selected: { $0.id == browser.sidebarSpaceID },
                                   choose: { space in
-                    if space.id == Space.development.id { browser.enterDevelopment() } else { browser.switchSpace(to: space.id) }
+                    browser.switchSpace(to: space.id)
                 }, rowIcon: { SpaceMark(icon: $0.icon, size: SideBar.mark) }) {
                     SpaceMark(icon: browser.sidebarSpace.icon, size: SideBar.mark)
                 }

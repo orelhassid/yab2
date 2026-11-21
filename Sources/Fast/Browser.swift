@@ -122,9 +122,14 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// Settings › Search's while it has none (Space.search).
     var searchEngine: EngineChoice { spaces.first { $0.id == spaceID }?.engine ?? .global }
     @ObservationIgnored var previousDevelopmentSidebar: (shown: Bool, shut: Bool)?
-    var inDevelopment = false {
+    var inDevelopment: Bool { workspaceSpace?.id == Space.development.id }
+    var inCollections: Bool { workspaceSpace?.id == Space.collections.id }
+    var collectionID: UUID?
+    var creatingCollection = false
+    var creatingCollectionRecord = false
+    var workspaceSpace: Space? {
         didSet {
-            if oldValue && !inDevelopment, let previousDevelopmentSidebar {
+            if oldValue != nil && workspaceSpace == nil, let previousDevelopmentSidebar {
                 prefs.sidebar = previousDevelopmentSidebar.shown
                 prefs.sideShut = previousDevelopmentSidebar.shut
                 self.previousDevelopmentSidebar = nil
@@ -1271,7 +1276,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         return tab
     }
     @ObservationIgnored private var activeFound: (id: Tab.ID?, tab: Tab?)?
-    var fieldShowing: Bool { !inDevelopment && !spaceVisiting && (editing || ((active?.isBlank ?? true) && !(fieldPutAway && fieldCanPutAway) && !tabs.contains { $0.instantState == .searching })) }
+    var fieldShowing: Bool { workspaceSpace == nil && !spaceVisiting && (editing || ((active?.isBlank ?? true) && !(fieldPutAway && fieldCanPutAway) && !tabs.contains { $0.instantState == .searching })) }
 
     /// Typed plus whatever the field is quietly finishing for you.
     var completed: String {
@@ -4336,7 +4341,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // Yab's own work out of sight (Get to Know): its tabs are never the
         // one in front, whoever asks, a key, a list, the omnibox, a script.
         guard !Agents.shared.sealed(tab) else { return }
-        inDevelopment = false
+        workspaceSpace = nil
         folderBook.picked(tab)
         folderBook.focused = nil
         cancelTabEdit()
@@ -8353,7 +8358,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     }
 
     func openFresh(_ kind: Asked = .tab, commandsOnly: Bool = false) {
-        inDevelopment = false
+        workspaceSpace = nil
         commandsOnlyField = commandsOnly
         query.pasteStyleTarget.captureBeforeField(in: BrowserWindows.shared.window(for: self))
         // A main-window entry takes the shared field back from Little Arc,

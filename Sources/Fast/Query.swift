@@ -255,6 +255,7 @@ enum Command: String, CaseIterable {
     case aiOff, aiOn, aiWhenAsked, hideAIRows, showAIRows
 
     /// Existing menu actions share their metadata and routes in MenuCommands.
+    case openCollections, newCollection, newCollectionRecord
     case sharePage
     case back, forward, stopLoading, closeWindow, pasteAndGo, findNext, findPrevious
     case nextTab, previousTab, moveTabLeft, moveTabRight, renameTab, pickAllTabs, moveTabToWindow

@@ -48,6 +48,16 @@ struct MenuCommandCatalogTests {
         try body(browser, tab)
     }
 
+    @Test func collectionActionsLeadTheComposedOffers() {
+        withPage { browser, _ in
+            browser.prefs.menuCommands = false
+            for (words, command) in [("Collections", Command.openCollections), ("Create collection", .newCollection), ("New Record", .newCollectionRecord)] {
+                browser.replaceTyped(words)
+                #expect(browser.offers.first?.kind == .command(command))
+            }
+        }
+    }
+
     @Test func commandFieldLeadsOffersAndOpensWithoutHome() {
         withPage { browser, tab in
             browser.prefs.menuCommands = false
