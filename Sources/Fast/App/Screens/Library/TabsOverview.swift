@@ -29,21 +29,29 @@ extension Browser {
         panel.backgroundColor = .clear
         panel.appearance = SpaceSurface.tone(in: self)?.appearance ?? window.effectiveAppearance
         let glass = NSVisualEffectView(frame: CGRect(origin: .zero, size: size))
-        glass.material = .hudWindow
+        glass.material = .popover
         glass.blendingMode = .behindWindow
         glass.state = .active
         glass.wantsLayer = true
         glass.layer?.cornerRadius = Radius.window
         glass.layer?.cornerCurve = .continuous
         glass.layer?.masksToBounds = true
+        // Keep the material separate from the controls so it can fade independently.
+        glass.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 0.74
+        let root = NSView(frame: glass.frame)
+        glass.autoresizingMask = [.width, .height]
+        root.addSubview(glass)
         let host = NSHostingView(rootView: TabsOverview(browser: self, shy: privateBrowsing) { [weak panel] in
             panel?.cancelOperation(nil)
         }.frame(width: size.width, height: size.height))
         host.frame = glass.bounds
         host.autoresizingMask = [.width, .height]
-        glass.addSubview(host)
-        panel.contentView = glass
+        root.addSubview(host)
+        panel.contentView = root
         window.beginSheet(panel)
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+            panel.alphaValue = 0.92
+        }
     }
 }
 
@@ -54,6 +62,8 @@ struct TabsOverview: View {
 
     @State private var filter: UUID?
     @State private var search = ""
+    @State private var showEmpty = true
+    @State private var toolsWidth: CGFloat = 400
     @State private var sort = OverviewSort.sidebar
     @State private var frames: [UUID: CGRect] = [:]
     @GestureState private var drag: OverviewDrag?
@@ -65,12 +75,19 @@ struct TabsOverview: View {
         }
     }
 
-    private func tabs(in space: Space) -> [Tab] {
+    private var shownSpaces: [Space] {
+        showEmpty ? spaces : spaces.filter { !openTabs(in: $0).isEmpty }
+    }
+
+    private func openTabs(in space: Space) -> [Tab] {
         let row = space.id == browser.spaceID ? browser.tabs : browser.parked[space.id]?.tabs ?? []
-        let result = row.filter {
-            $0.shy == shy && !Agents.shared.sealed($0) && $0.libraryPage != .tabs &&
-            (search.isEmpty || [space.name, $0.rowLabel, ($0.pending ?? $0.address)?.absoluteString ?? ""]
-                .contains { $0.localizedCaseInsensitiveContains(search) })
+        return row.filter { $0.shy == shy && !Agents.shared.sealed($0) && $0.libraryPage != .tabs }
+    }
+
+    private func tabs(in space: Space) -> [Tab] {
+        let result = openTabs(in: space).filter {
+            search.isEmpty || [space.name, $0.rowLabel, ($0.pending ?? $0.address)?.absoluteString ?? ""]
+                .contains { $0.localizedCaseInsensitiveContains(search) }
         }
         switch sort {
         case .sidebar: return result
@@ -82,26 +99,7 @@ struct TabsOverview: View {
     var body: some View {
         let tone = SpaceSurface.tone(in: browser)
         VStack(spacing: 16) {
-            HStack {
-                Text("Tabs Overview").font(.title2.weight(.semibold))
-                Spacer()
-                ThemedSearchField("Search tabs", text: $search).frame(maxWidth: 220)
-                Menu {
-                    Picker("Sort", selection: $sort) {
-                        ForEach(OverviewSort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                } label: { Label("Sort", systemImage: "arrow.up.arrow.down") }.fixedSize()
-                Button(action: dismiss) { Image(systemName: "xmark") }
-                    .buttonStyle(.yab(.secondary, .regular, capsule: true))
-                    .accessibilityLabel("Close overview")
-            }
-            .padding(.horizontal, LibraryPageLayout.inset)
-            ScrollView(.horizontal) {
-                HStack {
-                    filterButton("All tabs", nil)
-                    ForEach(spaces) { filterButton($0.name, $0.id) }
-                }.padding(.horizontal, CardFrame.inset)
-            }.scrollIndicators(.hidden).scrollBounceBehavior(.basedOnSize).defaultScrollAnchor(.center, for: .alignment)
+            header
             groups
         }
         .padding(.top, LibraryPageLayout.sectionGap)
@@ -109,11 +107,52 @@ struct TabsOverview: View {
         .background(Color.blue.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: Radius.window))
         .toned(tone)
-        .onChange(of: spaces.map(\.id)) { if let filter, !spaces.contains(where: { $0.id == filter }) { self.filter = nil } }
+        .onChange(of: shownSpaces.map(\.id)) { if let filter, !shownSpaces.contains(where: { $0.id == filter }) { self.filter = nil } }
         .onChange(of: browser.active?.asks.contains(where: { $0.kind == .leave }) == true) {
             if browser.active?.asks.contains(where: { $0.kind == .leave }) == true { dismiss() }
         }
         .onExitCommand(perform: dismiss)
+    }
+
+    private var header: some View {
+        GeometryReader { room in
+            HStack(spacing: 12) {
+                Text("Tab Overview").font(.title2.weight(.semibold)).fixedSize()
+                    .frame(width: min(toolsWidth, max(132, room.size.width - toolsWidth - 248)), alignment: .leading)
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        filterButton("All tabs", nil)
+                        ForEach(shownSpaces) { filterButton($0.name, $0.id) }
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .defaultScrollAnchor(.center, for: .alignment)
+                HStack(spacing: 12) {
+                    ThemedSearchField("Search tabs", text: $search)
+                        .frame(width: min(180, max(100, room.size.width * 0.12)))
+                    Menu {
+                        ForEach(OverviewSort.allCases, id: \.self) { option in
+                            Button { sort = option } label: {
+                                if sort == option { Label(option.rawValue, systemImage: "checkmark") }
+                                else { Text(option.rawValue) }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Symbol("arrow.up.arrow.down", size: 11)
+                            Text(sort.rawValue)
+                        }
+                    }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    Toggle("Show empty", isOn: $showEmpty).toggleStyle(.switch).controlSize(.small).fixedSize()
+                    Door(icon: "xmark", help: "Close overview", act: dismiss)
+                        .accessibilityLabel("Close overview")
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { toolsWidth = $0 }
+            }.frame(maxHeight: .infinity)
+        }
+        .frame(height: 32)
+        .padding(.horizontal, LibraryPageLayout.inset)
     }
 
     private func filterButton(_ name: String, _ id: UUID?) -> some View {
@@ -123,24 +162,30 @@ struct TabsOverview: View {
     }
 
     private var groups: some View {
-        let sections = spaces.filter { filter == nil || filter == $0.id }.map { ($0, tabs(in: $0)) }
+        let sections = shownSpaces.filter { filter == nil || filter == $0.id }
+            .map { ($0, tabs(in: $0)) }
+            .filter { !$0.1.isEmpty || (showEmpty && search.isEmpty) }
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: LibraryPageLayout.sectionGap) {
                 ForEach(sections, id: \.0.id) { space, tabs in
-                    if !tabs.isEmpty {
-                        VStack(alignment: .leading, spacing: CardFrame.inset) {
-                            HStack {
-                                SpaceMark(icon: space.icon, size: 16)
-                                Text(space.name).font(.headline)
-                                Text(tabs.count.formatted()).foregroundStyle(Palette.muted)
-                            }
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 248, maximum: 360), spacing: 16)], spacing: 16) {
-                                ForEach(tabs) { tab in card(tab, in: space, tabs: tabs) }
+                    VStack(alignment: .leading, spacing: CardFrame.inset) {
+                        OverviewSpaceHeading(space: space, count: tabs.count) { visit(space) }
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 248, maximum: 360), spacing: 16)], spacing: 16) {
+                            ForEach(tabs) { tab in card(tab, in: space, tabs: tabs) }
+                            if search.isEmpty {
+                                Button { visit(space, newTab: true) } label: {
+                                    Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+                                        .padding(.bottom, CardFrame.inset * 2 + 16)
+                                        .overlay { Symbol("plus", size: 22).foregroundStyle(Palette.muted) }
+                                        .background(Palette.hover.opacity(0.5), in: RoundedRectangle(cornerRadius: Radius.surface))
+                                        .overlay { RoundedRectangle(cornerRadius: Radius.surface).strokeBorder(Palette.muted.opacity(0.24), style: StrokeStyle(lineWidth: 1, dash: [5, 4])) }
+                                        .contentShape(Rectangle())
+                                }.buttonStyle(.plain).accessibilityLabel("New tab in " + space.name)
                             }
                         }
                     }
                 }
-                if sections.allSatisfy({ $0.1.isEmpty }) {
+                if sections.isEmpty {
                     Text(search.isEmpty ? "No open tabs" : "No matching tabs")
                         .frame(maxWidth: .infinity).padding(.top, 32)
                 }
@@ -153,6 +198,16 @@ struct TabsOverview: View {
                 .mask(LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom))
                 .allowsHitTesting(false)
         }
+    }
+
+    private func visit(_ space: Space, newTab: Bool = false) {
+        dismiss()
+        SidebarSpaceActions(browser: browser, id: space.id).run({
+            if newTab {
+                if shy && browser.windowPurpose == .normal { browser.newShyTab() }
+                else { browser.newTab() }
+            }
+        }, stay: true)
     }
 
     private func card(_ tab: Tab, in space: Space, tabs: [Tab]) -> some View {
@@ -212,8 +267,34 @@ struct TabsOverview: View {
     }
 }
 
+private struct OverviewSpaceHeading: View {
+    let space: Space
+    let count: Int
+    let open: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 8) {
+                SpaceMark(icon: space.icon, size: 16)
+                Text(space.name).font(.headline).underline(hovered)
+                Text(count.formatted()).foregroundStyle(Palette.muted)
+                if hovered { Symbol("arrow.up.right", size: 12) }
+            }.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityLabel("Open " + space.name)
+        .task(id: hovered) {
+            guard hovered else { return }
+            do { try await Task.sleep(for: .milliseconds(750)) } catch { return }
+            open()
+        }
+    }
+}
+
 private enum OverviewSort: String, CaseIterable {
-    case sidebar = "Sidebar order", recent = "Recently viewed", name = "Name A–Z"
+    case sidebar = "Sidebar Order", recent = "Recently Viewed", name = "Name A–Z"
 }
 
 private struct OverviewDrag {
