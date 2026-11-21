@@ -192,9 +192,8 @@ private struct LibraryScreen<Content: View>: View {
                     }.scrollIndicators(.hidden)
                     LibrarySortMenu(page: page, sorts: sorts)
                 }
-                let results = content(controls.search.trimmingCharacters(in: .whitespacesAndNewlines), controls.filter, controls.sort ?? sorts[0])
+                content(controls.search.trimmingCharacters(in: .whitespacesAndNewlines), controls.filter, controls.sort ?? sorts[0])
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if page == .tabs { ThreadScrollView { results } } else { results }
             }
         }
 
@@ -282,7 +281,7 @@ enum LibraryPage: String {
     @MainActor @ViewBuilder func screen(browser: Browser, tab: Tab) -> some View {
         switch self {
         case .settings: SettingsTab(browser: browser, tab: tab)
-        case .tabs: TabsLibrary(browser: browser, board: tab)
+        case .tabs: TabsOverview(browser: browser, shy: tab.shy) { browser.close(tab) }
         case .bookmarks: BookmarkLibrary(store: browser.bookmarks, browser: browser, tab: tab)
         case .history: HistoryLibrary(store: browser.history(for: tab), browser: browser, tab: tab)
         case .downloads: DownloadLibrary(store: browser.loot, browser: browser)
@@ -300,6 +299,10 @@ extension Browser {
     func showLibrary(_ page: LibraryPage) {
         let shy = privateBrowsing
         if fieldShowing { close() }
+        if page == .tabs {
+            showTabsOverview()
+            return
+        }
         func matches(_ tab: Tab) -> Bool { tab.shy == shy && tab.libraryPage == page }
         if let existing = tabs.first(where: matches) {
             select(existing)
@@ -327,385 +330,6 @@ extension Browser {
     }
 }
 
-private struct TabsLibrary: View {
-    @ObservedObject var browser: Browser
-    let board: Tab
-
-    @GestureState private var drag: BoardDrag?
-    @GestureState private var folderDrag: BoardFolderDrag?
-    @GestureState private var spaceDrag: BoardSpaceDrag?
-    private var draggingRows: Bool { drag != nil || folderDrag != nil }
-    @State private var viewport: CGRect = .zero
-    @State private var lastScroll: TimeInterval = 0
-    @State private var frames: [UUID: CGRect] = [:]
-    @State private var rowFrames: [String: CGRect] = [:]
-    @State private var ready: UUID?
-
-    private var spaces: [Space] {
-        if browser.blank || browser.windowPurpose != .normal { return [browser.space] }
-        return browser.turnOrder.filter { browser.prefs.usesSpaces || $0.id == browser.spaceID || $0.id == Space.mailID || $0.id == browser.homeSpaceID }
-    }
-
-    var body: some View {
-        let order = spaces
-        LibraryScreen(browser: browser, page: .tabs, filters: order.map { LibraryFilter(id: $0.id.uuidString, title: $0.name) },
-                      sorts: [.sidebar, .recent, .name]) { query, filter, sort in
-            // Keep the source in place while revealing other drop targets from a Space filter.
-            let ordered = draggingRows && filter != nil ? order.filter { $0.id.uuidString == filter } + order.filter { $0.id.uuidString != filter } : order
-            let columns = ordered.compactMap { space -> (Space, [Tab])? in
-                guard draggingRows || filter == nil || filter == space.id.uuidString else { return nil }
-                let row = space.id == browser.spaceID ? browser.tabs : browser.parked[space.id]?.tabs ?? []
-                var matches = browser.sidebarTabs(row).filter {
-                    $0.shy == board.shy && !Agents.shared.sealed($0)
-                        && matchesLibrary(query, space.name, $0.rowLabel, ($0.pending ?? $0.address)?.absoluteString ?? "")
-                }
-                if sort == .name { matches.sort { alphabetic($0.rowLabel, $1.rowLabel) } }
-                if sort == .recent { matches.sort { $0.touched > $1.touched } }
-                return query.isEmpty || !matches.isEmpty || draggingRows ? (space, matches) : nil
-            }
-            if columns.isEmpty {
-                LibraryEmpty(page: .tabs, filtered: true)
-            } else {
-                ScrollViewReader { reader in
-                    ThreadScrollView(.horizontal) {
-                        HStack(alignment: .top, spacing: CardFrame.inset) {
-                            ForEach(columns, id: \.0.id) { space, tabs in
-                                let target = landing(drag, space: space.id, tabs: tabs, sort: sort)
-                                let folderSlot = folderDrag.flatMap { folderLanding($0, in: space.id) }
-                                let spaceSlot = spaceDrag.flatMap { spaceLanding($0, in: space.id) }
-                                VStack(alignment: .leading, spacing: SideBar.gap) {
-                                    HStack(spacing: SideBar.gap) {
-                                        SpaceName(space: space, browser: browser)
-                                            .environment(\.sidebarSpaceActions, SidebarSpaceActions(browser: browser, id: space.id))
-                                        Text(tabs.count.formatted())
-                                            .font(CardFrame.detail).foregroundStyle(Palette.muted)
-                                            .padding(.trailing, SideBar.inner)
-                                    }
-                                    .contentShape(Rectangle())
-                                    .simultaneousGesture(reorderSpace(space.id), including: columns.count > 1 ? .all : .subviews)
-                                    .allowsWindowActivationEvents()
-                                    SidebarSpaceTabList(browser: browser, space: space, tabs: tabs,
-                                                        grouped: query.isEmpty && sort == .sidebar) { item, cell in
-                                        if let tab = item.tab {
-                                            cell
-                                                .opacity(drag?.tab === tab ? 0.5 : 1)
-                                                .contentShape(Rectangle())
-                                                .simultaneousGesture(move(tab, from: space.id, columns: columns, sort: sort),
-                                                         including: canDrag(tab, in: space.id) && tab !== board ? .all : .subviews)
-                                                .overlay {
-                                                    if ready == tab.id && groupTarget == tab.id {
-                                                        TabDropChoices(choice: TabDropChoice(target: tab.id, side: .folder,
-                                                            canSplit: false, revealed: true, fill: 1, ready: true))
-                                                    }
-                                                }
-                                                .overlay(alignment: .top) {
-                                                    if ((target?.before == tab.id || (target?.indicator == tab.id && target?.below == false)) && ready == nil) || folderSlot?.key == tab.id.uuidString { insertion.offset(y: -SideBar.gap / 2) }
-                                                }
-                                                .overlay(alignment: .bottom) {
-                                                    if target?.indicator == tab.id && target?.below == true && ready == nil { insertion.offset(y: SideBar.gap / 2) }
-                                                }
-                                                .background(rowFrame(tab.id.uuidString))
-                                        } else if case .nest(let nest, _, _) = item.kind {
-                                            cell.aimingAtFolder(target?.placement == .folder(nest.id)).contentShape(Rectangle())
-                                                .simultaneousGesture(moveFolder(nest, from: space.id))
-                                                .opacity(folderDrag?.nest === nest ? 0.5 : 1)
-                                                .overlay(alignment: .top) {
-                                                    if folderSlot?.key == nest.key { insertion.offset(y: -SideBar.gap / 2) }
-                                                }
-                                                .task(id: target?.placement == .folder(nest.id)) {
-                                                    guard target?.placement == .folder(nest.id), !nest.open,
-                                                          tabs.contains(where: { $0.nest?.within(nest) == true }) else { return }
-                                                    try? await Task.sleep(for: .milliseconds(600))
-                                                    guard !Task.isCancelled, !nest.open else { return }
-                                                    SidebarSpaceActions(browser: browser, id: space.id).run {
-                                                        browser.folderBook.toggle(nest.key, knownNest: nest, immediately: true)
-                                                    }
-                                                }
-                                                .background(rowFrame(nest.key))
-                                        } else if let key = item.folderKey {
-                                            cell.background(rowFrame(key))
-                                        } else { cell }
-                                    }
-                                }
-                                .overlay(alignment: .bottom) {
-                                    if (target != nil && target?.before == nil && target?.placement == nil && sort == .sidebar) || (folderSlot != nil && folderSlot?.key == nil) { insertion }
-                                }
-                                .frame(width: max(220, browser.sidebarContentWidth))
-                                .restingCardFrame(inset: SideBar.margin)
-                                .overlay(alignment: spaceSlot == true ? .trailing : .leading) {
-                                    if spaceSlot != nil { Capsule().fill(Color.accentColor).frame(width: 2).allowsHitTesting(false) }
-                                }
-                                .overlay {
-                                    if target != nil || folderSlot != nil {
-                                        RoundedRectangle(cornerRadius: SideBar.margin + Radius.control)
-                                            .strokeBorder(Color.accentColor, lineWidth: 2).allowsHitTesting(false)
-                                    }
-                                }
-                                .id(space.id)
-                                .background(GeometryReader { geo in
-                                    Color.clear.preference(key: BoardFrames.self,
-                                        value: [space.id: geo.frame(in: .named(board.id))])
-                                })
-                            }
-                        }
-                    }
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(board.id)) } action: { viewport = $0 }
-                    .onChange(of: drag?.point ?? folderDrag?.point ?? spaceDrag?.point) { _, point in
-                        guard let point, viewport.contains(point),
-                              ProcessInfo.processInfo.systemUptime - lastScroll > 0.25 else { return }
-                        let ids = columns.map { $0.0.id }
-                        let next: UUID?
-                        if point.x > viewport.maxX - SideBar.row {
-                            next = ids.first { frames[$0].map { $0.maxX > viewport.maxX + 1 } ?? false }
-                        } else if point.x < viewport.minX + SideBar.row {
-                            next = ids.last { frames[$0].map { $0.minX < viewport.minX - 1 } ?? false }
-                        } else { return }
-                        if let next {
-                            lastScroll = ProcessInfo.processInfo.systemUptime
-                            withAnimation(Motion.glide) { reader.scrollTo(next, anchor: .center) }
-                        }
-                    }
-                }
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            if let drag {
-                SideRow(browser: browser, prefs: browser.prefs, tab: drag.tab, live: false, closes: false)
-                    .environment(\.columnHosted, true)
-                    .environment(\.columnPointed, false)
-                    .frame(width: max(220, browser.sidebarContentWidth))
-                    .restingCardFrame(inset: 0)
-                    .offset(x: drag.point.x + SideBar.margin, y: drag.point.y + SideBar.margin)
-                    .allowsHitTesting(false).accessibilityHidden(true)
-            }
-        }
-        .coordinateSpace(name: board.id)
-        .onPreferenceChange(BoardRowFrames.self) { rowFrames = $0 }
-        .task(id: groupTarget) {
-            ready = nil
-            guard let target = groupTarget else { return }
-            try? await Task.sleep(for: .seconds(TabDropChoice.folderHold))
-            if !Task.isCancelled { ready = target }
-        }
-        .onPreferenceChange(BoardFrames.self) { frames = $0 }
-        .modifier(SidebarTypography())
-        .task(id: order.map(\.id)) {
-            for space in order where space.id != browser.spaceID && browser.parked[space.id] == nil {
-                guard !Task.isCancelled else { return }
-                browser.parked[space.id] = browser.loadRow(space.id)
-                await Task.yield()
-            }
-        }
-    }
-
-    private var insertion: some View {
-        Capsule().fill(Color.accentColor).frame(height: 2).allowsHitTesting(false)
-    }
-
-    private func rowFrame(_ key: String) -> some View {
-        GeometryReader { geo in
-            Color.clear.preference(key: BoardRowFrames.self, value: [key: geo.frame(in: .named(board.id))])
-        }
-    }
-
-    private var groupTarget: UUID? { drag.flatMap(folderTarget) }
-
-    private func folderTarget(_ drag: BoardDrag) -> UUID? {
-        guard drag.tab.keepable, frames[drag.source]?.contains(drag.point) == true,
-              let row = rowFrames.first(where: { $0.value.insetBy(dx: SideBar.inner, dy: SideBar.row / 3).contains(drag.point) }),
-              let id = UUID(uuidString: row.key), id != drag.tab.id,
-              let target = browser.everyTab.first(where: { $0.id == id }), target !== board, target.keepable,
-              target.pin == nil, drag.tab.pin == nil else { return nil }
-        return id
-    }
-
-    private func tabOwners(_ space: UUID) -> [Tab] {
-        space == browser.spaceID ? browser.tabs : browser.parked[space]?.tabs ?? []
-    }
-
-    private func canDrag(_ tab: Tab, in space: UUID) -> Bool {
-        space != Space.mailID && !Agents.shared.sealed(tab)
-    }
-
-    private func landing(_ drag: BoardDrag?, space: UUID, tabs: [Tab], sort: LibrarySort) -> BoardLanding? {
-        guard let drag, viewport.contains(drag.point), space != Space.mailID, let frame = frames[space],
-              frame.contains(drag.point) else { return nil }
-        if drag.source == space {
-            guard sort == .sidebar else { return nil }
-        } else {
-            guard browser.prefs.usesSpaces, browser.windowPurpose == .normal, !browser.blank,
-                  browser.sendable(drag.tab), !browser.pinnedAlready(drag.tab, in: space) else { return nil }
-        }
-        // In a sorted view the sort menu owns row order. Highlight the receiving column.
-        guard sort == .sidebar else { return BoardLanding(before: nil) }
-        let tabs = tabs.filter { rowFrames[$0.id.uuidString] != nil }
-        let owners = tabOwners(space)
-        let folders = browser.folderBook.empties(in: space) + owners.compactMap(\.nest).flatMap(\.chain)
-        if let folder = folders.first(where: { rowFrames[$0.key]?.contains(drag.point) == true }) {
-            guard drag.tab.keepable, drag.tab.pin == nil else { return nil }
-            return BoardLanding(before: nil, placement: .folder(folder.id))
-        }
-        if drag.tab.keepable, drag.tab.pin == nil,
-           let neighbor = tabs.first(where: { rowFrames[$0.id.uuidString]?.contains(drag.point) == true }),
-           neighbor !== drag.tab, neighbor.pin == nil,
-           (neighbor.nest != nil || drag.tab.nest != nil),
-           neighbor.nest?.chain.contains(where: { rowFrames[$0.key] != nil }) ?? true,
-           let rect = rowFrames[neighbor.id.uuidString] {
-            let pairs = space == browser.spaceID ? browser.pairs : browser.parked[space]?.pairs ?? []
-            let moving = pairs.first { $0.contains(drag.tab.id) }
-            let rest = owners.filter { $0.pin == nil && $0 !== drag.tab && moving?.contains($0.id) != true }
-            guard let index = rest.firstIndex(where: { $0 === neighbor }) else { return nil }
-            let pair = pairs.first { $0.contains(neighbor.id) }
-            let after = drag.point.y >= rect.midY
-            let slot = after ? (rest.lastIndex { pair?.contains($0.id) == true } ?? index) + 1
-                             : (rest.firstIndex { pair?.contains($0.id) == true } ?? index)
-            return BoardLanding(before: nil, placement: .row(index: slot, kept: neighbor.kept, nest: neighbor.nest?.id),
-                                indicator: neighbor.id, below: after)
-        }
-        var slot = tabs.firstIndex { tab in
-            guard let rect = rowFrames[tab.id.uuidString] else { return false }
-            return rect.midY > drag.point.y || (tab.pin != nil && rect.contains(drag.point) && rect.midX > drag.point.x)
-        } ?? tabs.count
-        let group = boardSection(drag.tab)
-        slot = min(max(slot, tabs.prefix { boardSection($0) < group }.count), tabs.prefix { boardSection($0) <= group }.count)
-        let pairs = space == browser.spaceID ? browser.pairs : browser.parked[space]?.pairs ?? []
-        if slot > 0, slot < tabs.count, pairs.contains(where: { $0.first == tabs[slot - 1].id && $0.second == tabs[slot].id }) {
-            slot += 1
-        }
-        return BoardLanding(before: slot < tabs.count ? tabs[slot].id : nil)
-    }
-
-    private func spaceLanding(_ hand: BoardSpaceDrag, in space: UUID) -> Bool? {
-        guard hand.source != space, viewport.contains(hand.point), let frame = frames[space],
-              frame.contains(hand.point) else { return nil }
-        return hand.point.x >= frame.midX
-    }
-
-    private func reorderSpace(_ id: UUID) -> some Gesture {
-        DragGesture(minimumDistance: 5, coordinateSpace: .named(board.id))
-            .updating($spaceDrag) { value, state, _ in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                state = BoardSpaceDrag(source: id, point: value.location)
-            }
-            .onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height),
-                      let from = browser.turnOrder.firstIndex(where: { $0.id == id }) else { return }
-                let hand = BoardSpaceDrag(source: id, point: value.location)
-                for (index, space) in browser.turnOrder.enumerated() {
-                    if let after = spaceLanding(hand, in: space.id) {
-                        browser.moveInOrder(id, to: index + (after ? 1 : 0) - (from < index ? 1 : 0))
-                        return
-                    }
-                }
-            }
-    }
-
-    private func folderLanding(_ hand: BoardFolderDrag, in space: UUID) -> BoardFolderLanding? {
-        guard hand.source != space, space != Space.mailID, hand.source != Space.mailID,
-              browser.prefs.usesSpaces, !browser.blank, browser.windowPurpose == .normal,
-              viewport.contains(hand.point), frames[space]?.contains(hand.point) == true else { return nil }
-        let members = tabOwners(hand.source).filter { $0.nest?.within(hand.nest) == true }
-        guard members.allSatisfy({ $0 !== board && $0.shy == board.shy && browser.sendable($0)
-            && $0.everywhere == nil && !Agents.shared.sealed($0) }) else { return nil }
-        let loose = tabOwners(space).filter { $0.pin == nil }
-        let kept = !hand.nest.today
-        let boundary = loose.prefix(while: \.kept).count
-        let range = kept ? 0..<boundary : boundary..<loose.count
-        // A whole folder lands between root rows. Children, including hidden
-        // children of folded folders, keep their parent's position.
-        var seen = Set<String>()
-        for index in range {
-            let tab = loose[index]
-            let root = tab.nest?.chain.first
-            let key = root?.key ?? tab.id.uuidString
-            guard seen.insert(key).inserted, let rect = rowFrames[key] else { continue }
-            if hand.point.y < rect.midY { return BoardFolderLanding(index: index, key: key) }
-        }
-        let next = kept ? loose.dropFirst(boundary).first : nil
-        return BoardFolderLanding(index: range.upperBound, key: next.map { $0.nest?.chain.first?.key ?? $0.id.uuidString })
-    }
-
-    private func moveFolder(_ nest: Nest, from source: UUID) -> some Gesture {
-        DragGesture(minimumDistance: 5, coordinateSpace: .named(board.id))
-            .updating($folderDrag) { value, state, _ in
-                state = BoardFolderDrag(nest: nest, source: source, point: value.location)
-            }
-            .onEnded { value in
-                let hand = BoardFolderDrag(nest: nest, source: source, point: value.location)
-                for space in spaces {
-                    guard let slot = folderLanding(hand, in: space.id) else { continue }
-                    let origin = browser.spaceID
-                    _ = browser.landTabs([], from: source, to: space.id,
-                                         at: .row(index: slot.index, kept: !nest.today, nest: nil), folder: nest, showing: false)
-                    if browser.spaceID != origin { browser.switchSpace(to: origin) }
-                    if browser.active !== board && browser.tabs.contains(where: { $0 === board }) { browser.select(board) }
-                    return
-                }
-            }
-    }
-
-    private func move(_ tab: Tab, from source: UUID, columns: [(Space, [Tab])], sort: LibrarySort) -> some Gesture {
-        DragGesture(minimumDistance: 5, coordinateSpace: .named(board.id))
-            .updating($drag) { value, state, _ in
-                state = BoardDrag(tab: tab, source: source, point: value.location)
-            }
-            .onEnded { value in
-                let end = BoardDrag(tab: tab, source: source, point: value.location)
-                if let id = ready, folderTarget(end) == id,
-                   let rect = rowFrames[id.uuidString], rect.contains(value.location),
-                   let target = browser.everyTab.first(where: { $0.id == id }) {
-                    SidebarSpaceActions(browser: browser, id: source).run {
-                        browser.newFolder(with: [target, tab], today: !target.kept, around: target)
-                    }
-                    return
-                }
-                for (space, tabs) in columns {
-                    if let slot = landing(end, space: space.id, tabs: tabs, sort: sort) {
-                        browser.moveOverviewTab(tab, from: source, to: space.id, before: slot.before, board: board,
-                                                afterLastVisible: tabs.last?.id, placement: slot.placement)
-                        break
-                    }
-                }
-            }
-    }
-}
-
-private struct BoardSpaceDrag {
-    let source: UUID
-    let point: CGPoint
-}
-
-private struct BoardFolderDrag {
-    let nest: Nest
-    let source: UUID
-    let point: CGPoint
-}
-
-private struct BoardFolderLanding {
-    let index: Int
-    let key: String?
-}
-
-private struct BoardDrag {
-    let tab: Tab
-    let source: UUID
-    let point: CGPoint
-}
-
-private struct BoardLanding {
-    let before: Tab.ID?
-    var placement: SpaceLanding?
-    var indicator: UUID?
-    var below = false
-}
-
-private struct BoardFrames: PreferenceKey {
-    static let defaultValue: [UUID: CGRect] = [:]
-    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
-}
-
 @MainActor private func boardSection(_ tab: Tab) -> Int {
     if tab.pin != nil { return 0 }
     return tab.kept ? 1 : 2
@@ -713,21 +337,21 @@ private struct BoardFrames: PreferenceKey {
 
 extension Browser {
     @discardableResult
-    func moveOverviewTab(_ tab: Tab, from source: UUID, to destination: UUID, before anchor: Tab.ID?, board: Tab, afterLastVisible last: Tab.ID? = nil, placement: SpaceLanding? = nil) -> Bool {
+    func moveOverviewTab(_ tab: Tab, from source: UUID, to destination: UUID, before anchor: Tab.ID?, board: Tab? = nil, afterLastVisible last: Tab.ID? = nil, placement: SpaceLanding? = nil) -> Bool {
         let origin = spaceID
-        guard active === board, source != Space.mailID, destination != Space.mailID,
-              spaceHolding(tab) == source, tab.shy == board.shy, tab !== board,
+        guard board == nil || active === board, source != Space.mailID, destination != Space.mailID,
+              spaceHolding(tab) == source, tab.shy == (board?.shy ?? privateBrowsing), tab !== board,
               !Agents.shared.sealed(tab) else { return false }
         if source != destination {
             guard prefs.usesSpaces, windowPurpose == .normal, !blank, sendable(tab),
                   spaces.contains(where: { $0.id == source }), spaces.contains(where: { $0.id == destination }),
-                  !pinnedAlready(tab, in: destination), !(source == origin && partner(of: tab) === board) else { return false }
+                  !pinnedAlready(tab, in: destination), !(board != nil && source == origin && partner(of: tab) === board) else { return false }
         }
         let still = SpaceTurn.still
         SpaceTurn.still = true
         defer {
             if spaceID != origin { switchSpace(to: origin) }
-            if active !== board && tabs.contains(where: { $0 === board }) { select(board) }
+            if let board, active !== board && tabs.contains(where: { $0 === board }) { select(board) }
             SpaceTurn.still = still
         }
         if spaceID != source { switchSpace(to: source) }
@@ -774,14 +398,6 @@ extension Browser {
     }
 }
 
-private struct BoardRowFrames: PreferenceKey {
-    static let defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
-    }
-}
-
-/// The filter column becomes a popover when the browser sidebar leaves little room.
 private struct SplitLibrary<Filters: View, Action: View, Results: View>: View {
     @ObservedObject var browser: Browser
     let page: LibraryPage

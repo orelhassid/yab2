@@ -274,6 +274,16 @@ struct SpaceLandingTests {
         }
     }
 
+    @Test func modalOverviewCanMoveTheSelectedTabWithoutOpeningABoardTab() {
+        world { browser, home, away, source, destination in
+            let active = source[1]
+            #expect(browser.active === active)
+            #expect(browser.moveOverviewTab(active, from: home, to: away, before: destination[0].id))
+            #expect(browser.spaceID == home && browser.parked[away]?.tabs.first === active)
+            #expect(browser.everyTab.allSatisfy { $0.libraryPage != .tabs })
+        }
+    }
+
     @Test func overviewReordersActiveAndParkedRowsInSidebarOrder() {
         world { browser, home, away, source, destination in
             let board = source[1]
