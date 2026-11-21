@@ -45,6 +45,26 @@ struct CodexServerTests {
         #expect(thread == "T1")
     }
 
+    @Test func resumedProjectUsesCurrentAccessAndModel() {
+        for mode in ["workspace-write", "read-only"] {
+            let (server, wire) = Self.server()
+            server.projectSandbox = mode
+            server.projectModel = "chosen-model"
+            server.projectEffort = "medium"
+            server.open(thread: "OLD", fork: nil, instructions: "brief", cwd: "/project")
+            _ = server.heard(["id": wire.last["id"]!, "result": [:]])
+            _ = server.heard(["id": wire.last["id"]!, "result": ["thread": ["id": "OLD"]]])
+            let params = wire.last["params"] as? [String: Any]
+            #expect(wire.last["method"] as? String == "thread/resume")
+            #expect(params?["cwd"] as? String == "/project")
+            #expect(params?["sandbox"] as? String == mode)
+            #expect(params?["model"] as? String == "chosen-model")
+            _ = Self.ready(server, wire, id: "OLD")
+            server.say("Run tests")
+            #expect((wire.last["params"] as? [String: Any])?["effort"] as? String == "medium")
+        }
+    }
+
     @Test func carriesOnOrForks() {
         let (server, resumed) = Self.opened(thread: "OLD")
         // A chat archived after its answer is taken out first.

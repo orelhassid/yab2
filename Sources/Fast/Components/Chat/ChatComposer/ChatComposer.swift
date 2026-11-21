@@ -257,7 +257,7 @@ struct ChatComposer: View {
         for file in projectFiles.lazy.filter({ query.isEmpty || String($0.path.dropFirst(prefix.count)).localizedCaseInsensitiveContains(query) }).prefix(limit) {
             rows.append(DevelopmentMention(name: file.lastPathComponent, detail: String(file.path.dropFirst(prefix.count)), symbol: "doc", attachment: .file(file)))
         }
-        for kind in [DevelopmentReference.Kind.skill, .plugin] {
+        for kind in [DevelopmentReference.Kind.skill, .plugin] where DevelopmentDirectory.shared.details(development).cli == "codex" {
             for ref in catalog.references.lazy.filter({ $0.kind == kind && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }).prefix(limit) {
                 rows.append(DevelopmentMention(name: ref.name, detail: kind.rawValue, symbol: kind == .skill ? "book" : "puzzlepiece.extension", reference: ref))
             }
@@ -347,7 +347,7 @@ struct ChatComposer: View {
                     if let pill { ChatProjectPill(browser: browser, project: pill) }
                     chips
                     Spacer(minLength: 0)
-                    if development != nil { Text("Codex · Read only").font(.caption).foregroundStyle(Palette.muted(on: composerTone)) }
+                    if let development { DevelopmentComposerControls(project: development, browser: browser, live: live) }
                     button
                 }
                 .padding(.leading, -6) // design: the +'s stroke on the words' line, its circle hanging out past them
@@ -557,7 +557,10 @@ struct ChatComposer: View {
     }
 
     private var placeholder: String {
-        if development != nil && !live && !choosing { return "Message Codex, or @ to add context…" }
+        if let development, !live, !choosing {
+            let cli = DevelopmentDirectory.shared.details(development).cli
+            return "Message " + AgentSetupModel.tool(cli) + ", or @ to add context…"
+        }
         if choosing { return "Or answer in your own words\u{2026}" }
         if editing != nil { return "Edit your message\u{2026}" }
         if live { return "Tell it more while it works\u{2026}" }

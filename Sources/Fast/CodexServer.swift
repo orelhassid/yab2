@@ -63,8 +63,11 @@ final class CodexServer {
     /// What the thread is opened with, once the server has said hello.
     private var opening: (thread: String?, fork: String?, instructions: String, cwd: String)?
     private(set) var thread: String?
-    /// Someone is there to answer its questions.
+    var projectSandbox: String?
+    var projectModel: String?
+    var projectEffort: String?
     var extraInputs: (String) -> [[String: Any]] = { _ in [] }
+    /// Someone is there to answer its questions.
     var asks = false
     /// The turn going on, once the server has named it.
     private(set) var turn: String?
@@ -99,7 +102,10 @@ final class CodexServer {
         guard let thread else { waiting.append(text); return }
         if turn != nil || starting != nil { steer(text, recovered: recovered); return }
         starting = nextID + 1
-        request("turn/start", ["threadId": thread, "input": [Self.input(text)] + extraInputs(text)], .turn)
+        var params: [String: Any] = ["threadId": thread, "input": [Self.input(text)] + extraInputs(text)]
+        if let projectModel { params["model"] = projectModel }
+        if let projectEffort { params["effort"] = projectEffort }
+        request("turn/start", params, .turn)
     }
 
     /// Words for the turn going on, read at its next step.
@@ -346,6 +352,8 @@ final class CodexServer {
         // otherwise keep their per-session folder as a separate project.
         var params: [String: Any] = ["developerInstructions": opening.instructions, "cwd": opening.cwd]
         let method: String
+        if let projectSandbox { params["sandbox"] = projectSandbox }
+        if let projectModel { params["model"] = projectModel }
         if let fork = opening.fork {
             method = "thread/fork"
             params["threadId"] = fork

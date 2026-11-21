@@ -40,6 +40,24 @@ struct DevelopmentDetails: Codable, Equatable {
     var createdAt: TimeInterval?
     var activity: [DevelopmentEvent]?
     var chatID: String?
+    var provider: String?
+    var providerChats: [String: String]?
+    var modelChoices: [String: ModelChoice]?
+    var workspaceWrite: Bool?
+
+    var cli: String { provider ?? "codex" }
+    var choice: ModelChoice { modelChoices?[cli] ?? ModelChoice(cli: cli) }
+    var selectedChatID: String? {
+        get { cli == "codex" ? chatID : providerChats?[cli] }
+        set {
+            if cli == "codex" { chatID = newValue }
+            else {
+                var chats = providerChats ?? [:]
+                chats[cli] = newValue
+                providerChats = chats
+            }
+        }
+    }
 
     mutating func record(_ title: String) {
         activity = (activity ?? []) + [DevelopmentEvent(title: title, time: Date().timeIntervalSince1970)]
@@ -258,7 +276,7 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
         guard message.frameInfo.isMainFrame, let info = message.body as? [String: Any] else { return }
         if let label = info["discuss"] as? String, let browser, info["project"] as? String == browser.developmentProject.rawValue {
             let project = browser.developmentProject
-            let chat = DevelopmentDirectory.shared.details(project).chatID.flatMap { Chats.shared.chat($0) }
+            let chat = DevelopmentDirectory.shared.details(project).selectedChatID.flatMap { Chats.shared.chat($0) }
             browser.developmentContent.draft(for: project).add(.quote(String(label.prefix(500))), chat: chat, browser: browser)
             return
         }

@@ -115,3 +115,7 @@ settings. Keep project drafts and conversation IDs with their project.
 Verify composer changes in the project pane as well as the browser column.
 For a live check, mention a file in a temporary project, read it with Codex,
 and switch projects and back to verify the conversation.
+Show project providers as horizontal tabs backed by the shared provider
+registry. Keep model choices and chat IDs scoped to the project and provider.
+When changing Codex access, test the composer switch in a temporary source
+folder and verify both the edited file and the test result on disk.

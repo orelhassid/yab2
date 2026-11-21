@@ -136,7 +136,7 @@ enum AgentModels {
 /// What a kind of work, or a command, runs on. No agent means the default:
 /// for a kind of work, yours on its own model ("Auto"); for a command, the
 /// Commands default.
-struct ModelChoice: Equatable {
+struct ModelChoice: Codable, Equatable {
     var cli: String?
     var model: String?
     var effort: String?

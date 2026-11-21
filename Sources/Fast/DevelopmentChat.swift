@@ -16,7 +16,7 @@ struct DevelopmentChat: View {
                     ChatTranscript(browser: browser, chat: chat, live: feed.live, away: $away)
                 } else {
                     Spacer()
-                    Text("Chat with Codex").foregroundStyle(.secondary)
+                    Text("Chat with " + AgentSetupModel.tool(details.cli)).foregroundStyle(.secondary)
                     Spacer()
                 }
             }
@@ -29,7 +29,7 @@ struct DevelopmentChat: View {
             }
         }
         .environment(\.projectChatStyle, true)
-        .onChange(of: details.chatID, initial: true) { _, id in feed.follow(id) }
+        .onChange(of: details.selectedChatID, initial: true) { _, id in feed.follow(id) }
         .onDisappear { feed.stop() }
     }
 }
@@ -37,10 +37,14 @@ struct DevelopmentChat: View {
 extension DevelopmentDirectory {
     func send(_ text: String, items: [ChatAttachment], references: [DevelopmentReference], project: DevelopmentProject,
               browser: Browser, later: Bool) -> Bool {
-        guard ProviderConsent.shared.allows("codex") else { TaskLine.connect(); return false }
         var details = details(project)
+        guard ProviderConsent.shared.allows(details.cli) else { browser.openSettings(.agents); return false }
+        guard details.cli == "codex" || references.isEmpty else {
+            browser.toaster.pop("Remove Codex mentions or select Codex", mark: "at")
+            return false
+        }
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: details.folder, isDirectory: &isDirectory), isDirectory.boolValue else {
+        guard details.cli != "codex" || (FileManager.default.fileExists(atPath: details.folder, isDirectory: &isDirectory) && isDirectory.boolValue) else {
             browser.developmentContent.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
             browser.toaster.pop("Choose a source folder for Codex", mark: "folder")
             return false
@@ -53,18 +57,17 @@ extension DevelopmentDirectory {
             + (text.isEmpty ? ChatAttachment.noWords : text)
         let agents = Agents.shared
         let session: Agents.Session
-        let running = agents.session(details.chatID)
+        let running = agents.session(details.selectedChatID)
         let continuing = running?.state.live == true
         if let running, continuing {
             session = running
         } else {
-            session = agents.run(prompt: prompt, cli: "codex", access: "browser", folder: details.folder, resume: details.chatID, strict: true)
+            session = agents.run(prompt: prompt, cli: details.cli, model: details.choice.model, effort: details.choice.effort, access: "browser", resume: details.selectedChatID, strict: true, development: details)
             guard agents.session(session.id) != nil else {
                 browser.toaster.pop(session.result, mark: "exclamationmark.circle")
                 return false
             }
-            session.developmentFolder = details.folder
-            details.chatID = session.id
+            details.selectedChatID = session.id
             save(details, for: project)
             session.title = details.name
         }
@@ -159,11 +162,7 @@ struct DevelopmentIntegrations: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: CardFrame.inset) {
                         if section == "Providers" {
-                            if query.isEmpty || "Codex".localizedCaseInsensitiveContains(query) {
-                                SettingsRow("Codex", detail: ProviderConsent.shared.allows("codex") ? "Connected to Yab" : "Disconnected") {
-                                    Button("AI settings") { browser.openSettings(.agents) }.buttonStyle(.yab(.secondary, .small))
-                                }
-                            }
+                            DevelopmentProviders(project: project, browser: browser, query: query)
                         } else {
                             if section == "Plugins", !catalog.status.isEmpty { Text(catalog.status).foregroundStyle(.secondary) }
                             ForEach(catalog.references.filter { ($0.kind == (section == "Plugins" ? .plugin : .skill)) && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }) { ref in
@@ -200,5 +199,115 @@ struct DevelopmentMention: Identifiable {
             if values.isRegularFile == true { files.append(url) }
         }
         return files.sorted { $0.path < $1.path }
+    }
+}
+
+/// The composer and Integrations both read the provider registry used by Settings.
+struct DevelopmentProviders: View {
+    let project: DevelopmentProject
+    let browser: Browser
+    let query: String
+    @State private var browsing: String?
+    @ObservedObject private var accounts = PlanAccounts.shared
+    @ObservedObject private var agents = Agents.shared
+    private var details: DevelopmentDetails { DevelopmentDirectory.shared.details(project) }
+    private var plan: AgentPlan { AgentPlan.of(browsing ?? details.cli) ?? .codex }
+    private var busy: Bool { agents.session(details.selectedChatID)?.state.live == true }
+    private var connected: Bool { ProviderConsent.shared.allows(plan.cli) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                ForEach(AgentPlan.all, id: \.cli) { provider in
+                    SidebarTabButton(title: provider.cli == "codex" ? provider.tool : provider.name,
+                                     selected: provider.cli == plan.cli, prefs: browser.prefs, inTabStrip: true,
+                                     action: { browsing = provider.cli }) { EmptyView() }
+                }
+            }
+            if !connected {
+                SettingsRow("Disconnected") {
+                    Button("Connect") { browser.openSettings(.agents) }.buttonStyle(.yab(.secondary, .small))
+                }
+            }
+            if query.isEmpty || "Default".localizedCaseInsensitiveContains(query) { modelRow(nil) }
+            ForEach(plan.models.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }) { model in
+                modelRow(model)
+            }
+            if details.cli == plan.cli, let model = AgentModels.find(plan.cli, details.choice.model), !model.efforts.isEmpty {
+                LibrarySeparator()
+                Picker("Reasoning effort", selection: Binding(get: { details.choice.effort ?? "" }, set: { set(model, effort: $0.isEmpty ? nil : $0) })) {
+                    Text("Default").tag("")
+                    ForEach(model.efforts, id: \.self) { Text(AgentModels.effortTitle($0)).tag($0) }
+                }.disabled(busy || !connected)
+            }
+        }
+        .task(id: plan.cli) {
+            guard connected else { return }
+            let found = await Shell.find()
+            await accounts.ask([plan.cli], found: found, refreshBlocked: true)
+        }
+    }
+
+    private func modelRow(_ model: AgentModel?) -> some View {
+        let selected = details.cli == plan.cli && details.choice.model == model?.model
+        return Button { set(model, effort: selected ? details.choice.effort : nil) } label: {
+            HStack {
+                Text(model?.name ?? "Default").lineLimit(1)
+                Spacer()
+                if selected { Symbol("checkmark", size: 12) }
+            }.contentShape(Rectangle())
+        }
+        .buttonStyle(.yab(selected ? .secondary : .quiet, .small))
+        .disabled(!connected || busy)
+    }
+
+    private func set(_ model: AgentModel?, effort: String?) {
+        guard connected, !busy else { return }
+        var next = details
+        next.provider = plan.cli
+        var choices = next.modelChoices ?? [:]
+        choices[plan.cli] = ModelChoice(cli: plan.cli, model: model?.model, effort: effort)
+        next.modelChoices = choices
+        DevelopmentDirectory.shared.save(next, for: project)
+    }
+}
+
+struct DevelopmentComposerControls: View {
+    let project: DevelopmentProject
+    let browser: Browser
+    let live: Bool
+    @State private var showingModels = false
+    @State private var search = ""
+    private var details: DevelopmentDetails { DevelopmentDirectory.shared.details(project) }
+
+    var body: some View {
+        if details.cli == "codex" {
+            Menu {
+                Button("Read only") { setWrite(false) }
+                Button("Workspace write") { setWrite(true) }
+            } label: { Text(details.workspaceWrite == true ? "Workspace write" : "Read only") }
+            .fixedSize().disabled(live)
+            .keyTip("Codex access in this project")
+        }
+        Button { search = ""; showingModels.toggle() } label: {
+            let name = details.choice.model.map { AgentModels.name(details.cli, $0) }
+                ?? (details.cli == "codex" ? "Codex" : AgentSetupModel.name(details.cli))
+            Text([name, details.choice.effort.map(AgentModels.effortTitle)].compactMap { $0 }.joined(separator: " · "))
+                .lineLimit(1)
+        }.buttonStyle(.yab(.quiet, .small))
+        .accessibilityLabel("Choose provider and model")
+        .popover(isPresented: $showingModels, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 8) {
+                ThemedSearchField("Search models", text: $search)
+                ScrollView { DevelopmentProviders(project: project, browser: browser, query: search) }
+            }.padding(12).frame(width: 420, height: 360)
+        }
+    }
+
+    private func setWrite(_ enabled: Bool) {
+        guard Agents.shared.session(details.selectedChatID)?.state.live != true else { return }
+        var next = details
+        next.workspaceWrite = enabled
+        DevelopmentDirectory.shared.save(next, for: project)
     }
 }
