@@ -27,7 +27,7 @@ function icon(name) {
 }
 for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = icon(el.dataset.icon);
 const appMark = '../../../Icon/Mark.png';
-const views = ['overview','feature','review','preview','terminal'];
+const views = ['overview','roadmap','feature','review','preview','terminal'];
 const content = document.querySelector('#content');
 const draft = document.querySelector('#draft');
 let selectedFile = 0;
@@ -89,7 +89,7 @@ function projectList() {
 }
 function otherProject() {
   const item = projects[project];
-  if (screen === 'feature') return '<article class="page"><div class="crumb">Product '+icon('right')+' Roadmap '+icon('right')+' '+item.area+'</div><h1>'+item.feature+'</h1><section class="block doc"><h2>Feature definition</h2><p class="body-copy">'+item.goal+'</p></section><div class="block">'+action(icon('chat')+' Discuss feature','data-action="discuss"')+'</div></article>';
+  if (screen === 'feature') return '<article class="page">'+roadmapCrumb(item.area)+'<h1>'+item.feature+'</h1><section class="block doc"><h2>Feature definition</h2><p class="body-copy">'+item.goal+'</p></section><div class="block">'+action(icon('chat')+' Discuss feature','data-action="discuss"')+'</div></article>';
   if (screen === 'review') return '<section class="page"><h1>Code review</h1><p class="body-copy">No changes awaiting review in '+item.name+'.</p></section>';
   return '<section class="page"><header class="head"><div class="well">'+projectMark(project)+'</div><h1>'+item.name+'</h1></header><section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list"><button class="row" data-route="feature"><span class="well small">'+icon('roadmap')+'</span><span><b>'+item.feature+'</b><small>'+item.area+'</small></span><span class="trail">Planned</span>'+icon('right')+'</button></div></section></section>';
 }
@@ -143,7 +143,7 @@ function feature() {
     'Keep the bar visible while at least one download is active.',
     'Restore the plain icon when the final download ends or is canceled.'];
   return `<article class="page">
-    <div class="crumb">Product ${icon('right')} Roadmap ${icon('right')} Downloads</div>
+    ${roadmapCrumb('Downloads')}
     <header class="detail-intro"><div><h1>Dock download progress</h1><div class="meta">${status()} · Owner: Codex</div></div></header>
     <div class="feature-doc"><div class="doc"><section><h2>Feature definition</h2><p class="body-copy">See the progress of active downloads from the macOS Dock, even when Yab is in the background. When the last download stops, the plain Yab icon returns.</p></section>
     <section><h2>Acceptance criteria</h2>${checks.map(c=>'<div class="check-row">'+icon('checked')+'<span>'+c+'</span></div>').join('')}</section>
@@ -251,31 +251,37 @@ function render() {
   restoreChat(id);
   lastProject = project;
   screen = parts.at(-1);
-  if (!views.includes(screen)) screen = 'overview';
+  if (!views.includes(screen) && !selectedFeature()) screen = 'overview';
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  if (screen === 'preview') {
+  if (screen === 'roadmap') content.innerHTML = roadmap();
+  else if (screen !== 'feature' && selectedFeature()) content.innerHTML = productSpec(selectedFeature());
+  else if (screen === 'preview') {
     content.innerHTML = preview();
     document.querySelector('#app-url').value = previewURLs.get(project) ?? '';
   } else if (screen === 'terminal') content.innerHTML = terminal();
   else content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
   document.querySelectorAll('nav [data-route]').forEach(b=>{
-    if (b.dataset.route===screen) b.setAttribute('aria-current','page');
+    if (b.dataset.route === (selectedFeature() ? 'roadmap' : screen)) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
   content.scrollTop = scroll[pathFor(project,screen)] || 0;
-  document.title = ({overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen]+' · '+projects[id].name;
+  document.title = ((selectedFeature() && selectedFeature().title) || ({roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
 }
 function go(route) {
   document.body.classList.remove('chat-open');
   if (route===screen) return;
   location.hash = pathFor(project,route);
 }
-function discuss(label) {
+function discuss(label, route) {
   const chip = document.querySelector('#context');
   chip.hidden = false;
-  chip.textContent = label;
+  chip.replaceChildren();
+  const reference = document.createElement('span');
+  reference.textContent = label;
+  if (route) reference.dataset.spec = route;
+  chip.append(reference);
   const close = document.createElement('button');
   close.textContent = '×'; close.dataset.action = 'remove-context'; close.ariaLabel = 'Remove context';
   chip.append(close);
@@ -290,6 +296,15 @@ function addMessage() {
   bubble.className = 'bubble you';
   bubble.textContent = draft.value.trim();
   const messages = document.querySelector('#messages');
+  if (!context.hidden) {
+    const reference = context.firstElementChild;
+    const link = document.createElement(reference.dataset.spec ? 'button' : 'small');
+    if (reference.dataset.spec) link.dataset.route = reference.dataset.spec;
+    link.className = 'sent-context';
+    link.textContent = reference.textContent;
+    bubble.prepend(link);
+    context.hidden = true;
+  }
   messages.append(bubble); bubble.scrollIntoView({block:'nearest'});
   draft.value=''; send.disabled=true;
 }
@@ -305,7 +320,7 @@ document.addEventListener('click',e=>{
       document.body.classList.toggle(matchMedia('(max-width:920px)').matches ? 'sidebar-open' : 'rail-closed');
       break;
     case 'chat': document.body.classList.toggle('chat-open'); break;
-    case 'discuss': discuss(projects[project].feature ?? 'Dock download progress'); break;
+    case 'discuss': discuss(selectedFeature().title, screen); break;
     case 'discuss-file': discuss(files[selectedFile].title); break;
     case 'remove-context': document.querySelector('#context').hidden=true; draft.focus(); break;
     case 'send': addMessage(); break;

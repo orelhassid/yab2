@@ -225,3 +225,22 @@ nav button { padding:4px 9px; border-radius:8px; flex:none }
 .terminal-surface input { border:0; background:none; font:13px ui-monospace,monospace }
 @media(max-width:920px){.sidebar-door{display:block}}
 @media(max-width:720px){.phone-door{display:block}}
+
+.product-map header { margin-bottom: 24px }
+.product-map header p { margin: 8px 0 0 }
+.product-lane { --tint: var(--blue); margin: 0 0 14px; border: 1px solid color-mix(in srgb,var(--tint) 19%,var(--line)); background: color-mix(in srgb,var(--tint) 6%,transparent); padding: 18px; border-radius: 15px }
+.product-lane:nth-of-type(2) { --tint: #d7b6fa }
+.product-lane:nth-of-type(3) { --tint: #9acdb2 }
+.product-lane h2 { display:flex; gap:9px; align-items:center; margin:0; font-size:17px }
+.product-lane h2 svg { color:var(--tint); width:17px }
+.product-lane > p { color:var(--muted); margin:6px 0 15px; font-size:13px }
+.milestones { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px }
+.milestone { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:12px; text-align:left; border:1px solid var(--line); border-radius:10px; background:var(--wash); min-width:0 }
+.milestone + .milestone::before { content:''; position:absolute; width:12px; height:1px; background:var(--tint); opacity:.45; left:-13px; top:50% }
+.milestone.suggestion { border:1px dashed color-mix(in srgb,var(--tint) 48%,var(--line)); background:transparent }
+.milestone:hover { border-color:var(--tint) }
+.milestone small { color:var(--tint); font-size:11px }
+.milestone b { font-size:14px; line-height:1.25 }
+.milestone span { font-size:12px; line-height:1.4; color:var(--muted) }
+.sent-context { display:block; text-align:left; font-size:12px; padding:0 0 5px; color:inherit; text-decoration:underline }
+@media(max-width:1060px) { .milestones { grid-template-columns:repeat(auto-fit,minmax(min(145px,100%),1fr)) }.milestone + .milestone::before { display:none } }
