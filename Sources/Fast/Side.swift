@@ -215,7 +215,7 @@ struct SideBar: View {
     /// The column's own door stands in the row, but where "⋯" holds it.
     /// Full screen too, docked or out as a card, as Arc keeps it there
     /// (feedback #274): the column is the same column there, ⌘S and all.
-    private var columnDoored: Bool { prefs.sidebarButton && !helmRow && !browser.bandDoors && browser.railInsideColumn == 0 }
+    private var columnDoored: Bool { browser.inDevelopment || prefs.sidebarButton && !helmRow && !browser.bandDoors && browser.railInsideColumn == 0 }
     /// The column's own doors, none with two side by side: each half has
     /// its own in its band, and a third set here would act on whichever
     /// half was last clicked. None in mail: its one page has nowhere to go
@@ -274,10 +274,7 @@ struct SideBar: View {
     var body: some View {
         let _ = SpacePager.touched()
         ZStack(alignment: .top) {
-            if browser.inDevelopment {
-                Color.clear.modifier(DevelopmentLook(paint: DevelopmentDirectory.shared.details(browser.developmentProject).paint ?? SpacePaint(prefs)))
-                    .allowsHitTesting(false)
-            } else if browser.showingAllTabs, let paint = browser.sidebarSpace.paint {
+            if browser.showingAllTabs && !browser.inDevelopment, let paint = browser.sidebarSpace.paint {
                 Color(nsColor: paint.color(dark: scheme == .dark)).allowsHitTesting(false)
             }
             // Under the last row the window is dragged by, and a right
@@ -350,7 +347,6 @@ struct SideBar: View {
                 // The address, when nothing over the page has it.
                 if browser.inDevelopment {
                     DevelopmentProjects(browser: browser)
-                        .modifier(DevelopmentLook(paint: DevelopmentDirectory.shared.details(browser.developmentProject).paint ?? SpacePaint(prefs), drawsBackdrop: false))
                 } else {
                 if browser.sidePlated, !ColumnKit.cut.contains("plate") {
                     Group {

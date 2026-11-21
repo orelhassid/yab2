@@ -185,6 +185,7 @@ final class SpaceWash {
     static func grounded(_ paint: SpacePaint? = nil, in browser: Browser) -> Paint? {
         let prefs = browser.prefs
         if browser.windowPurpose == .privateOnly { return Paint(color: ContentView.privateBackdrop, grain: prefs.grain) }
+        if let project = browser.developmentLook { return painted(paint ?? project) }
         let paint = paint ?? SpacePaint(prefs)
         return !prefs.sideShut || browser.sideCard ? card(paint, prefs: prefs) : worn(paint, prefs: prefs)
     }

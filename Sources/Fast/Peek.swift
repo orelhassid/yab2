@@ -150,7 +150,9 @@ struct Column: View {
         // column wears its space's look on a ground of its own, out and on
         // the way between alike, as Arc's sidebar always wears its theme.
         let ground = tone == nil ? card : Self.ground(floating: floating, tone: tone)
-        let paint = ground.map { Self.paint($0, prefs: prefs, privateWindow: browser.windowPurpose == .privateOnly) }
+        let paint = ground.map { ground in
+            browser.developmentLook.map(SpaceWash.painted) ?? Self.paint(ground, prefs: prefs, privateWindow: browser.windowPurpose == .privateOnly)
+        }
         // What the card's own hairline and the island at its foot are
         // drawn on: the window's backdrop, or edge to edge the column's.
         let worn = tone ?? card
@@ -926,7 +928,7 @@ struct ColumnRoot: View {
             // the page as a card it paints the site's color itself.
             let docked = !prefs.sideShut
             WorkspaceThemeReader(browser: browser) { theme in
-                let workspaceTone = theme.active ? Tone(SpaceWash.painted(theme.look ?? SpacePaint(prefs)).color, lifted: true) : nil
+                let workspaceTone = theme.active ? SpaceSurface.tone(for: SpaceWash.painted(theme.look ?? SpacePaint(prefs)).color) : nil
                 Column(browser: browser, prefs: prefs, peek: browser.peek, docked: docked,
                        tone: workspaceTone ?? (docked ? ink ?? tone : tone), card: card,
                        carried: true, ink: docked || workspaceTone != nil ? nil : ink)

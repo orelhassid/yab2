@@ -74,6 +74,30 @@ struct SpaceLandingTests {
         }
     }
 
+    @Test func developmentChromeFollowsTheSelectedProjectAndRestoresTheSpace() {
+        world { browser, home, _, _, _ in
+            let directory = DevelopmentDirectory.shared
+            let original = directory.details(.yab)
+            let stored = Store.settings.data(forKey: "development.projectDetails")
+            defer {
+                directory.save(original, for: .yab)
+                Store.settings.set(stored, forKey: "development.projectDetails")
+            }
+            var edited = original
+            let light = SpacePaint(swatch: .custom, color: .cyan, grain: 0, mode: "light")
+            edited.paint = light
+            directory.save(edited, for: .yab)
+            browser.enterDevelopment()
+            #expect(browser.developmentLook == light)
+            #expect(SpaceWash.grounded(in: browser) == SpaceWash.painted(light))
+            browser.developmentProject = .sunday
+            let sunday = directory.details(.sunday).paint ?? SpacePaint(browser.prefs)
+            #expect(SpaceWash.grounded(in: browser) == SpaceWash.painted(sunday))
+            browser.switchSpace(to: home)
+            #expect(browser.developmentLook == nil)
+        }
+    }
+
     @Test func developmentProjectSurvivesReloadAlongsideLegacyProjects() throws {
         let key = "development.projectDetails"
         let previous = Store.settings.data(forKey: key)

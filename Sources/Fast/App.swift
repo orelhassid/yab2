@@ -735,6 +735,7 @@ struct Under<Content: View>: View {
 /// the tab (its title, its progress). A small window of its own follows
 /// its one tab (`tab`).
 struct Worn<Content: View>: View {
+    @Environment(\.workspaceTheme) private var workspaceTheme
     var tab: Tab?
     var browser: Browser?
     let mode: Backdrop
@@ -767,7 +768,7 @@ struct Worn<Content: View>: View {
             // when a tab without a color comes or goes. Taken at once, as the
             // page is: eased, it was drawn again for each frame of 0.14 s.
             let tone = glassActive ? nil : browser.worn.color.map { Tone($0, lifted: true) }
-            content(Self.worn(tone, mode: mode, dark: scheme == .dark) ? tone : swatch)
+            content(workspaceTheme.tone ?? (Self.worn(tone, mode: mode, dark: scheme == .dark) ? tone : swatch))
         } else if glassActive {
             content(swatch)
         } else if let tab {
@@ -1057,6 +1058,13 @@ struct ContentView: View {
                     if browser.inDevelopment {
                         DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries)
                             .clipShape(RoundedRectangle(cornerRadius: corner))
+                            .background {
+                                if laid {
+                                    RoomPaper(preview: browser.splitPreview, corner: corner, dark: scheme == .dark,
+                                              band: nil, moving: browser.reshaping && !browser.trackingSize)
+                                        .padding(-1)
+                                }
+                            }
                             .padding(margins)
                     } else if let tab = browser.active {
                         // Developer Tools (DevTools.swift): a card of its own

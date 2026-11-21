@@ -41,7 +41,7 @@ struct ProfileSwitcher: View {
     @ObservedObject var popover: ProfilePopover
     @ObservedObject private var identities = BrowserProfileIdentities.shared
     @Environment(\.accessibilityReduceTransparency) private var solid
-    @Environment(\.colorScheme) private var scheme
+    @Environment(\.tone) private var tone
 
     static let width: CGFloat = 260
     private static let pad = CardFrame.rows
@@ -84,14 +84,14 @@ struct ProfileSwitcher: View {
             .frame(width: placement.bodySize.width, height: placement.bodySize.height, alignment: .topLeading)
             .padding(placement.insets)
             .background {
-                if solid { outline.fill(Palette.ground) } // design: the material's accessible fallback covers the entire pointer
+                if solid { outline.fill(tone?.color ?? Palette.ground) } // design: the material's accessible fallback covers the entire pointer
                 else {
                     outline.fill(.regularMaterial)
-                    outline.fill(Color(nsColor: browser.prefs.swatch.color(dark: scheme == .dark,
-                                                                          custom: browser.prefs.backdropColor)).opacity(0.22))
+                    if let tone { outline.fill(tone.color.opacity(0.75)) }
                 }
             }
-            .overlay { outline.stroke(.primary.opacity(0.18), lineWidth: 1).allowsHitTesting(false) }
+            .foregroundStyle(Palette.strong(on: tone))
+            .overlay { outline.stroke(tone.map { Color(nsColor: SpaceSurface.rim(on: $0)) } ?? Palette.hairline, lineWidth: 1).allowsHitTesting(false) }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Profile Switcher")
         }

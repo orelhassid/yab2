@@ -141,7 +141,22 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     weak var browser: Browser?
     private(set) var ready = false
     private var sentEntries: [String: DevelopmentDetails]?
+    private var sentColors: [String: String]?
     private var selected: DevelopmentProject?
+
+    func updateColors() {
+        guard ready, let look = browser?.developmentLook else { return }
+        let ground = SpaceWash.painted(look).color
+        let tone = SpaceSurface.tone(for: ground)
+        let shades = Palette.shades(tone)
+        let colors = ["--ground": "#" + ground.hex, "--stage": "#" + tone.page.hex,
+                      "--ink": "#" + shades.strongNS.hex, "--muted": "#" + shades.mutedNS.hex,
+                      "--faint": "#" + shades.faintNS.hex, "--line": "#" + SpaceSurface.rim(on: tone).hex]
+        guard colors != sentColors else { return }
+        sentColors = colors
+        view.callAsyncJavaScript("for (const [key, value] of Object.entries(colors)) document.documentElement.style.setProperty(key, value)",
+                                 arguments: ["colors": colors], in: nil, in: .page, completionHandler: nil)
+    }
     lazy var view: WKWebView = {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(toolbar, name: "toolbar")
@@ -199,6 +214,8 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         ready = true
         selected = nil
+        sentColors = nil
+        updateColors()
         sentEntries = nil
         updateDirectory()
         if let browser { select(browser.developmentProject) }
@@ -248,6 +265,13 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
     }
 }
 
+extension Browser {
+    var developmentLook: SpacePaint? {
+        guard inDevelopment, windowPurpose != .privateOnly else { return nil }
+        return DevelopmentDirectory.shared.details(developmentProject).paint ?? SpacePaint(prefs)
+    }
+}
+
 struct DevelopmentPane: View {
     let browser: Browser
     let project: DevelopmentProject
@@ -264,8 +288,14 @@ struct DevelopmentPane: View {
     var body: some View {
         let content = browser.developmentContent
         let state = content.toolbar
+        let look = entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)
+        let paint = SpaceWash.painted(look)
         VStack(spacing: 0) {
             HStack(spacing: 4) {
+                if browser.prefs.sideShut && browser.trailFlank == nil {
+                    ColumnDoor(browser: browser, prefs: browser.prefs)
+                        .environment(\.doorSize, .header)
+                }
                 Button {
                     guard let anchor = projectAnchor.view else { return }
                     let menu = NSMenu(title: "Switch project")
@@ -327,7 +357,12 @@ struct DevelopmentPane: View {
                     }
                 }
         }
-        .modifier(DevelopmentLook(paint: entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)))
+        .toned(SpaceSurface.tone(for: paint.color))
+        .background {
+            CardGround(paint: paint, step: look.shift ? browser.lookStep : 0)
+                .environment(browser)
+                .background(Color(nsColor: paint.color))
+        }
     }
 
     private func layoutAction(_ icon: String, _ title: String, _ action: String) -> some View {
@@ -349,6 +384,7 @@ private struct DevelopmentWebPane: NSViewRepresentable {
     }
     func updateNSView(_ view: WKWebView, context: Context) {
         view.appearance = NSAppearance(named: context.environment.colorScheme == .dark ? .darkAqua : .aqua)
+        browser.developmentContent.updateColors()
         browser.developmentContent.updateDirectory()
         browser.developmentContent.select(project)
     }

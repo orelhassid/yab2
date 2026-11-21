@@ -31,8 +31,6 @@ final class DevelopmentShell: LocalProcessTerminalViewDelegate {
               directory.boolValue, FileManager.default.isExecutableFile(atPath: folder) else { return nil }
 
         terminal = ProjectTerminalView(frame: CGRect(x: 0, y: 0, width: 640, height: 400))
-        terminal.appearance = NSAppearance(named: .darkAqua)
-        terminal.nativeBackgroundColor = NSColor(srgbRed: 17/255, green: 21/255, blue: 28/255, alpha: 1)
         terminal.processDelegate = self
         let configuredShell = getpwuid(getuid()).flatMap { $0.pointee.pw_shell }.map { String(cString: $0) }
         let shell = Shell.loginShell(configuredShell)
@@ -80,7 +78,6 @@ struct DevelopmentTerminalPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .environment(\.colorScheme, .dark)
         .task(id: folder) { session = terminals.session(for: project, folder: folder) }
     }
 }
@@ -92,7 +89,15 @@ private struct DevelopmentTerminalScreen: NSViewRepresentable {
         session.terminal
     }
 
-    func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {}
+    func updateNSView(_ view: LocalProcessTerminalView, context: Context) {
+        guard let tone = context.environment.tone else { return }
+        let ink = Palette.shades(tone).strongNS
+        let appearance = NSAppearance(named: tone.scheme == .dark ? .darkAqua : .aqua)
+        if view.appearance != appearance { view.appearance = appearance }
+        if view.nativeBackgroundColor != tone.page { view.nativeBackgroundColor = tone.page }
+        if view.nativeForegroundColor != ink { view.nativeForegroundColor = ink }
+        if view.caretColor != ink { view.caretColor = ink }
+    }
 }
 
 private final class ProjectTerminalView: LocalProcessTerminalView {

@@ -1,33 +1,11 @@
 import SwiftUI
 
-/// The selected project's paint is scoped to its window and never written to
-/// the browser preferences that dress regular Spaces.
-struct DevelopmentLook: ViewModifier {
-    let paint: SpacePaint
-    var drawsBackdrop = true
-
-    func body(content: Content) -> some View {
-        let resolved = SpaceWash.painted(paint)
-        let color = resolved.color
-        let tone = SpaceSurface.tone(for: color)
-        content
-            .environment(\.tone, tone)
-            .environment(\.colorScheme, tone.scheme)
-            .background {
-                if drawsBackdrop {
-                    BackdropFill(color: Color(nsColor: color), grain: paint.grain,
-                                 transparency: resolved.transparency, colors: resolved.colors.map { Color(nsColor: $0) })
-                        .overlay { LookDrawingsFill(drawings: paint.drawings, strength: paint.drawingsStrength, ground: color) }
-                }
-            }
-    }
-}
-
 struct DevelopmentSettings: View {
     let project: DevelopmentProject
     let prefs: Preferences
     @State private var appearance = false
     @State private var query = ""
+    @Environment(\.tone) private var tone
     @State private var name: String
     @State private var icon: String
     private var directory: DevelopmentDirectory { .shared }
@@ -56,9 +34,9 @@ struct DevelopmentSettings: View {
                             if !wide { HStack { navigation } }
                             if matches("Project name icon source folder", page: false) {
                                 group("Project details") {
-                                    SettingsRow("Project name") { TextField("Project name", text: $name).labelsHidden() }
+                                    SettingsRow("Project name") { field("Project name", text: $name).labelsHidden() }
                                     LibrarySeparator()
-                                    SettingsRow("Project icon") { TextField("Default icon", text: $icon).labelsHidden() }
+                                    SettingsRow("Project icon") { field("Default icon", text: $icon).labelsHidden() }
                                     LibrarySeparator()
                                     SettingsRow("Source folder", detail: details.folder) {
                                         Button("Choose folder", action: chooseFolder).buttonStyle(.yab(.secondary, .small))
@@ -106,6 +84,14 @@ struct DevelopmentSettings: View {
             VStack(alignment: .leading, spacing: CardFrame.inset, content: rows)
                 .padding(CardFrame.inset).modifier(LibraryCardSurface())
         }
+    }
+
+    private func field(_ title: String, text: Binding<String>) -> some View {
+        TextField(title, text: text)
+            .textFieldStyle(.plain)
+            .foregroundStyle(Palette.strong(on: tone))
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Palette.wash(on: tone), in: RoundedRectangle(cornerRadius: SideBar.radius))
     }
 
     private func save() {

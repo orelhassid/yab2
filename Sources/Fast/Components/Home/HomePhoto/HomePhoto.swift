@@ -25,6 +25,7 @@ struct WorkspaceTheme {
     var look: SpacePaint?
     var hasPhoto = false
     var active: Bool { look != nil || hasPhoto }
+    @MainActor var tone: Tone? { look.map { SpaceSurface.tone(for: SpaceWash.painted($0).color) } }
 }
 
 private struct WorkspaceThemeKey: EnvironmentKey {
@@ -44,17 +45,19 @@ struct WorkspaceThemeReader<Content: View>: View {
     @ViewBuilder var content: (WorkspaceTheme) -> Content
 
     var body: some View {
-        StoredWorkspaceTheme(space: browser.spaceID, privateWindow: browser.windowPurpose == .privateOnly, content: content)
+        StoredWorkspaceTheme(space: browser.spaceID, projectLook: browser.developmentLook, privateWindow: browser.windowPurpose == .privateOnly, content: content)
     }
 }
 
 private struct StoredWorkspaceTheme<Content: View>: View {
+    let projectLook: SpacePaint?
     let privateWindow: Bool
     let content: (WorkspaceTheme) -> Content
     @AppStorage private var look: Data
     @AppStorage private var photo: String
 
-    init(space: UUID, privateWindow: Bool, content: @escaping (WorkspaceTheme) -> Content) {
+    init(space: UUID, projectLook: SpacePaint?, privateWindow: Bool, content: @escaping (WorkspaceTheme) -> Content) {
+        self.projectLook = projectLook
         self.privateWindow = privateWindow
         self.content = content
         _look = AppStorage(wrappedValue: Data(), "home.look." + space.uuidString, store: Store.settings)
@@ -63,8 +66,12 @@ private struct StoredWorkspaceTheme<Content: View>: View {
 
     var body: some View {
         let theme = privateWindow ? WorkspaceTheme() :
-            WorkspaceTheme(look: try? JSONDecoder().decode(SpacePaint.self, from: look), hasPhoto: !photo.isEmpty)
-        content(theme).environment(\.workspaceTheme, theme)
+            WorkspaceTheme(look: projectLook ?? (try? JSONDecoder().decode(SpacePaint.self, from: look)), hasPhoto: projectLook == nil && !photo.isEmpty)
+        let tone = theme.tone
+        content(theme)
+            .environment(\.workspaceTheme, theme)
+            .transformEnvironment(\.tone) { if let tone { $0 = tone } }
+            .transformEnvironment(\.colorScheme) { if let tone { $0 = tone.scheme } }
     }
 }
 

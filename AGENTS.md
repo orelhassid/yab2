@@ -91,3 +91,11 @@ Yab Dev uses an optimized debug build in `.build/dev-optimized`; release and
 read the actual command and output-file map before retrying, and fix a mode
 mismatch in `build.sh` instead of clearing caches. See
 https://github.com/swiftlang/swift/issues/70995.
+
+## Theme ownership
+
+Resolve window chrome from the active Space. In Development, the selected
+project supplies that look. Pass the resolved tone into each hosting root,
+including the Trail, sidebar, popovers and embedded workspace. Use the
+shared palette for controls and interaction states. Check a light and a
+dark project with the Trail visible when changing these surfaces.

@@ -177,7 +177,10 @@ final class ProfilePopover: ObservableObject {
         panel.level = window.level
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
-        let host = NSHostingView(rootView: ProfileSwitcher(browser: browser, popover: self))
+        let host = NSHostingView(rootView: WorkspaceThemeReader(browser: browser) { theme in
+            let tone = theme.tone ?? SpaceSurface.tone(in: browser)
+            ProfileSwitcher(browser: browser, popover: self).toned(tone)
+        })
         host.sizingOptions = []
         host.autoresizingMask = [.width, .height]
         panel.contentView = host
