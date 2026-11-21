@@ -55,6 +55,7 @@ struct ChatTranscript: View {
     /// as it stands scrolled (the face small, the name up), so they come
     /// clear at the glass's foot and only what goes under it is veiled.
     private static let under: CGFloat = ChatHead.height - ChatHead.bottom - ChatHead.lift - ColumnEnds.fall
+    @Environment(\.projectChatStyle) private var projectStyle
     @Environment(\.accessibilityReduceMotion) private var still
     @Environment(\.accessibilityReduceTransparency) private var clear
     /// The way down's drop of glass.
@@ -170,7 +171,7 @@ struct ChatTranscript: View {
                             .animation(still ? nil : Motion.chatQuick, value: cut)
                         }
                     }
-                    .padding(.horizontal, ChatLook.turnsInset)
+                    .padding(.horizontal, projectStyle ? ChatLook.fieldInset : ChatLook.turnsInset)
                     .padding(.top, 4)
                     .frame(maxWidth: .infinity)
                     .frame(maxWidth: .infinity)
