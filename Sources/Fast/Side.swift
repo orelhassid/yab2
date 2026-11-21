@@ -3798,6 +3798,7 @@ struct SidebarTabButton<Mark: View>: View {
     let title: String
     let selected: Bool
     let prefs: Preferences
+    var inTabStrip = false
     let action: () -> Void
     @ViewBuilder var mark: () -> Mark
     @Environment(\.tabTitleSize) private var titleSize
@@ -3805,13 +3806,18 @@ struct SidebarTabButton<Mark: View>: View {
 
     var body: some View {
         Button(action: action) {
-            SidebarTabRow {
-                mark().frame(width: SideBar.mark, height: SideBar.mark)
-                Text(title).font(.system(size: titleSize)).lineLimit(1)
+            Group {
+                if inTabStrip {
+                    HStack(spacing: SideBar.markGap) { label }
+                        .padding(.horizontal, SideBar.inner)
+                        .frame(height: prefs.density.tab)
+                } else {
+                    SidebarTabRow { label }
+                }
             }
             .background {
                 if selected || hovered {
-                    SelectionPlate(corner: SideBar.radius, state: selected ? .selected : .hover, prefs: prefs)
+                    SelectionPlate(corner: SideBar.radius, state: selected ? .selected : .hover, prefs: prefs, strip: inTabStrip)
                 }
             }
             .contentShape(Rectangle())
@@ -3819,6 +3825,10 @@ struct SidebarTabButton<Mark: View>: View {
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+    @ViewBuilder private var label: some View {
+        mark().frame(width: SideBar.mark, height: SideBar.mark)
+        Text(title).font(.system(size: titleSize)).lineLimit(1)
     }
 }
 

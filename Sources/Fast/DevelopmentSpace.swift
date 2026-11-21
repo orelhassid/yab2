@@ -291,12 +291,9 @@ struct DevelopmentPane: View {
         let look = entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)
         let paint = SpaceWash.painted(look)
         VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                if browser.prefs.sideShut && browser.trailFlank == nil {
-                    ColumnDoor(browser: browser, prefs: browser.prefs)
-                        .environment(\.doorSize, .header)
-                }
-                Button {
+            TabWindowHeader(selection: state.active) {
+                let details = DevelopmentDirectory.shared.details(project)
+                TabWindowSwitcher(title: details.name, action: {
                     guard let anchor = projectAnchor.view else { return }
                     let menu = NSMenu(title: "Switch project")
                     for item in DevelopmentDirectory.shared.projects {
@@ -305,37 +302,32 @@ struct DevelopmentPane: View {
                         menu.addItem(row)
                     }
                     ActionMenu.show(menu, under: anchor)
-                } label: {
-                    HStack(spacing: 4) {
-                        let details = DevelopmentDirectory.shared.details(project)
-                        if !details.icon.isEmpty { Text(details.icon) }
-                        else if project == .yab { Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 16, height: 16) }
-                        else { Symbol("folder", size: 13) }
-                        Text(details.name).lineLimit(1)
-                        Symbol("chevron.up.chevron.down", size: 9)
-                    }
+                }) {
+                    if !details.icon.isEmpty { Text(details.icon) }
+                    else if project == .yab { Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: SideBar.mark, height: SideBar.mark) }
+                    else { Symbol("folder", size: SideBar.mark) }
                 }
-                .buttonStyle(.yab(.quiet, .small))
                 .background(ChatProjectAnchorView(box: projectAnchor))
                 .accessibilityLabel("Switch project, " + DevelopmentDirectory.shared.details(project).name)
                 .keyTip("Switch project")
-                .frame(width: state.mode == "split" ? max(100, state.chatWidth - 12) : nil, alignment: .leading)
-                ThreadScrollView(.horizontal) {
-                    HStack(spacing: 2) {
-                        ForEach(tabs, id: \.0) { item in
-                            DevToolTabButton(title: item.1, selected: state.active == item.0, action: {
-                                content.view.callAsyncJavaScript("go(route)", arguments: ["route": item.0], in: nil, in: .page, completionHandler: nil)
-                            }) { Symbol(item.2, size: 11) }
-                            .disabled(item.0 == "agents")
-                        }
-                    }
-                }.scrollIndicators(.never)
-                Spacer(minLength: 0)
+            } tabs: {
+                ForEach(tabs, id: \.0) { item in
+                    SidebarTabButton(title: item.1, selected: state.active == item.0, prefs: browser.prefs, inTabStrip: true, action: {
+                        content.view.callAsyncJavaScript("go(route)", arguments: ["route": item.0], in: nil, in: .page, completionHandler: nil)
+                    }) { Symbol(item.2, size: 12) }
+                    .disabled(item.0 == "agents")
+                    .id(item.0)
+                }
+            } actions: {
+                if browser.prefs.sideShut && browser.trailFlank == nil {
+                    ColumnDoor(browser: browser, prefs: browser.prefs)
+                        .environment(\.doorSize, .header)
+                }
                 layoutAction("sidebar.right", state.mode == "chat" ? "Show tools panel" : "Hide tools panel", "panel")
                 layoutAction(state.mode == "full" ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
                              state.mode == "full" ? "Exit full view" : "Enter full view", "full")
             }
-            .padding(.horizontal, 8).frame(height: 38)
+            .padding(.horizontal, SideBar.margin).frame(height: NavigationHeader.height(topInset: 0))
             Divider()
             DevelopmentWebPane(browser: browser, project: project, entries: entries)
                 .overlay(alignment: .topLeading) {

@@ -39,6 +39,11 @@ variation, extend the shared component and check both the Space and All Tabs.
 When a maintainer corrects a recurring UI pattern, record the specific rule
 and its owning component here or in the relevant project skill.
 
+Browser pages and Development share the native `TabWindowHeader`,
+`TabWindowSwitcher` and strip variant of `SidebarTabButton`. Embedded
+workspaces leave header rendering to their native host in every layout.
+Check split, chat-only and full view when changing that boundary.
+
 ## Shared local preview
 
 All chats working in this checkout share `build/Yab Sidebar Preview.app` and its `spaces-preview` profile. Reuse the running instance for interactive review. When an update is needed, build from the shared checkout and refresh that same app after checking for another session's active build or UI test. Keep isolated automated tests in their own test profiles and close any temporary test app when the run ends.

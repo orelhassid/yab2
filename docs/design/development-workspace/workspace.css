@@ -313,7 +313,7 @@ nav button { padding:4px 9px; border-radius:8px; flex:none }
 #divider { grid-column:1;grid-row:2;justify-self:end;width:8px;margin-right:-4px;z-index:2;cursor:col-resize;touch-action:none }
 #divider:hover,#divider:focus-visible { background:var(--blue);background-clip:content-box;padding-inline:3px }
 .body:is([data-layout=chat],[data-layout=full]) { grid-template-columns:minmax(0,1fr) }
-.body:is([data-layout=chat],[data-layout=full]) .workspace-header { display:flex }
+:root:not([data-native-space]) .body:is([data-layout=chat],[data-layout=full]) .workspace-header { display:flex }
 .body:is([data-layout=chat],[data-layout=full]) nav { flex:1 }
 .body:is([data-layout=chat],[data-layout=full]) #divider,.body[data-layout=chat] main { display:none }
 .body[data-layout=chat] #chat { grid-column:1; border:0 }

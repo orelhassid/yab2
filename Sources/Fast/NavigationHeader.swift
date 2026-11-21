@@ -45,37 +45,28 @@ struct NavigationHeader: View {
         let showHelm = sidebarHidden && !browser.bandDoors && tab?.isBlank == false
         let showToggle = sidebarHidden && browser.prefs.sidebarButton && (!browser.prefs.sidebar || !browser.bandDoors)
         return GeometryReader { room in
-            HStack(spacing: size.gap) {
-                if showToggle && !showHelm {
-                    ColumnDoor(browser: browser, prefs: browser.prefs)
+            TabWindowHeader(selection: tab?.id) {
+                TabWindowSwitcher(title: browser.sidebarSpace.name, action: { switcher = .spaces }) {
+                    SpaceMark(icon: browser.sidebarSpace.icon, size: SideBar.mark)
                 }
+                .disabled(!(browser.offersAllTabs || browser.swipesSpaces) || browser.blank)
+                .keyTip("Switch Space")
+                .popover(isPresented: presented(.spaces), arrowEdge: .bottom) { spaces }
+            } tabs: {
+                ForEach(browser.tabs.filter { !Agents.shared.sealed($0) }) { candidate in
+                    NavigationPageTab(tab: candidate, selected: candidate.id == tab?.id, prefs: browser.prefs) {
+                        browser.select(candidate)
+                    }
+                    .id(candidate.id)
+                }
+            } actions: {
                 RailButton("New Tab", icon: "plus", doorSize: size) { browser.newTab() }
                     .keyTip("New Tab")
-                RailButton("Switch Space", icon: "folder", selected: switcher == .spaces, doorSize: size) { switcher = .spaces }
-                    .disabled(!(browser.offersAllTabs || browser.swipesSpaces) || browser.blank)
-                    .keyTip("Switch Space")
-                    .popover(isPresented: presented(.spaces), arrowEdge: .bottom) { spaces }
-
-                RailButton("Switch Tab", selected: switcher == .tabs, fitsLabel: true, doorSize: size, action: { switcher = .tabs }) {
-                    TabSwitcherWidth {
-                        HStack(spacing: SideBar.markGap) {
-                            if let tab { NavigationTabLabel(tab: tab) }
-                            else { Text(inheritsPageSurface ? "Home" : "Tabs").sidebarFont(size: 12.5) }
-                            Spacer(minLength: 0)
-                            Symbol("chevron.down", size: 10).fixedSize()
-                        }
-                        .padding(.horizontal, SideBar.inner)
-                    }
-                }
-                .disabled(browser.tabs.isEmpty)
-                .popover(isPresented: presented(.tabs), arrowEdge: .bottom) { tabs }
-
-                if showHelm, let tab {
-                    if showToggle { ColumnDoor(browser: browser, prefs: browser.prefs) }
-                    Helm(browser: browser, tab: tab, reads: false)
-                }
-
-                Spacer(minLength: 0)
+                RailButton("Switch Tab", icon: "chevron.down", selected: switcher == .tabs, doorSize: size) { switcher = .tabs }
+                    .disabled(browser.tabs.isEmpty)
+                    .popover(isPresented: presented(.tabs), arrowEdge: .bottom) { tabs }
+                if showToggle { ColumnDoor(browser: browser, prefs: browser.prefs) }
+                if showHelm, let tab { Helm(browser: browser, tab: tab, reads: false) }
                 if let tab, !tab.isBlank {
                     NavigationPinnedExtensions(tab: tab, extensions: Extensions.of(tab: tab),
                                                available: room.size.width / 3, size: size)
@@ -132,32 +123,61 @@ struct NavigationHeader: View {
     }
 }
 
-/// Fit the title within the switcher's range. In a narrow pane the
-/// available width takes precedence so the neighboring controls still fit.
-private struct TabSwitcherWidth: Layout {
-    private let minimum: CGFloat = 112
-    private let maximum: CGFloat = 240
+/// One page header for website tabs and project tools. Only the destinations
+/// scroll, so the switcher and the window actions stay within reach.
+struct TabWindowHeader<ID: Hashable, Switcher: View, Tabs: View, Actions: View>: View {
+    let selection: ID?
+    @ViewBuilder let switcher: () -> Switcher
+    @ViewBuilder let tabs: () -> Tabs
+    @ViewBuilder let actions: () -> Actions
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let label = subviews[0]
-        let ideal = label.sizeThatFits(.unspecified).width
-        let width = min(max(ideal, minimum), maximum, proposal.width ?? maximum)
-        return CGSize(width: width, height: label.sizeThatFits(.init(width: width, height: proposal.height)).height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews[0].place(at: bounds.origin, anchor: .topLeading, proposal: .init(bounds.size))
+    var body: some View {
+        HStack(spacing: SideBar.markGap) {
+            switcher()
+            Divider().frame(height: SideBar.mark)
+            ScrollViewReader { proxy in
+                ThreadScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Metrics.tabGap, content: tabs)
+                }
+                .onAppear { if let selection { proxy.scrollTo(selection) } }
+                .onChange(of: selection) { _, id in if let id { proxy.scrollTo(id) } }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: Door.Size.header.gap, content: actions)
+                .fixedSize()
+        }
     }
 }
 
-private struct NavigationTabLabel: View {
-    @ObservedObject var tab: Tab
+struct TabWindowSwitcher<Icon: View>: View {
+    let title: String
+    let action: () -> Void
+    @ViewBuilder let icon: () -> Icon
 
     var body: some View {
-        Mark(icon: tab.displayIcon, letter: tab.monogram, size: SideBar.mark)
-        Text(tab.label)
-            .sidebarFont(size: 12.5)
-            .lineLimit(1)
+        Button(action: action) {
+            HStack(spacing: SideBar.markGap) {
+                icon()
+                Text(title).lineLimit(1).truncationMode(.tail)
+                Symbol("chevron.down", size: 9)
+            }
+        }
+        .buttonStyle(.yab(.quiet, .small))
+    }
+}
+
+private struct NavigationPageTab: View {
+    @ObservedObject var tab: Tab
+    let selected: Bool
+    let prefs: Preferences
+    let action: () -> Void
+
+    var body: some View {
+        SidebarTabButton(title: tab.label, selected: selected, prefs: prefs, inTabStrip: true, action: action) {
+            Mark(icon: tab.displayIcon, letter: tab.monogram, size: SideBar.mark)
+        }
+        .frame(maxWidth: 200)
+        .keyTip(tab.label)
     }
 }
 
