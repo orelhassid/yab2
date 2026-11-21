@@ -19,11 +19,50 @@ enum CollectionCalculation: String, Codable, CaseIterable {
     }
 }
 
+enum CollectionPropertyType: String, Codable, CaseIterable {
+    case text = "Text", number = "Number", date = "Date", select = "Select", multiSelect = "Multi-select", relation = "Relation"
+
+    var symbol: String {
+        switch self {
+        case .text: "textformat"
+        case .number: "number"
+        case .date: "calendar"
+        case .select: "list.bullet"
+        case .multiSelect: "checklist"
+        case .relation: "link"
+        }
+    }
+}
+
 struct CollectionProperty: Identifiable, Codable {
     let id: String
     let title: String
     var required = false
-    var numeric = false
+    var type = CollectionPropertyType.text
+    var numeric: Bool { type == .number }
+
+    init(id: String, title: String, required: Bool = false, type: CollectionPropertyType = .text) {
+        self.id = id
+        self.title = title
+        self.required = required
+        self.type = type
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, title, required, type }
+    private enum LegacyKeys: String, CodingKey { case numeric }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        title = try values.decode(String.self, forKey: .title)
+        required = try values.decode(Bool.self, forKey: .required)
+        if let saved = try values.decodeIfPresent(CollectionPropertyType.self, forKey: .type) {
+            type = saved
+        } else {
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+            type = try legacy.decodeIfPresent(Bool.self, forKey: .numeric) == true ? .number : .text
+        }
+    }
 }
 
 struct CollectionEntry: Identifiable, Codable {
@@ -107,8 +146,14 @@ enum CollectionTemplate: String, CaseIterable, Codable {
 
     func make(name: String) -> PageCollection {
         let (fields, filtered) = configuration
-        let properties = ([name.singularCollectionTitle] + fields).enumerated().map { index, title in
-            CollectionProperty(id: index == 0 ? "name" : title.lowercased(), title: title, required: index == 0, numeric: index > 0 && title == "Amount")
+        let primary = CollectionProperty(id: "name", title: name.singularCollectionTitle, required: true)
+        let properties = [primary] + fields.map { title in
+            let type: CollectionPropertyType = switch title {
+            case "Amount": .number
+            case "Status": .select
+            default: .text
+            }
+            return CollectionProperty(id: title.lowercased(), title: title, type: type)
         }
         var views = [CollectionTableView(name: "All " + name.lowercased())]
         views += filtered.map { CollectionTableView(name: $0.0, filters: [CollectionFilter(property: "status", value: $0.1)]) }

@@ -3810,6 +3810,17 @@ struct SidebarTabRow<Content: View>: View {
     }
 }
 
+struct SidebarTabLabel<Mark: View>: View {
+    let title: String
+    @ViewBuilder var mark: () -> Mark
+    @Environment(\.tabTitleSize) private var titleSize
+
+    var body: some View {
+        mark().frame(width: SideBar.mark, height: SideBar.mark)
+        Text(title).font(.system(size: titleSize)).lineLimit(1)
+    }
+}
+
 /// A selectable sidebar destination that does not need browser-tab actions.
 struct SidebarTabButton<Mark: View>: View {
     let title: String
@@ -3821,7 +3832,6 @@ struct SidebarTabButton<Mark: View>: View {
     @Environment(\.colorScheme) private var badgeScheme
     let action: () -> Void
     @ViewBuilder var mark: () -> Mark
-    @Environment(\.tabTitleSize) private var titleSize
     @State private var hovered = false
 
     var body: some View {
@@ -3847,8 +3857,7 @@ struct SidebarTabButton<Mark: View>: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
     @ViewBuilder private var label: some View {
-        mark().frame(width: SideBar.mark, height: SideBar.mark)
-        Text(title).font(.system(size: titleSize)).lineLimit(1)
+        SidebarTabLabel(title: title, mark: mark)
         if let badge {
             Spacer(minLength: 4)
             Text(badge.title)

@@ -4,6 +4,20 @@ import Testing
 
 @Suite @MainActor
 struct CollectionPageTests {
+    @Test func propertyTypesPreserveLegacyNumbersAndRoundTripNewFields() throws {
+        let legacy = Data(#"{"id":"old-field","title":"Budget","numeric":true,"required":true}"#.utf8)
+        let field = try JSONDecoder().decode(CollectionProperty.self, from: legacy)
+        #expect(field.type == .number)
+        #expect(field.required)
+        let fields = CollectionPropertyType.allCases.map {
+            CollectionProperty(id: UUID().uuidString, title: $0.rawValue, required: true, type: $0)
+        }
+        let saved = try JSONDecoder().decode([CollectionProperty].self, from: JSONEncoder().encode(fields))
+        #expect(saved.map(\.type) == CollectionPropertyType.allCases)
+        #expect(saved.map(\.id) == fields.map(\.id))
+        #expect(saved.map(\.required) == fields.map(\.required))
+    }
+
     @Test func recordLayoutPersistsAndFilteredNavigationIncludesTheOpenRecord() throws {
         var collection = CollectionTemplate.invoices.make(name: "Bills")
         collection.entries = ["Unpaid", "Paid", "Unpaid"].map { .init(values: ["status": $0]) }

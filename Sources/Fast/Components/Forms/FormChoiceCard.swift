@@ -2,26 +2,27 @@ import SwiftUI
 
 struct FormChoiceCard: View {
     let title: String
-    let detail: String
+    var detail: String = ""
     let icon: String
     let selected: Bool
+    var tint: Color? = nil
     let action: () -> Void
     @State private var hovering = false
     @FocusState private var focused: Bool
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Radius.surface)
-        let accent = Color.accentColor
+        let accent = tint ?? Color.accentColor
         Button(action: action) {
             HStack(spacing: CardFrame.inset) {
                 Symbol(icon, size: 17)
-                    .foregroundStyle(selected ? accent : Palette.muted)
+                    .foregroundStyle(selected ? accent : tint ?? Palette.muted)
                     .frame(width: 34, height: 34)
                     .background(selected ? accent.opacity(0.14) : Palette.ink.opacity(0.05),
                                 in: RoundedRectangle(cornerRadius: Radius.control))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.headline)
-                    Text(detail).font(.caption).foregroundStyle(Palette.muted).lineLimit(1)
+                    if !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(Palette.muted).lineLimit(1) }
                 }
                 Spacer(minLength: 0)
                 if selected { Symbol("checkmark.circle.fill", size: 14).foregroundStyle(accent) }

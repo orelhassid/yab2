@@ -131,7 +131,7 @@ struct RecordPage: View {
         ForEach(fields, id: \.self) { key in
             if let field = collection.properties.first(where: { $0.id == key }) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Symbol(field.numeric ? "number" : "text.alignleft", size: 12)
+                    Symbol(field.type.symbol, size: 12)
                     Text(field.title).foregroundStyle(Palette.muted(on: tone)).frame(maxWidth: .infinity, alignment: .leading)
                     Text(record.values[key] ?? "").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 }.font(CardFrame.detail)

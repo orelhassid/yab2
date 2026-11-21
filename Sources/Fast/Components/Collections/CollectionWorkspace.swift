@@ -90,7 +90,7 @@ struct CollectionWorkspace: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $browser.creatingCollection) {
-            CollectionSetup { collection in
+            CollectionSetup(ground: Color(nsColor: paint.color)) { collection in
                 library.collections.append(collection)
                 browser.showCollection(collection.id)
             } cancel: { browser.creatingCollection = false }

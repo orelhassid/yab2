@@ -133,3 +133,5 @@ folder and verify both the edited file and the test result on disk.
 Keep Development environment settings and plugin availability shared across projects. Put project-specific settings in the project tab strip. Space and project header switchers share the tab control and popover.
 
 Present Collection creation in a modal. Use icon selection cards with distinct default, hover, selected and keyboard-focus states, shared Yab form fields and Yab button styles on both onboarding steps.
+
+Use `SidebarTabRow` and `SidebarTabLabel` for Collection onboarding property rows so the icon slot, title size, insets and row height follow the tab item.
