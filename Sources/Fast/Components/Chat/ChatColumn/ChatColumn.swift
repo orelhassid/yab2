@@ -2917,7 +2917,12 @@ extension Agents {
     func unqueue(_ id: String, at index: Int) {
         guard let session = session(id), session.queue.indices.contains(index) else { return }
         let words = session.saying.count - session.queue.count + index
-        if session.saying.indices.contains(words) { session.saying.remove(at: words) }
+        if session.saying.indices.contains(words) {
+            if session.sayingMentions.indices.contains(words) { session.sayingMentions.remove(at: words) }
+            if session.carrying.count == session.saying.count { session.carrying.remove(at: words) }
+            if session.attaching.count == session.saying.count { session.attaching.remove(at: words) }
+            session.saying.remove(at: words)
+        }
         session.queue.remove(at: index)
         objectWillChange.send()
     }
@@ -2995,6 +3000,7 @@ extension Agents {
         session.result = before.last { $0.kind == .message && !$0.isAside && !$0.isNote }?.text ?? ""
         session.earlier = ""
         session.saying = []
+        session.sayingMentions = []
         session.carrying = []
         session.attaching = []
         session.queue = []

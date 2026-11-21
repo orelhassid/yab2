@@ -25,6 +25,10 @@ struct ChatComposer: View {
     @State private var toolsOpen = false
     @State private var toolsSearch = ""
     @State private var mentionIndex = 0
+    @State private var projectDraft = NSAttributedString(string: "")
+    @State private var projectEditor = DevelopmentMentionEditor.Handle()
+    @State private var mentionToken: DevelopmentMentionToken?
+    @State private var dismissedMention: DevelopmentMentionToken?
     @State private var projectFiles: [URL] = []
     @StateObject private var catalog = DevelopmentCatalog()
     /// A tab of the chat's waiting on you: the words answer it.
@@ -40,6 +44,7 @@ struct ChatComposer: View {
     /// The queued row under the pointer: only it shows Send Now.
     @State private var queueHover: Int?
     @FocusState private var focused: Bool
+    @State private var projectEditorFocused = false
     /// The window's presses, watched for the field's glass (watchPresses).
     @State private var presses: Any?
     @State private var returnKey = ChatReturn()
@@ -124,17 +129,6 @@ struct ChatComposer: View {
             if let development, mentionQuery != nil {
                 mentionMenu(development)
             }
-            if development != nil, !attach.references.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(attach.references) { ref in
-                            Button { attach.references.removeAll { $0 == ref } } label: {
-                                HStack { Text(ref.name); Symbol("xmark", size: 9) }
-                            }.buttonStyle(.yab(.secondary, .small)).accessibilityLabel("Remove " + ref.name)
-                        }
-                    }
-                }
-            }
             if let trouble { troubleRow(trouble.0, trouble.1) }
             field
         }
@@ -161,8 +155,8 @@ struct ChatComposer: View {
             watchPresses()
             // Words left unsent when the column went come back with it:
             // this chat's own.
-            if words.isEmpty { words = attach.words(for: chat?.id) }
-            if attach.fill > 0, words.isEmpty { words = attach.filling }
+            if development != nil || words.isEmpty { loadDraft(chat?.id) }
+            if attach.fill > 0, words.isEmpty { fillDraft() }
             syncDoneKey()
             // Built as the column comes out: the cursor goes in once it
             // has arrived (moveChat), not now. Taking the keys orders the
@@ -187,6 +181,7 @@ struct ChatComposer: View {
         }
         .onChange(of: finishing) { _, _ in syncDoneKey() }
         .onChange(of: covered) { _, now in
+            if development != nil, !now { projectEditor.focus() }
             guard browser.chatOpen, !browser.chatMoving else { return }
             focused = !now
         }
@@ -196,7 +191,7 @@ struct ChatComposer: View {
         .onChange(of: chat?.id) { _, now in
             // Another chat in the column: its own unsent words in the
             // field, those typed for the one before kept as that one's.
-            words = attach.words(for: now)
+            loadDraft(now)
             syncDoneKey()
             // Another chat in the column: the edit was the one before's.
             if browser.chatEditing != nil, editing == nil { browser.chatEditing = nil }
@@ -215,7 +210,7 @@ struct ChatComposer: View {
             if attach.finishableChatID == chat?.id { attach.finishableChatID = nil }
         }
         .onChange(of: attach.fill) { _, _ in
-            words = attach.filling
+            fillDraft()
             if browser.chatOpen, browser.chatMovement.target != false { focused = true }
         }
         .onReceive(browser.changes(\.chatNewProject)) { _ in
@@ -240,14 +235,11 @@ struct ChatComposer: View {
         }
     }
 
-    private var mentionToken: Range<String.Index>? {
-        guard development != nil, let start = words.lastIndex(of: "@"),
-              start == words.startIndex || words[words.index(before: start)].isWhitespace,
-              !words[start...].contains(where: \.isWhitespace) else { return nil }
-        return start..<words.endIndex
+    private var activeMention: DevelopmentMentionToken? {
+        mentionToken == dismissedMention ? nil : mentionToken
     }
 
-    private var mentionQuery: String? { mentionToken.map { String(words[$0].dropFirst()) } ?? (toolsOpen ? toolsSearch : nil) }
+    private var mentionQuery: String? { toolsOpen ? toolsSearch : activeMention?.query }
 
     private var mentions: [DevelopmentMention] {
         guard let query = mentionQuery, let development else { return [] }
@@ -276,11 +268,9 @@ struct ChatComposer: View {
 
     @discardableResult private func pickMention(_ choice: DevelopmentMention? = nil) -> Bool {
         guard let row = choice ?? mentions.dropFirst(mentionIndex).first else { return false }
-        if let item = row.attachment { attach.add(item, chat: chat, browser: browser) }
-        if let ref = row.reference, !attach.references.contains(ref) { attach.references.append(ref) }
-        if let token = mentionToken { put(String(words[..<token.lowerBound])) }
+        let range = toolsOpen ? nil : activeMention?.range
         toolsOpen = false
-        focused = true
+        projectEditor.insert(row, replacing: range)
         return true
     }
 
@@ -288,7 +278,7 @@ struct ChatComposer: View {
         let folder = DevelopmentDirectory.shared.details(project).folder
         let rows = mentions
         return VStack(spacing: 4) {
-            if toolsOpen, mentionToken == nil {
+            if toolsOpen {
                 ThemedSearchField("Find context", text: $toolsSearch)
                     .onSubmit { _ = pickMention() }
                     .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { moveMention($0) }
@@ -357,7 +347,7 @@ struct ChatComposer: View {
             // field has, so the cursor stays in them when it opens up.
             HStack(alignment: .center, spacing: 6) {
                 if !long { plus }
-                input
+                if development != nil { projectInput } else { input }
                 if !long { button }
             }
             if long {
@@ -374,20 +364,23 @@ struct ChatComposer: View {
         }
         .padding(.leading, long ? 16 : 8)
         .padding(.trailing, 8) // design: long text sits 16 points in while the round send button sits 8 points from the corner
-        .padding(.top, !shelf.isEmpty ? 10 : long ? 12 : 8)
-        .padding(.bottom, 8)
+        .padding(.top, development != nil ? 15 : !shelf.isEmpty ? 10 : long ? 12 : 8)
+        .padding(.bottom, development != nil ? 12 : 8)
         .frame(minHeight: 40)
         .background {
             let shape = composerSurfaceShape
             if development != nil {
-                shape.fill(Palette.wash(on: composerTone))
-                    .overlay { shape.strokeBorder(Palette.muted(on: composerTone).opacity(focused ? 0.6 : 0.25)) }
+                let ground = composerTone?.color ?? Palette.ground
+                shape.fill(ground)
+                    .overlay { shape.fill(Palette.wash(on: composerTone)) }
+                    .overlay { shape.strokeBorder(Palette.muted(on: composerTone).opacity(projectEditorFocused ? 0.5 : 0.3)) }
+                    .cast(Shadow.card)
             } else {
                 FieldGlass(shape: shape)
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { focused = true }
+        .onTapGesture { if development != nil { projectEditor.focus() } else { focused = true } }
         .animation(still ? nil : Motion.chatQuick, value: long)
         .animation(still ? nil : Motion.chatQuick, value: finishing)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
@@ -518,8 +511,6 @@ struct ChatComposer: View {
             // question still standing.
             .onKeyPress(.escape) {
                 if InputMethod.composing() { return .ignored }
-                if let token = mentionToken { put(String(words[..<token.lowerBound])); toolsOpen = false; return .handled }
-                if toolsOpen { toolsOpen = false; return .handled }
                 if editing != nil {
                     cancelEdit()
                     return .handled
@@ -533,7 +524,6 @@ struct ChatComposer: View {
             }
             // ↑↓ over the choices from the empty field, ↩ picks the lit one.
             .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { press in
-                if mentionQuery != nil { return moveMention(press) }
                 guard !InputMethod.composing(), words.isEmpty, press.modifiers.isEmpty, let asking, choosing else { return .ignored }
                 ChatChoosing.shared.move(asking, by: press.key == .upArrow ? -1 : 1)
                 return .handled
@@ -554,6 +544,95 @@ struct ChatComposer: View {
             }
     }
 
+    private var projectInput: some View {
+        DevelopmentMentionEditor(draft: projectDraft, tone: composerTone, placeholder: placeholder,
+                                 changed: keepProjectDraft, moved: moveProjectCaret,
+                                 focused: projectFocusChanged, keyDown: projectKey, handle: projectEditor)
+            .overlay(alignment: .topLeading) {
+                if projectDraft.length == 0 {
+                    Text(placeholder)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Palette.muted(on: composerTone))
+                        .lineLimit(1)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+    }
+
+    private func projectFocusChanged(_ focused: Bool) {
+        projectEditorFocused = focused
+        attach.typing = focused
+        AgentSetupModel.shared.showing(composerSurface, focused)
+    }
+
+    private func moveProjectCaret(_ token: DevelopmentMentionToken?) {
+        if token != mentionToken {
+            dismissedMention = nil
+            mentionIndex = 0
+        }
+        mentionToken = token
+    }
+
+    private func projectKey(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control])
+        if words.isEmpty, let asking, let flow = Payments.shared.flow(asking) {
+            let key: PaySheetModel.Key? = switch event.keyCode {
+            case 125: .down
+            case 126: .up
+            case 53: .escape
+            case 36, 76: modifiers.contains(.command) ? .confirm : .enter
+            default: nil
+            }
+            if let key, flow.key(key) != .ignored { return true }
+        }
+        switch event.keyCode {
+        case 36, 76:
+            if modifiers.contains(.shift) || modifiers.contains(.option) { return false }
+            if words.isEmpty, let asking, choosing, ChatChoosing.shared.pickLit(asking) { return true }
+            send(later: modifiers.contains(.command))
+            return true
+        case 48 where modifiers.isEmpty && activeMention != nil:
+            return pickMention()
+        case 53 where mentionQuery != nil:
+            dismissedMention = mentionToken
+            toolsOpen = false
+            return true
+        case let key where (key == 125 || key == 126) && modifiers.isEmpty && mentionQuery != nil:
+            let count = mentions.count
+            guard count > 0 else { return false }
+            mentionIndex = (mentionIndex + (event.keyCode == 126 ? count - 1 : 1)) % count
+            return true
+        case 53 where words.isEmpty && choosing:
+            return asking.map { ChatChoosing.shared.putAway($0) } ?? false
+        case let key where (key == 125 || key == 126) && modifiers.isEmpty && words.isEmpty && choosing:
+            if let asking { ChatChoosing.shared.move(asking, by: event.keyCode == 126 ? -1 : 1) }
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func keepProjectDraft(_ draft: NSAttributedString) {
+        projectDraft = draft
+        words = DevelopmentDraft.plain(draft)
+        attach.keep(words, for: chat?.id)
+        attach.keepProjectDraft(draft, for: chat?.id)
+    }
+
+    private func fillDraft() {
+        if development != nil { put(attach.filling) } else { words = attach.filling }
+    }
+
+    private func loadDraft(_ id: String?) {
+        words = attach.words(for: id)
+        if development != nil {
+            projectDraft = attach.projectDraft(for: id) ?? NSAttributedString(string: words)
+            mentionToken = nil
+            dismissedMention = nil
+        }
+    }
+
     /// The words as they are typed: kept as the draft of the chat the field
     /// shows as they are, so they stay that chat's (ChatAttach).
     private var typed: Binding<String> {
@@ -562,6 +641,7 @@ struct ChatComposer: View {
 
     /// The field's words, and this chat's draft with them.
     private func put(_ text: String) {
+        if development != nil { keepProjectDraft(NSAttributedString(string: text)); return }
         words = text
         attach.keep(text, for: chat?.id)
     }
@@ -671,7 +751,7 @@ struct ChatComposer: View {
     /// does in Messages, while it works too. Not the tab a new chat comes
     /// with by itself: that would put the button in every empty field.
     private var alone: Bool {
-        if development != nil { return trimmed.isEmpty && (!attached.isEmpty || !attach.references.isEmpty) }
+        if development != nil { return trimmed.isEmpty && !attached.isEmpty }
         return trimmed.isEmpty && !choosing && asking == nil && editing == nil && attach.carried(chat: chat, browser: browser)
     }
 
@@ -718,7 +798,8 @@ struct ChatComposer: View {
 
     /// The first of what goes with the words that can't, and why.
     private var trouble: (ChatAttachment, String)? {
-        attached.lazy.compactMap { item in item.trouble().map { (item, $0) } }.first
+        let context = development == nil ? attached : attached + DevelopmentDraft.mentioned(in: projectDraft).compactMap(\.attachment)
+        return context.lazy.compactMap { item in item.trouble().map { (item, $0) } }.first
     }
 
     /// Over the field, as Dia's: which one can't go, and the same words
@@ -732,7 +813,7 @@ struct ChatComposer: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            if !trimmed.isEmpty {
+            if !trimmed.isEmpty && attached.contains(item) {
                 Button("Ask Without It") {
                     attach.remove(item, chat: chat, browser: browser)
                     send(later: false)
@@ -754,11 +835,14 @@ struct ChatComposer: View {
         let text = trimmed
         if let development, asking == nil {
             if mentionQuery != nil, pickMention() { return }
-            guard trouble == nil, !text.isEmpty || alone || !attach.references.isEmpty else { return }
-            if DevelopmentDirectory.shared.send(text, items: attached, references: attach.references, project: development, browser: browser, later: later) {
+            guard trouble == nil, !text.isEmpty || alone else { return }
+            let mentions = DevelopmentDraft.mentioned(in: projectDraft)
+            let message = DevelopmentDraft.message(projectDraft)
+            if DevelopmentDirectory.shared.send(message.spans.isEmpty ? text : message.text, items: attached,
+                                                mentions: mentions, spans: message.spans, project: development, browser: browser, later: later) {
                 attach.clear(for: chat?.id)
-                attach.references = []
                 put("")
+                mentionToken = nil
             }
             return
         }
@@ -1927,7 +2011,7 @@ final class ChatAttach: ObservableObject {
     /// The words of the field on screen, and whether the field has the
     /// keys; a chat's own draft stays when the column is put away.
     var words = ""
-    @Published var references: [DevelopmentReference] = []
+    private var projectDrafts: [String: NSAttributedString] = [:]
     /// Words put in the field from outside it, each time `fill` moves.
     var filling = ""
     @Published var fill = 0
@@ -1972,12 +2056,19 @@ final class ChatAttach: ObservableObject {
         drafts[Self.key(chat)] = words.isEmpty ? nil : words
     }
 
+    func projectDraft(for chat: String?) -> NSAttributedString? { projectDrafts[Self.key(chat)] }
+
+    func keepProjectDraft(_ draft: NSAttributedString, for chat: String?) {
+        projectDrafts[Self.key(chat)] = draft.length == 0 ? nil : draft
+    }
+
     /// What was added by hand to this chat's field.
     func items(for chat: String?) -> [ChatAttachment] { hands[Self.key(chat)]?.items ?? [] }
 
     /// A chat gone for good: nothing of its field is kept.
     func forget(_ chat: String) {
         drafts[chat] = nil
+        projectDrafts[chat] = nil
         if hands[chat] != nil { hands[chat] = nil }
     }
 

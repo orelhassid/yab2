@@ -35,9 +35,16 @@ struct DevelopmentChat: View {
 }
 
 extension DevelopmentDirectory {
-    func send(_ text: String, items: [ChatAttachment], references: [DevelopmentReference], project: DevelopmentProject,
+    func send(_ text: String, items: [ChatAttachment], mentions: [DevelopmentMention], spans: [ChatMentionSpan],
+              project: DevelopmentProject,
               browser: Browser, later: Bool) -> Bool {
         var details = details(project)
+        let references = mentions.compactMap(\.reference).reduce(into: [DevelopmentReference]()) { list, reference in
+            if !list.contains(reference) { list.append(reference) }
+        }
+        let context = mentions.compactMap(\.attachment).reduce(into: items) { list, item in
+            if !list.contains(item) { list.append(item) }
+        }
         guard ProviderConsent.shared.allows(details.cli) else { browser.openSettings(.agents); return false }
         guard details.cli == "codex" || references.isEmpty else {
             browser.toaster.pop("Remove Codex mentions or select Codex", mark: "at")
@@ -53,9 +60,9 @@ extension DevelopmentDirectory {
             browser.toaster.pop("Choose a source folder for Codex", mark: "folder")
             return false
         }
-        let tabs = ChatAttachment.tabs(items, in: browser)
-        let files = items.compactMap(\.file)
-        let labels = ChatAttachment.labels(tabs: tabs, files: files) + references.map(\.name)
+        let tabs = ChatAttachment.tabs(context, in: browser)
+        let files = context.compactMap(\.file)
+        let labels = ChatAttachment.labels(tabs: ChatAttachment.tabs(items, in: browser), files: items.compactMap(\.file))
         let prompt = ChatAttachment.said(tabs: tabs, files: files, quotes: items.compactMap(\.quote), in: browser)
             + references.map { "\($0.kind.rawValue): \($0.name) (\($0.path))\n" }.joined()
             + (text.isEmpty ? ChatAttachment.noWords : text)
@@ -77,8 +84,9 @@ extension DevelopmentDirectory {
         }
         for tab in tabs { tab.allowed.insert(session.id) }
         session.saying.append(text)
+        session.keepMentions(spans)
         session.carrying.append(labels)
-        session.attaching.append(items)
+        session.attaching.append(context)
         if !references.isEmpty { session.developmentInputs[prompt] = references.map(\.input) }
         if !continuing { return true }
         if later { agents.queue(session.id, prompt) } else { _ = agents.steer(session.id, prompt) }

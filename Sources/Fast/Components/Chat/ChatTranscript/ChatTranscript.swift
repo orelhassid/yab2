@@ -1042,7 +1042,7 @@ private struct ChatBubble: View {
                     .background(Color.accentColor.opacity(0.1), in: Capsule())
                 } else {
                     // The line the field's words fly into, as in the ⌘J field (SentWords).
-                    SentWords(item.text, bubble: true)
+                    SentWords(item.text, bubble: true, mentions: item.mentions ?? [])
                 }
             }
             }

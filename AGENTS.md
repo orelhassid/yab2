@@ -118,6 +118,8 @@ replies, rounded user messages, and a two-row composer with controls below
 the draft. Use T3 as a reference for provider and integration behavior.
 Development uses the shared native chat composer, transcript, and provider
 settings. Keep project drafts and conversation IDs with their project.
+Keep Development mentions in the native composer at the caret. A mention
+carries its context with it when edited, deleted, or sent.
 Verify composer changes in the project pane as well as the browser column.
 For a live check, mention a file in a temporary project, read it with Codex,
 and switch projects and back to verify the conversation.

@@ -434,21 +434,40 @@ struct SentWords: View {
     @Environment(\.projectChatStyle) private var projectStyle
     @Environment(\.tone) private var tone
     let text: String
+    @Environment(\.colorScheme) private var scheme
     var lines = 14
     var bubble = false
+    let mentions: [ChatMentionSpan]
     @State private var hidden: Bool
 
-    init(_ text: String, lines: Int = 14, bubble: Bool = false) {
+    init(_ text: String, lines: Int = 14, bubble: Bool = false, mentions: [ChatMentionSpan] = []) {
         self.text = text
         self.lines = lines
         self.bubble = bubble
+        self.mentions = mentions
         _hidden = State(initialValue: SendFlight.awaits(text))
+    }
+
+    private var projectWords: AttributedString {
+        var words = AttributedString(text)
+        let dark = (tone?.scheme ?? scheme) == .dark
+        for mention in mentions {
+            guard mention.location >= 0, mention.length > 0,
+                  mention.location <= text.utf16.count, mention.length <= text.utf16.count - mention.location,
+                  let range = Range(NSRange(location: mention.location, length: mention.length), in: text),
+                  let start = AttributedString.Index(range.lowerBound, within: words),
+                  let end = AttributedString.Index(range.upperBound, within: words) else { continue }
+            let tint = FolderTint(stored: mention.tint)
+            words[start..<end].foregroundColor = Color(nsColor: tint.mentionInk(dark: dark))
+            words[start..<end].font = .system(size: 13.5, weight: .medium)
+        }
+        return words
     }
 
     var body: some View {
         Group {
             if projectStyle {
-                Text(text)
+                Text(projectWords)
                     .foregroundStyle(Palette.strong(on: tone))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)

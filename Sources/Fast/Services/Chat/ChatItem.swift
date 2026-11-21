@@ -1,6 +1,13 @@
 import Foundation
 import SyncKit
 
+/// UTF-16 range of a context mention in the person's saved message.
+struct ChatMentionSpan: Codable, Equatable {
+    let location: Int
+    let length: Int
+    let tint: String
+}
+
 /// One step of an agent's turn, the same whoever answers: Codex's
 /// app-server items and Claude Code's stream-json blocks both come down to
 /// these, so what shows a chat never asks which agent it is showing.
@@ -44,6 +51,7 @@ struct ChatItem: Codable, Equatable, Identifiable {
     /// sources, a command's exit status. Optional, so chats
     /// written before it read as they were.
     var extra: [String: String]? = nil
+    var mentions: [ChatMentionSpan]? = nil
 
     /// Yab's restart instruction reaches the agent as a user message, but
     /// belongs to the existing turn rather than the person's conversation.

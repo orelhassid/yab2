@@ -148,6 +148,27 @@ final class Agents: ObservableObject {
         /// Your own words for the messages still to go, oldest first: its
         /// chat shows them in place of the prompt wrapped around them.
         var saying: [String] = []
+        /// Inline marks on pending Development messages, in the order of `saying`.
+        var sayingMentions: [[ChatMentionSpan]] = []
+
+        func keepMentions(_ spans: [ChatMentionSpan]) {
+            guard !spans.isEmpty else { return }
+            padMentions()
+            sayingMentions[saying.count - 1] = spans
+        }
+
+        func padMentions() {
+            sayingMentions.append(contentsOf: repeatElement([], count: max(0, saying.count - sayingMentions.count)))
+        }
+
+        func takeSaying(in item: inout ChatItem) {
+            guard !saying.isEmpty else { return }
+            item.text = saying.removeFirst()
+            if !sayingMentions.isEmpty {
+                let spans = sayingMentions.removeFirst()
+                item.mentions = spans.isEmpty ? nil : spans
+            }
+        }
         /// Words steered into the turn going on, not yet heard back: they
         /// stand in that turn, not in one of their own.
         var steering = 0
@@ -652,8 +673,8 @@ final class Agents: ObservableObject {
             session.resent -= 1
             return
         }
-        let words = session.saying.isEmpty ? text : session.saying.removeFirst()
-        var item = ChatItem(id: UUID().uuidString, kind: .asked, text: words, state: .done)
+        var item = ChatItem(id: UUID().uuidString, kind: .asked, text: text, state: .done)
+        session.takeSaying(in: &item)
         if !session.carrying.isEmpty { item.detail = session.carrying.removeFirst().joined(separator: "\n") }
         if !session.attaching.isEmpty { session.sent[item.id] = session.attaching.removeFirst() }
         if session.steering > 0 { item.name = "steer"; session.steering -= 1 }
@@ -2662,6 +2683,10 @@ final class Agents: ObservableObject {
         let base = session.saying.count - session.queue.count
         if index > 0, session.saying.indices.contains(base + index), base >= 0 {
             session.saying.insert(session.saying.remove(at: base + index), at: base)
+            if !session.sayingMentions.isEmpty {
+                session.padMentions()
+                session.sayingMentions.insert(session.sayingMentions.remove(at: base + index), at: base)
+            }
             if session.carrying.count == session.saying.count {
                 session.carrying.insert(session.carrying.remove(at: base + index), at: base)
             }
@@ -3609,7 +3634,7 @@ final class Agents: ObservableObject {
                     continue
                 }
                 // What it was told, said back: in your words.
-                if item.kind == .asked, !session.saying.isEmpty { item.text = session.saying.removeFirst() }
+                if item.kind == .asked { session.takeSaying(in: &item) }
                 if item.kind == .asked, !session.carrying.isEmpty { item.detail = session.carrying.removeFirst().joined(separator: "\n") }
                 if item.kind == .asked, !session.attaching.isEmpty { session.sent[item.id] = session.attaching.removeFirst() }
                 if item.kind == .asked, session.steering > 0 { item.name = "steer"; session.steering -= 1 }
@@ -3639,6 +3664,7 @@ final class Agents: ObservableObject {
                     item.text = before.text
                     item.name = before.name
                     item.detail = before.detail
+                    item.mentions = before.mentions
                 }
                 // What it printed as it ran, when the end didn't say it again.
                 if item.kind == .command, item.text.isEmpty, let before = session.items.last(where: { $0.id == item.id }) {
