@@ -8,13 +8,25 @@
 </head>
 <body>
 <div class="window">
-  <header class="shell">
-    <div class="chrome left"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span data-icon="sidebar"></span>
-      <span class="spacer"></span><span data-icon="left"></span><span data-icon="right"></span><span data-icon="reload"></span></div>
-    <div class="chrome right"><span data-icon="plus"></span><span data-icon="folder"></span>
-      <span class="tab-label"><img src="../../../Icon/Mark.png" alt=""> Yab Browser</span><span data-icon="down"></span>
-      <span class="spacer"></span><button class="chat-toggle" data-action="chat" aria-label="Show or hide manager chat" data-icon="chat"></button></div>
-  </header>
+  <section class="space-sidebar" aria-label="Yab sidebar" id="space-sidebar">
+    <div class="chrome"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="spacer"></span>
+      <button data-action="sidebar" aria-label="Hide sidebar" data-icon="sidebar"></button>
+      <span aria-hidden="true" data-icon="left"></span><span aria-hidden="true" data-icon="right"></span><span aria-hidden="true" data-icon="reload"></span></div>
+    <label class="filter"><span data-icon="search"></span><input id="project-search" type="search" aria-label="Find a project" placeholder="Find a project"></label>
+    <div class="space-picker">
+      <button id="space-switch" popovertarget="spaces" aria-label="Space Switcher"><span data-icon="terminal"></span><strong id="space-name">Development</strong><span class="spacer"></span><span data-icon="down"></span></button>
+      <div popover="auto" id="spaces"><div class="menu-label">Switch Space</div>
+        <button data-space="Work"><span data-icon="folder"></span>Work</button>
+        <button data-space="Development"><span data-icon="terminal"></span>Development</button>
+      </div>
+    </div>
+    <div class="sidebar-list"><h2 id="sidebar-heading">Projects</h2><div id="project-list"></div></div>
+    <footer class="sidebar-footer" aria-hidden="true"><span data-icon="download"></span><span data-icon="bookmark"></span><span data-icon="history"></span><span class="spacer"></span><span class="profile">🦊</span></footer>
+  </section>
+  <button class="sidebar-shade" data-action="sidebar" aria-label="Close projects"></button>
+  <section class="tab-frame" aria-label="Tab content">
+    <div class="compact-bar"><button data-action="sidebar" aria-label="Show sidebar" data-icon="sidebar"></button><b id="compact-title">Yab Browser</b><span class="spacer"></span><button class="chat-toggle" data-action="chat" aria-label="Show or hide manager chat" data-icon="chat"></button></div>
+    <div id="work-home" hidden><div><span data-icon="folder"></span><h1>Work</h1><button class="btn" data-space="Development">Open Development Space</button></div></div>
   <div class="body">
     <aside aria-label="Project manager chat" id="chat">
       <div class="chat-title"><span class="manager-mark" data-icon="chat"></span><div><b>Project manager</b><small>Yab Browser</small></div><button class="mobile-close" data-action="chat" aria-label="Close chat" data-icon="close"></button></div>
@@ -33,13 +45,14 @@
         <div class="composer-tools"><span data-icon="plus"></span><span class="spacer"></span><span class="auto">Auto</span><button id="send" data-action="send" aria-label="Add message to prototype" data-icon="up" disabled></button></div>
       </div>
     </aside>
-    <main>
+    <main aria-label="Project tools panel">
       <nav aria-label="Project tools">
         <button data-route="overview">Overview</button><button data-route="feature">Product</button><button disabled title="Outside this design review">Tasks</button><button disabled title="Outside this design review">Agents</button><button data-route="review">Code</button>
       </nav>
       <div id="content" tabindex="-1"></div>
     </main>
   </div>
+  </section>
 </div>
 </body>
 </html>

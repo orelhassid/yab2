@@ -4,7 +4,7 @@ Product proposal for review. The first version assumes one developer on a Mac, o
 
 ## What opening a project should feel like
 
-Open Yab Browser from Projects. Overview tells you what changed since your last visit, which feature is in progress, and whether anyone needs your decision. The manager conversation is open on the left. Pick a different project and its own conversation, draft, and work appear.
+Choose Development in Yab’s Space Switcher and select Yab Browser in the sidebar. Overview tells you what changed since your last visit, which feature is in progress, and whether anyone needs your decision. The manager conversation is open on the left. Pick a different project and its own conversation, draft, and work appear.
 
 For example, ask “Can we show download progress in the Dock?” The manager finds the existing Downloads feature and shows its current definition. Select **Discuss** to refine the behavior or **Build** to start the agreed task. Ask “What about canceled downloads?” while the agent works. That message goes to the same manager, attached to Downloads. The manager can steer the running task. When the change is ready, the message offers **Review changes**, which opens the relevant diff and checks on the right. Days later, opening Downloads still explains what was decided and what shipped.
 
@@ -15,7 +15,7 @@ Checked against the Mac source at `d641485`. Checked items have an implementatio
 | Area | Already in Yab2 | Work to plan |
 | --- | --- | --- |
 | Projects | [Project records](../Sources/Fast/Services/Chat/Projects.swift), pins, archive, instructions, optional memory, project-owned files, and [command-field routes](../Sources/Fast/App/Commands/Chat/ChatProjectCommands.swift) | Link a local checkout to a project. Add the workspace entry, one stable manager chat, and per-project view state. |
-| Shell | [YabDesign](../Sources/YabDesign/Design.swift), shared [buttons](../Sources/YabDesign/Buttons.swift), [resizable chat column](../Sources/Fast/Components/Chat/ChatColumn/ChatColumn.swift), native Home and browser tabs | Compose a project surface with chat on the left and project tools on the right. Keep workspace navigation local to that surface. |
+| Shell | [YabDesign](../Sources/YabDesign/Design.swift), shared [buttons](../Sources/YabDesign/Buttons.swift), [resizable chat column](../Sources/Fast/Components/Chat/ChatColumn/ChatColumn.swift), native Home and browser tabs | Use the existing Space Switcher to enter Development. The outer sidebar lists projects. Each selected project occupies the tab content, with manager chat and tool tabs side by side. |
 | Conversation | [Composer](../Sources/Fast/Components/Chat/ChatComposer/ChatComposer.swift), [stored chats](../Sources/Fast/Services/Chat/Chat.swift), [typed transcript items](../Sources/Fast/Services/Chat/ChatItem.swift), inline widgets, artifact cards, subagent reports | Replace the development project's [new-chat entry](../Sources/Fast/App/Screens/Chat/ChatProjectScreen.swift) with resume-manager. Add feature references, decisions, and actions that open the corresponding record on the right. |
 | Execution | [Claude launch and session handling](../Sources/Fast/Agents.swift), [Codex app-server](../Sources/Fast/CodexServer.swift), parent/child sessions, steer, stop, and resume | Bind each run to a project, task, repo, and permission scope. Handle repeated Build requests, provider handoff, and recovery. |
 | Models and tools | [Provider setup](../Sources/Fast/AgentPlans.swift), [model choices and effort](../Sources/Fast/ModelChoice.swift), [model compatibility checks](../Sources/Fast/AgentCatalog.swift), [Yab skills](../Sources/Fast/Skills.swift), MCP tools | Add project defaults, automatic selection with a short reason, and an inventory of the tools each runner can actually use. |
@@ -35,26 +35,22 @@ Use five fixed destinations across the right pane. Roadmap, a document, and a co
 Illustrative Overview with a project already underway:
 
 ```text
- Yab Browser ▾        │ Overview   Product   Tasks   Agents   Code
-                      │
- Project manager      │ Yab Browser
-                      │ Needs your review
- Download progress is │   Dock progress on cancel        Review diff
- ready for review.    │
- [Review changes]     │ In progress
-                      │   Downloads       2 of 3 tasks done
-                      │
-                      │ Since your last visit
-                      │   Dock label truncation           Accepted
-                      │   Download progress               Checks passed
- [Downloads ×]        │
- Ask about Yab…       │
- +          Auto   ↑  │
+ Development ▾  │ Project manager       │ Overview   Product   Tasks   Agents   Code
+                │ Yab Browser           │
+ Projects       │                       │ Yab Browser
+ › Yab Browser  │ Dock progress is      │ Needs your review
+   Sunday       │ ready for review.     │   Dock progress on cancel     Review diff
+   Webistory    │ [Review changes]      │
+   Agada        │                       │ On the roadmap
+                │                       │   Downloads           2 of 3 tasks done
+                │                       │
+                │ [Downloads ×]         │ Since your last visit
+                │ Message manager…      │   Dock progress           Checks passed
 ```
 
 | Screen | What the developer sees and can do |
 | --- | --- |
-| Projects | Open from Yab Home or the command field. Show pinned and recent projects, current feature, and items awaiting review. **Open folder** connects a checkout. Opening it again resolves to its existing project. Offer existing chat projects **Connect repository** and keep their prior conversations accessible in history. |
+| Projects | Choose Development from the Space Switcher. The sidebar lists projects. Select a row to open its workspace inside the tab content. **Open folder** connects a checkout. Opening it again resolves to its existing project. Offer existing chat projects **Connect repository** and keep their prior conversations accessible in history. |
 | Manager chat | One visible conversation per project. The composer has attachments, a removable feature/file context chip, Auto with override, and send or steer. The transcript shows decisions, proposals, worker summaries, and review actions. Detailed tool output expands on demand. |
 | Overview | Project home. Put decisions needing attention first, then active features and changes since the last visit. Each row opens its source. For a new repo, offer **Use existing spec** or **Draft from repository**. Show the proposed draft for editing. |
 | Product / Roadmap | Group features into lanes by product outcome, with dependencies and progress visible. **Suggest features** proposes cards with a reason and a reference to the spec, backlog, or repo. Accept, edit, dismiss, reorder, or link to an existing feature. Acceptance adds it to the roadmap. **Build** is a separate action. |
@@ -66,7 +62,7 @@ Illustrative Overview with a project already underway:
 | Agents / Team | Show the manager and workers, provider/model, assignment, status, and controls to inspect, steer, or stop. **Active Tools** shows each skill, plugin, or MCP connection, its source, and whether it is available to the selected runner. Team initially means the developer and their agents. |
 | Code / Files | Repository tree and file preview, branch, changed files, diff, and check output. Open here from a task with its changes already selected. **Ask about selection** returns a path and line range to the manager. Provide **Open in editor** for manual edits. |
 
-Implement a small shared set of components. A project switcher and tool tab bar handle navigation. A context chip, proposal card, run summary, and review card connect chat with project records. A feature card and dependency row serve Roadmap. A document outline and revision diff serve Spec and Deck. Task rows, event rows, and a changed-file list serve Overview and the detail screens. A card in chat and its counterpart on the roadmap should call the same action with the same record ID.
+Implement a small shared set of components. The Space Switcher, project sidebar, and project tool tab bar each handle a different level of navigation. A context chip, proposal card, run summary, and review card connect chat with project records. A feature card and dependency row serve Roadmap. A document outline and revision diff serve Spec and Deck. Task rows, event rows, and a changed-file list serve Overview and the detail screens. A card in chat and its counterpart on the roadmap should call the same action with the same record ID.
 
 ## How the manager keeps continuity
 

@@ -1,5 +1,9 @@
 /* Local review fixture. Every action below updates this page in memory. */
 const iconPaths = {
+  search: '<circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/>',
+  terminal: '<rect x="2" y="4" width="20" height="16" rx="3"/><path d="m6 9 3 3-3 3m6 0h5"/>',
+  bookmark: '<path d="M6 3h12v18l-6-4-6 4Z"/>',
+  history: '<path d="M3 11a9 9 0 1 1 2 7M3 5v6h6m3-4v6l4 2"/>',
   sidebar: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>',
   left: '<path d="m14 5-7 7 7 7"/>', right: '<path d="m9 5 7 7-7 7"/>',
   arrow: '<path d="M3 12h17m-6-6 6 6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
@@ -29,7 +33,81 @@ const draft = document.querySelector('#draft');
 let selectedFile = 0;
 let accepted = false;
 let screen;
+const projects = {
+  yab: { name: 'Yab Browser' },
+  sunday: { name: 'Sunday', color: '#f1c27b', feature: 'Single-screen sign-in', area: 'Onboarding', goal: 'Let a returning user enter their email and continue from a single screen.' },
+  webistory: { name: 'Webistory', color: '#8bc3e6', feature: 'Floating time tracker', area: 'Time tracking', goal: 'Start and stop the current project timer without leaving the active app.' },
+  agada: { name: 'Agada', color: '#a6ceaa', feature: 'Dish picker', area: 'Orders', goal: 'Choose dishes and quantities while reviewing an order.' }
+};
+let project;
+let space;
+let lastProject = 'yab';
+const messages = document.querySelector('#messages');
+const context = document.querySelector('#context');
+const chats = new Map();
+const lastView = new Map();
 const scroll = {};
+const initialMessages = messages.innerHTML;
+
+function restoreChat(id) {
+  if (project === id) return;
+  if (project) {
+    chats.set(project, {messages: messages.innerHTML, top: messages.scrollTop,
+      draft: draft.value, context: context.innerHTML, hidden: context.hidden});
+  }
+  project = id;
+  const item = projects[id];
+  const previous = chats.get(id);
+  const starter = id === 'yab' ? initialMessages :
+    '<div class="day">Today</div><p class="bubble you">What is next for '+item.name+'?</p>'+
+    '<p class="bubble them">The next feature is '+item.feature+'. '+item.goal+'</p>'+
+    '<button class="chat-link" data-route="feature">'+icon('roadmap')+item.feature+icon('right')+'</button>';
+  messages.innerHTML = previous?.messages ?? starter;
+  messages.scrollTop = previous?.top ?? 0;
+  draft.value = previous?.draft ?? '';
+  send.disabled = !draft.value.trim();
+  context.innerHTML = previous?.context ?? '';
+  context.hidden = previous?.hidden ?? true;
+  document.querySelector('.chat-title small').textContent = item.name;
+}
+function projectMark(id) {
+  if (id === 'yab') return '<img src="'+appMark+'" alt="">';
+  return '<span style="color:'+projects[id].color+'">'+icon('folder')+'</span>';
+}
+function projectList() {
+  const list = document.querySelector('#project-list');
+  if (space === 'Work') {
+    list.innerHTML = '<div class="project-entry" aria-current="page">'+icon('layout')+' Home</div>';
+    return;
+  }
+  const query = document.querySelector('#project-search').value.trim().toLowerCase();
+  const rows = Object.entries(projects).filter(([,p])=>p.name.toLowerCase().includes(query));
+  list.innerHTML = rows.map(([id,p])=>'<button class="project-entry" data-project="'+id+'"'+
+    (id === project ? ' aria-current="page"' : '')+'>'+projectMark(id)+p.name+'</button>').join('') ||
+    '<small style="padding:8px">No matching projects</small>';
+}
+function otherProject() {
+  const item = projects[project];
+  if (screen === 'feature') return '<article class="page"><div class="crumb">Product '+icon('right')+' Roadmap '+icon('right')+' '+item.area+'</div><h1>'+item.feature+'</h1><section class="block doc"><h2>Feature definition</h2><p class="body-copy">'+item.goal+'</p></section><div class="block">'+action(icon('chat')+' Discuss feature','data-action="discuss"')+'</div></article>';
+  if (screen === 'review') return '<section class="page"><h1>Code review</h1><p class="body-copy">No changes awaiting review in '+item.name+'.</p></section>';
+  return '<section class="page"><header class="head"><div class="well">'+projectMark(project)+'</div><h1>'+item.name+'</h1></header><section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list"><button class="row" data-route="feature"><span class="well small">'+icon('roadmap')+'</span><span><b>'+item.feature+'</b><small>'+item.area+'</small></span><span class="trail">Planned</span>'+icon('right')+'</button></div></section></section>';
+}
+function pathFor(id, view) {
+  return id === 'yab' ? view : id + '/' + view;
+}
+function chooseProject(id) {
+  document.body.classList.remove('sidebar-open','chat-open');
+  document.querySelector('#project-search').value = '';
+  projectList();
+  location.hash = pathFor(id,lastView.get(id) ?? 'overview');
+}
+function chooseSpace(name) {
+  document.querySelector('#spaces').hidePopover();
+  if (name === 'Development') chooseProject(lastProject);
+  else { document.body.classList.remove('sidebar-open','chat-open'); location.hash = 'work'; }
+}
+document.querySelector('#project-search').addEventListener('input',projectList);
+
 function escapeHTML(value) {
   return value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 }
@@ -111,21 +189,42 @@ function review() {
 }
 const renderers = {overview,feature,review};
 function render() {
-  screen = location.hash.slice(1);
+  const parts = location.hash.slice(1).split('/');
+  if (project && space === 'Development' && screen) scroll[pathFor(project,screen)] = content.scrollTop;
+  space = parts[0] === 'work' ? 'Work' : 'Development';
+  const dev = space === 'Development';
+  document.querySelector('.body').hidden = !dev;
+  document.querySelector('#work-home').hidden = dev;
+  document.querySelector('.filter').hidden = !dev;
+  document.querySelector('#space-name').textContent = space;
+  document.querySelector('#space-switch > span:first-child').innerHTML = icon(dev ? 'terminal' : 'folder');
+  document.querySelector('#sidebar-heading').textContent = dev ? 'Projects' : 'Tabs';
+  document.querySelectorAll('#spaces [data-space]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.space === space)));
+  if (!dev) {
+    document.querySelector('#compact-title').textContent = document.title = 'Work';
+    projectList();
+    return;
+  }
+  const id = Object.hasOwn(projects,parts[0]) ? parts[0] : 'yab';
+  restoreChat(id);
+  lastProject = project;
+  screen = parts.at(-1);
   if (!views.includes(screen)) screen = 'overview';
-  content.innerHTML = renderers[screen]();
+  lastView.set(project,screen);
+  projectList();
+  document.querySelector('#compact-title').textContent = projects[id].name;
+  content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
   document.querySelectorAll('nav [data-route]').forEach(b=>{
     if (b.dataset.route===screen) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
-  content.scrollTop = scroll[screen] || 0;
-  document.title = ({overview:'Project overview',feature:'Roadmap feature detail',review:'Code review'})[screen]+' · Yab Browser';
+  content.scrollTop = scroll[pathFor(project,screen)] || 0;
+  document.title = ({overview:'Project overview',feature:'Roadmap feature detail',review:'Code review'})[screen]+' · '+projects[id].name;
 }
 function go(route) {
   document.body.classList.remove('chat-open');
   if (route===screen) return;
-  scroll[screen] = content.scrollTop;
-  location.hash = route;
+  location.hash = pathFor(project,route);
 }
 function discuss(label) {
   const chip = document.querySelector('#context');
@@ -151,11 +250,16 @@ function addMessage() {
 document.addEventListener('click',e=>{
   const b=e.target.closest('button');
   if (!b || b.disabled) return;
+  if (b.dataset.space) chooseSpace(b.dataset.space);
+  if (b.dataset.project) chooseProject(b.dataset.project);
   if (b.dataset.route) go(b.dataset.route);
   if (b.dataset.file!==undefined) { selectedFile=Number(b.dataset.file); render(); document.querySelector('[data-file="'+selectedFile+'"]').focus({preventScroll:true}); }
   switch(b.dataset.action) {
+    case 'sidebar':
+      document.body.classList.toggle(matchMedia('(max-width:920px)').matches ? 'sidebar-open' : 'rail-closed');
+      break;
     case 'chat': document.body.classList.toggle('chat-open'); break;
-    case 'discuss': discuss('Dock download progress'); break;
+    case 'discuss': discuss(projects[project].feature ?? 'Dock download progress'); break;
     case 'discuss-file': discuss(files[selectedFile].title); break;
     case 'remove-context': document.querySelector('#context').hidden=true; draft.focus(); break;
     case 'send': addMessage(); break;
