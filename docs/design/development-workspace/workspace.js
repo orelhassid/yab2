@@ -201,7 +201,6 @@ function review() {
 }
 const previewURLs = new Map();
 const loadedPreviews = new Map();
-const terminalHistory = new Map();
 function toolSurface(title, body) {
   return '<section class="page">'+tabHeader(({Tasks:'list',Preview:'layout',Terminal:'terminal'})[title],title)+' '+body+'</section>';
 }
@@ -209,8 +208,7 @@ function preview() {
   return '<section class="preview-surface"><form id="preview-form" class="tool-form"><label for="app-url">App URL</label><div><input id="app-url" type="url" required placeholder="http://localhost:3000"><button class="btn primary">Preview</button><button class="btn" value="external">Open in browser ↗</button></div></form><iframe title="Project preview" sandbox="allow-scripts allow-forms allow-same-origin" referrerpolicy="no-referrer"></iframe></section>';
 }
 function terminal() {
-  const history = terminalHistory.get(project) ?? [];
-  return '<div class="terminal-surface"><small>'+escapeHTML(projects[project].name)+' · Demo shell</small><pre>'+escapeHTML(history.join('\n'))+'</pre><form id="terminal-form"><label for="command">❯</label><input id="command" aria-label="Demo terminal command" autocomplete="off" placeholder="Type help"></form></div>';
+  return '<div class="terminal-surface">'+(nativeSpace ? '' : 'Open the Development Space in Yab to use the project terminal.')+'</div>';
 }
 document.addEventListener('submit', event => {
   event.preventDefault();
@@ -229,15 +227,7 @@ document.addEventListener('submit', event => {
       content.querySelector('iframe').src = url.href;
     }
   }
-  if (event.target.id === 'terminal-form') {
-    const command = document.querySelector('#command').value.trim();
-    if (!command) return;
-    const history = terminalHistory.get(project) ?? [];
-    const result = command === 'help' ? 'help   pwd   clear' : command === 'pwd' ? (directory[project]?.folder || 'No source folder selected.') : 'Demo shell: type help for available commands.';
-    terminalHistory.set(project,command === 'clear' ? [] : [...history,'❯ '+command,result]);
-    render();
-    document.querySelector('#command').focus();
-  }
+
 });
 document.addEventListener('input', event => {
   if (event.target.id === 'app-url') {
@@ -469,12 +459,16 @@ function setLayout(mode) {
   }
 }
 function reportToolbar() {
+  const pane = content.getBoundingClientRect();
+  const bottom = layoutMode === 'full' ? document.querySelector('.composer').getBoundingClientRect().top - 8 : pane.bottom;
   window.webkit?.messageHandlers?.toolbar?.postMessage({
+    project, terminal:[pane.x,pane.y,pane.width,Math.max(0,bottom-pane.y)],
     active:document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
     mode:layoutMode,width:document.querySelector('#chat').offsetWidth
   });
 }
-new ResizeObserver(reportToolbar).observe(document.querySelector('#chat'));
+const toolbarObserver = new ResizeObserver(reportToolbar);
+for (const element of [content,document.querySelector('#chat'),document.querySelector('.composer')]) toolbarObserver.observe(element);
 function toggleLayout(action) {
   if (action === 'panel') setLayout(layoutMode==='chat'?(narrowLayout.matches?'full':'split'):'chat');
   if (action === 'full') {

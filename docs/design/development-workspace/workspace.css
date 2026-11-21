@@ -217,12 +217,10 @@ nav { gap:2px; scrollbar-width:thin }
 nav button { padding:4px 9px; border-radius:8px; flex:none }
 .sidebar-door,.phone-door { display:none }
 .rail-closed .sidebar-door { display:block }
-.tool-form,.terminal-surface { padding:16px }
+.tool-form { padding:16px }
 .tool-form label { display:block; font-weight:550; margin-bottom:8px }
-.tool-form div,.terminal-surface form { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
-.tool-form input,.terminal-surface input { min-width:100px; flex:1; color:var(--ink); background:var(--stage); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit }
-.terminal-surface pre { white-space:pre-wrap; overflow-wrap:anywhere }
-.terminal-surface input { border:0; background:none; font:13px ui-monospace,monospace }
+.tool-form div { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.tool-form input { min-width:100px; flex:1; color:var(--ink); background:var(--stage); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit }
 @media(max-width:920px){.sidebar-door{display:block}}
 @media(max-width:720px){.phone-door{display:block}}
 

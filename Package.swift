@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "Fast",
     platforms: [.macOS("15.4")],
+    dependencies: [
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", exact: "1.99.3")
+    ],
     targets: [
         .target(name: "YabCoreClient", path: "YabCore/Client/Sources/YabCoreClient",
                 swiftSettings: [.swiftLanguageMode(.v5)]),
@@ -66,7 +69,8 @@ let package = Package(
         ),
         .executableTarget(
             name: "Fast",
-            dependencies: ["SyncKit", "YabDesign", "YabStore", "MailCore", "YabUpdate", "YabCoreClient", "NativeTextInput"],
+            dependencies: ["SyncKit", "YabDesign", "YabStore", "MailCore", "YabUpdate", "YabCoreClient", "NativeTextInput",
+                           .product(name: "SwiftTerm", package: "SwiftTerm")],
             path: "Sources/Fast",
             // Same reasoning as the canvas app next door: the whole interface is
             // main-thread by nature, and Swift 6's strict isolation buys nothing

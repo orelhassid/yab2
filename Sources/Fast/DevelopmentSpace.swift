@@ -129,6 +129,7 @@ struct DevelopmentProjects: View {
 @MainActor
 final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     let toolbar = DevelopmentToolbarState()
+    let terminals = DevelopmentTerminals()
     weak var browser: Browser?
     private(set) var ready = false
     private var sentEntries: [String: DevelopmentDetails]?
@@ -234,6 +235,8 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
     var active = "overview"
     var mode = "split"
     var chatWidth: CGFloat = 300
+    var terminalFrame = CGRect.zero
+    var reportedProject: String?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let info = message.body as? [String: Any] else { return }
@@ -249,6 +252,13 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
         }
         guard let active = info["active"] as? String, let mode = info["mode"] as? String,
               let width = info["width"] as? NSNumber else { return }
+        reportedProject = info["project"] as? String
+        if let frame = info["terminal"] as? [Double], frame.count == 4,
+           frame.allSatisfy({ $0.isFinite && $0 >= 0 }) {
+            terminalFrame = CGRect(x: frame[0], y: frame[1], width: frame[2], height: frame[3])
+        } else {
+            terminalFrame = .zero
+        }
         self.active = active
         self.mode = mode
         self.chatWidth = CGFloat(width.doubleValue)
@@ -315,6 +325,18 @@ struct DevelopmentPane: View {
             .padding(.horizontal, 8).frame(height: 38)
             Divider()
             DevelopmentWebPane(browser: browser, project: project, entries: entries)
+                .overlay(alignment: .topLeading) {
+                    if state.active == "terminal", state.reportedProject == project.rawValue,
+                       !state.terminalFrame.isEmpty, state.mode != "chat" {
+                        DevelopmentTerminalPane(terminals: content.terminals, project: project,
+                                                folder: entries[project.rawValue]?.folder ?? "") {
+                            content.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
+                        }
+                        .id(project)
+                        .frame(width: state.terminalFrame.width, height: state.terminalFrame.height)
+                        .offset(x: state.terminalFrame.minX, y: state.terminalFrame.minY)
+                    }
+                }
         }
     }
 
