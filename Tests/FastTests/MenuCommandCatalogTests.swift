@@ -63,6 +63,26 @@ struct MenuCommandCatalogTests {
         }
     }
 
+    @Test func collectionColumnActionsLeadOffersAndApplyToTheActiveView() throws {
+        try withPage { browser, _ in
+            let collection = CollectionTemplate.projects.make(name: "Projects")
+            let library = CollectionLibrary.shared
+            library.collections.append(collection)
+            defer { library.collections.removeAll { $0.id == collection.id } }
+            browser.workspaceSpace = .collections
+            browser.collectionID = collection.id
+            browser.prefs.menuCommands = false
+            let name = "Hide column Owner"
+            browser.history = History([Visit(url: "https://column.example/", key: "column.example", title: name, count: 10, last: Date(), typed: 9)])
+            browser.replaceTyped(name)
+            let target = try #require(MenuCommands.targets(.collectionColumn, in: browser).first { $0.matchesExactly(name) })
+            #expect(browser.offers.first?.kind == target.offer.kind)
+            #expect(MenuCommands.runTarget(target.id, in: browser))
+            #expect(library.collections.last?.views.first?.hidden.contains("owner") == true)
+            #expect(!MenuCommands.runTarget(target.id, in: browser))
+        }
+    }
+
     @Test func commandFieldLeadsOffersAndOpensWithoutHome() {
         withPage { browser, tab in
             browser.prefs.menuCommands = false

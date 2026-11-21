@@ -27,7 +27,7 @@ enum MenuCommands {
         .moveTabToWindow, .smallWindow, .reopenWindow, .fullScreen, .exitFullScreen, .undoBrowserAction,
         .sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs, .collapseAllTabGroups, .expandAllTabGroups,
         .headerSpaceIcon, .headerColorDot, .headerSpaceBadge, .headerHairline,
-        .openCollections, .newCollection, .newCollectionRecord, .customizeRecordTemplate,
+        .openCollections, .newCollection, .newCollectionRecord, .customizeRecordTemplate, .collectionColumn,
         .newSpace, .switchSpace, .nextSpace, .previousSpace, .moveToSpace, .changeSpaceIcon, .deleteSpace,
         .moveToFolder, .moveOutOfFolder, .renameFolder, .newFolderInside, .ungroupFolder, .newLiveFolder,
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
@@ -181,6 +181,10 @@ enum MenuCommands {
             add(command, title, ["Group by " + group.rawValue], symbol: "rectangle.3.group",
                 when: { $0.showingAllTabs }) { _ in AllTabsConfiguration.shared.group = group }
         }
+        add(.collectionColumn, "Collection column actions", ["table column actions"], symbol: "tablecells",
+            opens: true, when: { $0.inCollections && !$0.privateBrowsing && $0.currentRecord == nil && !$0.creatingCollection && !$0.creatingCollectionRecord }) {
+                choose(.collectionColumn, in: $0)
+            }
         add(.openCollections, "Open Collections", ["collections", "collections space"], symbol: "square.stack.3d.up",
             opens: true, when: { $0.offersDevelopment }) { $0.switchSpace(to: Space.collections.id) }
         add(.newCollection, "New Collection", ["create collection", "new data list"], symbol: "tablecells",

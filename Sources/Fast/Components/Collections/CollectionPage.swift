@@ -11,6 +11,8 @@ struct CollectionPage: View {
         get { pagesByView[view.id] ?? 0 }
         nonmutating set { pagesByView[view.id] = newValue }
     }
+    @State private var moreViews = false
+    @Environment(\.tone) private var tone
     @State private var filtering = false
     @State private var settings = false
     @State private var namingView = false
@@ -21,7 +23,7 @@ struct CollectionPage: View {
 
     var body: some View {
         let entries = view.records(in: collection)
-        let properties = collection.properties.filter { !view.hidden.contains($0.id) }
+        let properties = view.visibleProperties(collection.properties)
         let pages = max(1, (entries.count + view.pageSize - 1) / view.pageSize)
         let start = min(page, pages - 1) * view.pageSize
         let visible = Array(entries.dropFirst(start).prefix(view.pageSize))
@@ -45,8 +47,9 @@ struct CollectionPage: View {
                 Divider()
             }
             CollectionDataGrid(properties: properties, entries: visible, start: start, total: entries.count,
-                               selection: $selection, calculations: $collection.views[index].calculations,
-                               matching: entries) { entry in
+                               selection: $selection, view: $collection.views[index], schema: collection.properties,
+                               matching: entries, collectionName: collection.name, filteredEmpty: !collection.entries.isEmpty,
+                               create: { adding = true }, clear: { collection.views[index].filters.removeAll() }) { entry in
                 openRecord(OpenRecord(collection: collection.id, record: entry.id, view: view.id, page: start / view.pageSize))
             }
             if pages > 1 {
@@ -58,55 +61,77 @@ struct CollectionPage: View {
                 }.padding(.vertical, 8)
             }
         }
+        .buttonStyle(.yab(.secondary, .small))
         .padding(.horizontal, SideBar.margin)
         .onChange(of: view.id) { page = 0; selection.removeAll() }
         .onChange(of: view.filters) { page = 0; selection.removeAll() }
         .onChange(of: view.pageSize) { page = 0 }
-        .alert("Save view as", isPresented: $namingView) {
-            TextField("View name", text: $viewName)
-            Button("Cancel", role: .cancel) {}
-            Button("Save") {
-                var copy = view
-                copy.id = UUID()
-                copy.name = viewName.trimmingCharacters(in: .whitespacesAndNewlines)
-                collection.views.append(copy)
-                collection.selectedView = copy.id
-            }.disabled(viewName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        .sheet(isPresented: $namingView) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Save view as").font(CardFrame.title)
+                YabFormField("View name", text: $viewName)
+                HStack {
+                    Spacer()
+                    Button("Cancel") { namingView = false }.buttonStyle(.yab(.secondary, .regular)).keyboardShortcut(.cancelAction)
+                    Button("Save") {
+                        var copy = view
+                        copy.id = UUID()
+                        copy.name = viewName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        collection.views.append(copy)
+                        collection.selectedView = copy.id
+                        namingView = false
+                    }.buttonStyle(.yab(.primary, .regular)).disabled(viewName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }.padding(20).frame(width: 320).background(tone?.color ?? Palette.ground)
         }
         .sheet(isPresented: $adding) {
-            CollectionEntryForm(properties: collection.properties, filters: view.filters) { entry in
+            CollectionEntryForm(collection: collection, prefs: prefs, filters: view.filters) { entry in
                 collection.entries.append(entry)
                 adding = false
             } cancel: { adding = false }
+            .toned(tone)
         }
     }
 
     private var toolbar: some View {
         HStack(spacing: SideBar.markGap) {
-            let first = collection.views[0]
-            let second = index > 1 ? view : collection.views.dropFirst().first
-            ForEach([first, second].compactMap { $0 }) { item in
+            ForEach(collection.views.prefix(2)) { item in
                 SidebarTabButton(title: item.name, selected: item.id == view.id, prefs: prefs, inTabStrip: true,
                                  action: { collection.selectedView = item.id }) { Symbol("tablecells", size: 12) }
             }
-            Menu {
-                ForEach(collection.views) { item in Button(item.name) { collection.selectedView = item.id } }
-                Divider()
-                Button("Save view as…") { viewName = ""; namingView = true }
-            } label: { Symbol("chevron.down", size: 11) }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Switch view")
+            RailMoreButton(title: "More views", selected: moreViews || index >= 2) { moreViews.toggle() }
+                .popover(isPresented: $moreViews) {
+                    VStack(spacing: 0) {
+                        ThreadScrollView {
+                            VStack(spacing: 0) {
+                                ForEach(collection.views) { item in
+                                    TrailMenuRow(title: item.name, selected: item.id == view.id, action: {
+                                        moreViews = false
+                                        collection.selectedView = item.id
+                                    }) { Symbol("tablecells", size: SideBar.mark) }
+                                }
+                            }
+                        }.frame(height: CGFloat(min(8, collection.views.count)) * SideBar.row)
+                        Divider()
+                        TrailMenuRow(title: "Save view as…", action: {
+                            moreViews = false
+                            viewName = ""
+                            namingView = true
+                        }) { Symbol("plus", size: SideBar.mark) }
+                    }.padding(6).frame(width: 220).background(tone?.color ?? Palette.ground)
+                }
             Spacer()
             if !selection.isEmpty { Text("\(selection.count) selected").font(.caption) }
-            Button { filtering.toggle() } label: { Symbol("line.3.horizontal.decrease", size: 14) }
-                .buttonStyle(.plain).accessibilityLabel("Add filter").keyTip("Add filter")
+            RailButton("Add filter", icon: "line.3.horizontal.decrease", selected: filtering || !view.filters.isEmpty, doorSize: .header) { filtering.toggle() }
+                .keyTip("Add filter")
                 .popover(isPresented: $filtering) {
                     CollectionFilterForm(properties: collection.properties) { filter in
                         collection.views[index].filters.append(filter)
                         filtering = false
                     }
                 }
-            Button { settings.toggle() } label: { Symbol("gearshape", size: 14) }
-                .buttonStyle(.plain).accessibilityLabel("View settings").keyTip("View settings")
+            RailButton("View settings", icon: "gearshape", selected: settings, doorSize: .header) { settings.toggle() }
+                .keyTip("View settings")
                 .popover(isPresented: $settings) {
                     VStack(alignment: .leading) {
                         Text("Visible properties").font(.headline)
@@ -116,20 +141,19 @@ struct CollectionPage: View {
                                 else { collection.views[index].hidden.insert(property.id) }
                             }))
                         }
-                        Picker("Sort by", selection: $collection.views[index].sortProperty) {
-                            Text("Record order").tag(Optional<String>.none)
-                            ForEach(collection.properties) { Text($0.title).tag(Optional($0.id)) }
-                        }
+                        Text("Sort by").font(CardFrame.detail)
+                        ChoiceMenu(title: "Sort by", options: [("Record order", nil)] + collection.properties.map { ($0.title, Optional($0.id)) },
+                                   selection: $collection.views[index].sortProperty)
                         if view.sortProperty != nil {
                             Toggle("Descending", isOn: Binding(get: { view.descending == true }, set: { collection.views[index].descending = $0 }))
                         }
-                        Picker("Rows per page", selection: $collection.views[index].pageSize) {
-                            ForEach([10, 25, 50, 100], id: \.self) { Text(String($0)).tag($0) }
-                        }
-                    }.padding()
+                        Text("Rows per page").font(CardFrame.detail)
+                        ChoiceMenu(title: "Rows per page", options: [10, 25, 50, 100].map { (String($0), $0) },
+                                   selection: $collection.views[index].pageSize)
+                    }.toggleStyle(NetCheckboxStyle()).padding()
                 }
-            Menu("New Record") { Button("Create record") { adding = true } }
-                .fixedSize()
+            Button { adding = true } label: { Label("New Record", systemImage: "plus") }
+                .buttonStyle(.yab(.primary, .regular))
         }.padding(.vertical, 6)
     }
 }
@@ -142,59 +166,11 @@ private struct CollectionFilterForm: View {
 
     var body: some View {
         VStack(alignment: .leading) {
-            Picker("Property", selection: $property) {
-                ForEach(properties) { Text($0.title).tag($0.id) }
-            }
-            TextField("Value equals", text: $value)
+            Text("Property").font(CardFrame.detail)
+            ChoiceMenu(title: "Property", options: properties.map { ($0.title, $0.id) }, selection: $property)
+            YabFormField("Value equals", text: $value)
             Button("Apply filter") { apply(.init(property: property, value: value)) }
-                .disabled(value.isEmpty)
+                .buttonStyle(.yab(.primary, .regular)).disabled(value.isEmpty)
         }.padding().frame(minWidth: 220)
-    }
-}
-
-private struct CollectionEntryForm: View {
-    let properties: [CollectionProperty]
-    let save: (CollectionEntry) -> Void
-    let cancel: () -> Void
-    @State private var values: [String: String]
-
-    init(properties: [CollectionProperty], filters: [CollectionFilter],
-         save: @escaping (CollectionEntry) -> Void, cancel: @escaping () -> Void) {
-        self.properties = properties
-        self.save = save
-        self.cancel = cancel
-        _values = State(initialValue: Dictionary(filters.map { ($0.property, $0.value) }, uniquingKeysWith: { first, _ in first }))
-    }
-
-    private var valid: Bool {
-        guard properties.filter(\.required).allSatisfy({ !(values[$0.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else { return false }
-        return properties.filter(\.numeric).allSatisfy { field in
-            let value = values[field.id] ?? ""
-            return value.isEmpty || (try? Decimal(value, format: .number)) != nil
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("New Record").font(.headline)
-            Form {
-                ForEach(properties) { property in
-                    TextField(property.title, text: Binding(get: { values[property.id] ?? "" }, set: { values[property.id] = $0 }))
-                }
-            }
-            HStack {
-                Spacer()
-                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
-                Button("Create") {
-                    var stored = values
-                    for field in properties where field.numeric {
-                        if let number = try? Decimal(values[field.id] ?? "", format: .number) {
-                            stored[field.id] = NSDecimalNumber(decimal: number).stringValue
-                        }
-                    }
-                    save(.init(values: stored))
-                }.keyboardShortcut(.defaultAction).disabled(!valid)
-            }
-        }.padding().frame(minWidth: 320)
     }
 }

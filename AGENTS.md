@@ -135,3 +135,5 @@ Keep Development environment settings and plugin availability shared across proj
 Present Collection creation in a modal. Use icon selection cards with distinct default, hover, selected and keyboard-focus states, shared Yab form fields and Yab button styles on both onboarding steps.
 
 Use `SidebarTabRow` and `SidebarTabLabel` for Collection onboarding property rows so the icon slot, title size, insets and row height follow the tab item.
+
+Use the Trail’s `RailMoreButton` for overflow views, `RailButton` for filter and settings actions, and the shared Yab fields, choices and button styles in Collection forms.

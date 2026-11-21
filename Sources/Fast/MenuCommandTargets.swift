@@ -203,6 +203,26 @@ extension MenuCommands {
                     aliases, symbol: "hammer", opens: true) { $0.showTool(tool) }
             }
         }
+        if (operation == nil || operation == .collectionColumn), browser.inCollections, !browser.privateBrowsing,
+           browser.currentRecord == nil, !browser.creatingCollection, !browser.creatingCollectionRecord {
+            let library = CollectionLibrary.shared
+            if let collection = library.collections.first(where: { $0.id == browser.collectionID }) ?? library.collections.first,
+               let view = collection.views.first(where: { $0.id == collection.selectedView }) ?? collection.views.first {
+                let rtl = NSApp.userInterfaceLayoutDirection == .rightToLeft
+                for property in view.visibleProperties(collection.properties) {
+                    for action in CollectionColumnAction.allCases where view.supports(action, column: property.id, properties: collection.properties) {
+                        let name = action.title(rtl: rtl)
+                        add(.collectionColumn, "\(collection.id):\(view.id):\(property.id):\(action.rawValue)",
+                            "\(name) · \(property.title)", [name, name + " " + property.title], symbol: property.type.symbol) { _ in
+                            guard let i = library.collections.firstIndex(where: { $0.id == collection.id }),
+                                  let j = library.collections[i].views.firstIndex(where: { $0.id == view.id }) else { return }
+                            let schema = library.collections[i].properties
+                            library.collections[i].views[j].apply(action, column: property.id, properties: schema)
+                        }
+                    }
+                }
+            }
+        }
         out += projects
         return out.filter { browser.prefs.menuCommands || MenuCommands.everyone.contains($0.operation) }
     }

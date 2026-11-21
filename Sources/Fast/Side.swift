@@ -3829,7 +3829,6 @@ struct SidebarTabButton<Mark: View>: View {
     var inTabStrip = false
     var showsDisclosure = false
     var badge: (title: String, tint: FolderTint)?
-    @Environment(\.colorScheme) private var badgeScheme
     let action: () -> Void
     @ViewBuilder var mark: () -> Mark
     @State private var hovered = false
@@ -3860,12 +3859,7 @@ struct SidebarTabButton<Mark: View>: View {
         SidebarTabLabel(title: title, mark: mark)
         if let badge {
             Spacer(minLength: 4)
-            Text(badge.title)
-                .font(.caption).lineLimit(1)
-                .foregroundStyle(badge.tint.ink(dark: badgeScheme == .dark))
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(badge.tint.wash(dark: badgeScheme == .dark), in: Capsule())
-                .fixedSize()
+            YabValueBadge(title: badge.title, tint: badge.tint).fixedSize()
         }
         if showsDisclosure { Symbol("chevron.down", size: 9) }
     }

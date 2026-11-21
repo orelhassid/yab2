@@ -6,9 +6,18 @@ struct CollectionDataGrid: View {
     let start: Int
     let total: Int
     @Binding var selection: Set<UUID>
-    @Binding var calculations: [String: CollectionCalculation]
+    @Binding var view: CollectionTableView
+    let schema: [CollectionProperty]
     let matching: [CollectionEntry]
+    let collectionName: String
+    let filteredEmpty: Bool
+    let create: () -> Void
+    let clear: () -> Void
+    @Environment(\.tone) private var tone
+    @Environment(\.layoutDirection) private var direction
     let openRecord: (CollectionEntry) -> Void
+
+    @State private var hovering: String?
 
     private var pageIDs: Set<UUID> { Set(entries.map(\.id)) }
 
@@ -23,50 +32,64 @@ struct CollectionDataGrid: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 0) {
                         GridRow {
-                            Toggle("Select page", isOn: Binding(get: { !entries.isEmpty && pageIDs.isSubset(of: selection) }, set: { all in
+                            Toggle(isOn: Binding(get: { !entries.isEmpty && pageIDs.isSubset(of: selection) }, set: { all in
                                 if all { selection.formUnion(pageIDs) } else { selection.subtract(pageIDs) }
-                            }))
-                            .labelsHidden().fixedSize().disabled(entries.isEmpty)
+                            })) { EmptyView() }.accessibilityLabel("Select page").fixedSize().disabled(entries.isEmpty)
                             Text("#").foregroundStyle(.secondary)
                             ForEach(properties) { property in
-                                Text(property.title).fontWeight(.medium)
-                                    .frame(width: dataWidth, alignment: property.numeric ? .trailing : .leading)
+                                columnHeader(property, width: dataWidth)
                             }
                         }
                         .padding(.vertical, 6)
                         Divider().gridCellUnsizedAxes(.horizontal)
                         ForEach(Array(entries.enumerated()), id: \.element.id) { offset, entry in
                             GridRow {
-                                Toggle("Select row \(start + offset + 1)", isOn: Binding(get: { selection.contains(entry.id) }, set: { on in
+                                Toggle(isOn: Binding(get: { selection.contains(entry.id) }, set: { on in
                                     if on { selection.insert(entry.id) } else { selection.remove(entry.id) }
-                                }))
-                                .labelsHidden().fixedSize()
+                                })) { EmptyView() }.accessibilityLabel("Select row \(start + offset + 1)").fixedSize()
                                 Text(String(start + offset + 1)).monospacedDigit().foregroundStyle(.secondary)
                                 ForEach(properties) { property in
                                     Button { openRecord(entry) } label: {
-                                        Text(entry.values[property.id] ?? "")
-                                            .lineLimit(1)
-                                            .frame(maxWidth: .infinity, alignment: property.numeric ? .trailing : .leading)
+                                        let value = entry.values[property.id] ?? ""
+                                        Group {
+                                            if !value.isEmpty && (property.type == .select || property.type == .multiSelect) {
+                                                YabValueBadge(title: value, tint: .purple)
+                                            } else { Text(value).lineLimit(1) }
+                                        }
+                                            .frame(width: dataWidth, alignment: property.numeric ? .trailing : .leading)
                                             .contentShape(Rectangle())
                                     }.buttonStyle(.plain)
                                 }
                             }
                             .padding(.vertical, 6)
+                            .background { if selection.contains(entry.id) { SelectionPlate(corner: Radius.control, state: .selected) } }
                             Divider().gridCellUnsizedAxes(.horizontal)
                         }
-                        GridRow {
-                            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                            ForEach(properties) { property in
-                                footer(property)
-                                    .frame(maxWidth: .infinity, alignment: property.numeric ? .trailing : .leading)
-                            }
-                        }.padding(.vertical, 6)
+                        if total > 0 {
+                            GridRow {
+                                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                                ForEach(properties) { property in
+                                    footer(property)
+                                        .frame(maxWidth: .infinity, alignment: property.numeric ? .trailing : .leading)
+                                }
+                            }.padding(.vertical, 6)
+                        }
                     }
-                    .toggleStyle(.checkbox).controlSize(.small)
+                    .toggleStyle(NetCheckboxStyle())
                     if total == 0 {
-                        Text("No records").foregroundStyle(.secondary)
-                            .frame(width: room.size.width).padding(.vertical)
+                        VStack(spacing: 12) {
+                            Symbol(filteredEmpty ? "line.3.horizontal.decrease" : "doc.text", size: 28)
+                                .foregroundStyle(Palette.muted)
+                            Text(filteredEmpty ? "No matching records" : "No " + collectionName.lowercased() + " yet")
+                                .font(CardFrame.title)
+                            Text(filteredEmpty ? "Clear the filters to see the records in this collection." : "Create your first record to get started.")
+                                .font(CardFrame.detail).foregroundStyle(Palette.muted)
+                            Button(action: filteredEmpty ? clear : create) {
+                                Label(filteredEmpty ? "Clear filters" : "New Record", systemImage: filteredEmpty ? "xmark" : "plus")
+                            }.buttonStyle(.yab(.primary, .regular))
+                        }.frame(width: room.size.width, height: max(180, room.size.height - 44))
+
                     }
                 }
                 .frame(minWidth: room.size.width, alignment: .leading)
@@ -75,21 +98,50 @@ struct CollectionDataGrid: View {
         }
     }
 
-    private func footer(_ property: CollectionProperty) -> some View {
-        let current = calculations[property.id]
-        let options: [CollectionCalculation] = property.numeric ? CollectionCalculation.allCases : [.count, .unique]
-        return Menu {
-            Button("None") { calculations.removeValue(forKey: property.id) }
-            ForEach(options, id: \.self) { operation in
-                Button(operation.rawValue.capitalized) { calculations[property.id] = operation }
+    @ViewBuilder private func columnHeader(_ property: CollectionProperty, width: CGFloat) -> some View {
+        let fixed = property.id == schema.first?.id
+        let header = HStack(spacing: 6) {
+            Symbol(property.type.symbol, size: 12).foregroundStyle(Palette.muted)
+            Text(property.title).fontWeight(.medium).lineLimit(1)
+            if view.sortProperty == property.id {
+                Symbol(view.descending == true ? "arrow.down" : "arrow.up", size: 10)
             }
-        } label: {
-            let title = current.map { op in
-                op.rawValue.capitalized + " " + op.result(matching.map { $0.values[property.id] ?? "" })
-            } ?? "Calculate"
-            Text(title).font(.caption)
+            Spacer(minLength: 0)
+            if !fixed && hovering == property.id { Symbol("line.3.horizontal", size: 10).foregroundStyle(Palette.muted) }
+        }.frame(width: width, alignment: .leading).contentShape(Rectangle())
+            .background { if hovering == property.id { SelectionPlate(corner: SideBar.radius, state: .hover) } }
+            .onHover { if $0 { hovering = property.id } else if hovering == property.id { hovering = nil } }
+            .accessibilityElement(children: .ignore).accessibilityLabel(property.title + " column")
+        Group {
+            if fixed { header }
+            else {
+                header.draggable(view.id.uuidString + "/" + property.id)
+                    .dropDestination(for: String.self) { values, _ in
+                        guard let source = properties.first(where: { view.id.uuidString + "/" + $0.id == values.first }),
+                              source.id != property.id else { return false }
+                        view.moveColumn(source.id, to: property.id, properties: schema)
+                        return true
+                    }
+            }
         }
-        .menuStyle(.borderlessButton).fixedSize()
-        .accessibilityLabel("Calculate " + property.title)
+        .steadyMenu(actions: true, tone: tone) {
+            ForEach(CollectionColumnAction.allCases, id: \.self) { action in
+                Button(action.title(rtl: direction == .rightToLeft)) {
+                    view.apply(action, column: property.id, properties: schema)
+                }.disabled(!view.supports(action, column: property.id, properties: schema))
+            }
+        }
+    }
+
+    private func footer(_ property: CollectionProperty) -> some View {
+        let current = view.calculations[property.id]
+        let options: [CollectionCalculation] = property.numeric ? CollectionCalculation.allCases : [.count, .unique]
+        let title = current.map { op in
+            op.rawValue.capitalized + " " + op.result(matching.map { $0.values[property.id] ?? "" })
+        } ?? "Calculate"
+        return DropMenu("Calculate " + property.title,
+                          options: [DropOption(title: "None", value: Optional<CollectionCalculation>.none)] +
+                            options.map { DropOption(title: $0.rawValue.capitalized, value: Optional($0)) },
+                          selection: $view.calculations[property.id], faceTitle: title)
     }
 }

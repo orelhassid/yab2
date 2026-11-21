@@ -266,7 +266,7 @@ struct RailButton<Mark: View>: View {
                 }
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(Door.Give())
         .focusable(keyboard)
         .onHover { hovering = $0 }
         .accessibilityLabel(title)
@@ -276,6 +276,16 @@ struct RailButton<Mark: View>: View {
 extension RailButton where Mark == Symbol {
     init(_ title: String, icon: String, selected: Bool = false, doorSize: Door.Size? = nil, action: @escaping () -> Void) {
         self.init(title, selected: selected, doorSize: doorSize, action: action) { doorSize?.symbol(icon) ?? Self.glyph(icon) }
+    }
+}
+
+struct RailMoreButton: View {
+    let title: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        RailButton(title, icon: "ellipsis", selected: selected, action: action)
     }
 }
 
@@ -459,7 +469,7 @@ struct SpaceRow: View {
             RailGroup {
                 slots(visible, plan)
                 if !hidden.isEmpty {
-                    RailButton("More Spaces", icon: "ellipsis", selected: more || hidden.contains { $0.id == browser.sidebarSpaceID }) {
+                    RailMoreButton(title: "More Spaces", selected: more || hidden.contains { $0.id == browser.sidebarSpaceID }) {
                         more.toggle()
                     }
                     .popover(isPresented: $more, arrowEdge: browser.trailFlank == .right ? .leading : .trailing) {

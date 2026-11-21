@@ -70,12 +70,9 @@ struct CollectionWorkspace: View {
                     RecordPage(browser: browser, collection: $library.collections[i], tab: tab, record: record)
                 } else {
                     TabWindowHeader(selection: Optional<UUID>.none) {
-                        TabWindowSwitcher(title: item.name, prefs: browser.prefs, items: library.collections,
-                                          label: { $0.name }, selected: { $0.id == item.id },
-                                          choose: { browser.showCollection($0.id) },
-                                          rowIcon: { Symbol($0.symbol, size: SideBar.mark) }) {
-                            Symbol(item.symbol, size: SideBar.mark)
-                        }
+                        HStack(spacing: SideBar.markGap) {
+                            SidebarTabLabel(title: item.name) { Symbol(item.symbol, size: SideBar.mark) }
+                        }.padding(.horizontal, SideBar.inner)
                     } tabs: { EmptyView() } actions: {
                         ColumnDoor(browser: browser, prefs: browser.prefs).environment(\.doorSize, .header)
                     }

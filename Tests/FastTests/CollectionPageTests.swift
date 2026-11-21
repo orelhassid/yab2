@@ -4,6 +4,18 @@ import Testing
 
 @Suite @MainActor
 struct CollectionPageTests {
+    @Test func columnOrderPersistsWithinItsViewAndKeepsTheNameFirst() throws {
+        var collection = CollectionTemplate.invoices.make(name: "Invoices")
+        let schema = collection.properties
+        collection.views[0].moveColumn("amount", to: "client", properties: schema)
+        collection.views[0].apply(.hide, column: "status", properties: schema)
+        collection.views[0].moveColumn("name", to: "amount", properties: schema)
+        collection.views[0].apply(.hide, column: "name", properties: schema)
+        let saved = try JSONDecoder().decode(PageCollection.self, from: JSONEncoder().encode(collection))
+        #expect(saved.views[0].visibleProperties(schema).map(\.id) == ["name", "amount", "client"])
+        #expect(saved.views[1].visibleProperties(schema).map(\.id) == schema.map(\.id))
+    }
+
     @Test func propertyTypesPreserveLegacyNumbersAndRoundTripNewFields() throws {
         let legacy = Data(#"{"id":"old-field","title":"Budget","numeric":true,"required":true}"#.utf8)
         let field = try JSONDecoder().decode(CollectionProperty.self, from: legacy)

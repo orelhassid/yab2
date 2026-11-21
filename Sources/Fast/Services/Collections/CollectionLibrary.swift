@@ -76,6 +76,18 @@ struct CollectionFilter: Identifiable, Equatable, Codable {
     let value: String
 }
 
+enum CollectionColumnAction: String, CaseIterable {
+    case ascending = "Sort ascending", descending = "Sort descending", earlier = "Move earlier", later = "Move later", hide = "Hide column"
+
+    func title(rtl: Bool) -> String {
+        switch self {
+        case .earlier: rtl ? "Move right" : "Move left"
+        case .later: rtl ? "Move left" : "Move right"
+        default: rawValue
+        }
+    }
+}
+
 struct CollectionTableView: Identifiable, Codable {
     var id = UUID()
     var name: String
@@ -85,6 +97,58 @@ struct CollectionTableView: Identifiable, Codable {
     var pageSize = 25
     var sortProperty: String?
     var descending: Bool?
+
+    var columnOrder: [String]?
+
+    func orderedProperties(_ properties: [CollectionProperty]) -> [CollectionProperty] {
+        guard let primary = properties.first else { return [] }
+        var remaining = Array(properties.dropFirst())
+        var ordered = [primary]
+        for id in columnOrder ?? [] {
+            if let i = remaining.firstIndex(where: { $0.id == id }) {
+                ordered.append(remaining.remove(at: i))
+            }
+        }
+        return ordered + remaining
+    }
+
+    mutating func moveColumn(_ source: String, to target: String, properties: [CollectionProperty]) {
+        var ids = orderedProperties(properties).map(\.id)
+        guard let from = ids.firstIndex(of: source), let to = ids.firstIndex(of: target),
+              from > 0, to > 0, from != to else { return }
+        ids.remove(at: from)
+        ids.insert(source, at: to)
+        columnOrder = ids
+    }
+
+    func visibleProperties(_ properties: [CollectionProperty]) -> [CollectionProperty] {
+        orderedProperties(properties).filter { $0.id == properties.first?.id || !hidden.contains($0.id) }
+    }
+
+    func supports(_ action: CollectionColumnAction, column: String, properties: [CollectionProperty]) -> Bool {
+        let visible = visibleProperties(properties)
+        guard let i = visible.firstIndex(where: { $0.id == column }) else { return false }
+        switch action {
+        case .earlier: return i > 1
+        case .later: return i > 0 && i + 1 < visible.count
+        case .hide: return i > 0
+        case .ascending, .descending: return true
+        }
+    }
+
+    mutating func apply(_ action: CollectionColumnAction, column: String, properties: [CollectionProperty]) {
+        guard supports(action, column: column, properties: properties) else { return }
+        switch action {
+        case .earlier, .later:
+            let visible = visibleProperties(properties)
+            guard let i = visible.firstIndex(where: { $0.id == column }) else { return }
+            moveColumn(column, to: visible[i + (action == .earlier ? -1 : 1)].id, properties: properties)
+        case .hide: hidden.insert(column)
+        case .ascending, .descending:
+            sortProperty = column
+            descending = action == .descending
+        }
+    }
 
     func records(in collection: PageCollection, including current: UUID? = nil) -> [CollectionEntry] {
         let filtered = collection.entries.filter { $0.id == current || matches($0) }
@@ -117,6 +181,31 @@ struct PageCollection: Identifiable, Codable {
     var recordTemplate: RecordTemplate?
     var selectedView: UUID?
     var entries: [CollectionEntry] = []
+}
+
+extension PageCollection {
+    private var creationPreset: (name: String, status: String)? {
+        switch sourceTemplate {
+        case .projects: ("Project kickoff", "Planned")
+        case .tasks: ("Open task", "Open")
+        case .contacts: ("Active contact", "Active")
+        case .invoices: ("Unpaid invoice", "Unpaid")
+        default: nil
+        }
+    }
+
+    var creationTemplateName: String? { creationDefaults.isEmpty ? nil : creationPreset?.name }
+    var creationDefaults: [String: String] {
+        guard let creationPreset, properties.contains(where: { $0.id == "status" }) else { return [:] }
+        return ["status": creationPreset.status]
+    }
+
+    func options(for property: CollectionProperty) -> [String] {
+        let stored = entries.compactMap { $0.values[property.id] }
+        let choices = property.type == .multiSelect ? stored.flatMap { $0.components(separatedBy: ", ") } : stored
+        let filters = views.flatMap(\.filters).filter { $0.property == property.id }.map(\.value)
+        return Array(Set(choices + filters + [creationDefaults[property.id]].compactMap { $0 })).sorted()
+    }
 }
 
 enum CollectionTemplate: String, CaseIterable, Codable {
