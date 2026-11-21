@@ -43,12 +43,6 @@ function productSpec(f) {
     (f.why ? '<section class="block"><h2>Why suggest this?</h2><p class="body-copy">'+f.why+'</p></section>' : '')+
     '<section class="block"><h2>Acceptance criteria</h2>'+f.checks.map(c=>'<div class="check-row">'+icon('list')+c+'</div>').join('')+'</section></article>';
 }
-function productNavigation() {
-  const active = selectedFeature() ? 'specs' : screen;
-  return '<div class="product-subnav" role="navigation" aria-label="Product sections">'+
-    [['roadmap','Roadmap'],['specs','Spec'],['pitch','Pitch board']].map(([route,label])=>
-      '<button data-route="'+route+'" '+(route===active?'aria-current="page"':'')+'>'+label+'</button>').join('')+'</div>';
-}
 function productIndex() {
   if (screen==='pitch') return '<section class="page">'+tabHeader('layout','Pitch board')+
     sectionBlock('Pitches','<p class="body-copy">No pitches yet.</p>')+'</section>';

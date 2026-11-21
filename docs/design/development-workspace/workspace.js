@@ -1,5 +1,7 @@
 /* Local review fixture. Every action below updates this page in memory. */
 const iconPaths = {
+  expand: '<path d="M3 9V3h6m6 0h6v6m0 6v6h-6M9 21H3v-6"/>',
+  settings: '<path d="M4 7h8m5 0h3M4 17h3m5 0h8"/><circle cx="14.5" cy="7" r="2.5"/><circle cx="9.5" cy="17" r="2.5"/>',
   search: '<circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/>',
   terminal: '<rect x="2" y="4" width="20" height="16" rx="3"/><path d="m6 9 3 3-3 3m6 0h5"/>',
   bookmark: '<path d="M6 3h12v18l-6-4-6 4Z"/>',
@@ -27,7 +29,7 @@ function icon(name) {
 }
 for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = icon(el.dataset.icon);
 const appMark = document.documentElement.hasAttribute('data-native-space') ? 'Mark.png' : '../../../Icon/Mark.png';
-const views = ['overview','roadmap','specs','pitch','tasks','feature','review','preview','terminal'];
+const views = ['overview','roadmap','specs','pitch','tasks','feature','review','preview','terminal','settings'];
 const content = document.querySelector('#content');
 const draft = document.querySelector('#draft');
 let selectedFile = 0;
@@ -59,7 +61,7 @@ function restoreChat(id) {
   const item = projects[id];
   const previous = chats.get(id);
   const starter = id === 'yab' ? initialMessages :
-    '<div class="day">Today</div><p class="bubble you">What is next for '+item.name+'?</p>'+
+    '<div class="day">Today</div><p class="bubble you">What is next for '+escapeHTML(item.name)+'?</p>'+
     '<p class="bubble them">The next feature is '+item.feature+'. '+item.goal+'</p>'+
     '<button class="chat-link" data-route="feature">'+icon('roadmap')+item.feature+icon('right')+'</button>';
   messages.innerHTML = previous?.messages ?? starter;
@@ -72,6 +74,7 @@ function restoreChat(id) {
   document.querySelector('#chat-mark').innerHTML = projectMark(id);
 }
 function projectMark(id) {
+  if (projects[id].symbol) return escapeHTML(projects[id].symbol);
   if (id === 'yab') return '<img src="'+appMark+'" alt="">';
   return '<span style="color:'+projects[id].color+'">'+icon('folder')+'</span>';
 }
@@ -84,13 +87,13 @@ function projectList() {
   const query = document.querySelector('#project-search').value.trim().toLowerCase();
   const rows = Object.entries(projects).filter(([,p])=>p.name.toLowerCase().includes(query));
   list.innerHTML = rows.map(([id,p])=>'<button class="project-entry" data-project="'+id+'"'+
-    (id === project ? ' aria-current="page"' : '')+'>'+projectMark(id)+p.name+'</button>').join('') ||
+    (id === project ? ' aria-current="page"' : '')+'>'+projectMark(id)+escapeHTML(p.name)+'</button>').join('') ||
     '<small style="padding:8px">No matching projects</small>';
 }
 function otherProject() {
   const item = projects[project];
   if (screen === 'feature') return '<article class="page">'+roadmapCrumb(item.area)+tabHeader('file',item.feature,[featureState(selectedFeature())],buildButton(selectedFeature())+action('Discuss','data-action="discuss"'))+sectionBlock('Feature definition','<p class="body-copy">'+item.goal+'</p>')+'</article>';
-  if (screen === 'review') return '<section class="page">'+tabHeader('diff','Code review')+'<p class="body-copy">No changes awaiting review in '+item.name+'.</p></section>';
+  if (screen === 'review') return '<section class="page">'+tabHeader('diff','Code review')+'<p class="body-copy">No changes awaiting review in '+escapeHTML(item.name)+'.</p></section>';
   return '<section class="page">'+tabHeader('folder',item.name,[],action('Open roadmap','data-route="roadmap"'))+'<section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list"><button class="row" data-route="feature"><span class="well small">'+icon('roadmap')+'</span><span><b>'+item.feature+'</b><small>'+item.area+'</small></span><span class="trail">Planned</span>'+icon('right')+'</button></div></section></section>';
 }
 function pathFor(id, view) {
@@ -124,7 +127,7 @@ function status() {
 }
 function overview() {
   return `<section class="page">
-    ${tabHeader('layout','Yab Browser',['orelhassid/yab2','main'],action('Open roadmap','data-route="roadmap"'))}
+    ${tabHeader('layout',projects[project].name,['orelhassid/yab2','main'],action('Open roadmap','data-route="roadmap"'))}
     <div class="section-heading"><h2>${accepted ? 'Recently accepted' : 'Needs your review'}</h2></div>
     <div class="feature-hero"><div class="feature-copy">${status()}<h2>Dock download progress</h2><p>Clear the Dock indicator when the last active download is canceled.</p>
       <div class="btns">${action(accepted ? 'View changes' : 'Review changes','data-route="review"',true)}${action('Open feature','data-route="feature"')}</div></div>${scene()}</div>
@@ -197,7 +200,7 @@ function preview() {
 }
 function terminal() {
   const history = terminalHistory.get(project) ?? [];
-  return toolSurface('Terminal','<div class="panel terminal-surface"><small>'+projects[project].name+' · Demo shell</small><pre>'+escapeHTML(history.join('\n'))+'</pre><form id="terminal-form"><label for="command">❯</label><input id="command" aria-label="Demo terminal command" autocomplete="off" placeholder="Type help"></form></div>');
+  return toolSurface('Terminal','<div class="panel terminal-surface"><small>'+escapeHTML(projects[project].name)+' · Demo shell</small><pre>'+escapeHTML(history.join('\n'))+'</pre><form id="terminal-form"><label for="command">❯</label><input id="command" aria-label="Demo terminal command" autocomplete="off" placeholder="Type help"></form></div>');
 }
 document.addEventListener('submit', event => {
   event.preventDefault();
@@ -255,7 +258,8 @@ function render() {
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
+  if (screen === 'settings') renderSettings();
+  else if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
   else if (screen === 'specs' || screen === 'pitch') content.innerHTML = productIndex();
   else if (screen === 'roadmap') content.innerHTML = roadmap();
   else if (screen !== 'feature' && selectedFeature()) content.innerHTML = productSpec(selectedFeature());
@@ -264,17 +268,18 @@ function render() {
     document.querySelector('#app-url').value = previewURLs.get(project) ?? '';
   } else if (screen === 'terminal') content.innerHTML = terminal();
   else content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
-  const inProduct = ['roadmap','specs','pitch'].includes(screen) || selectedFeature();
-  if (inProduct) content.insertAdjacentHTML('afterbegin',productNavigation());
+  document.querySelector('#project-picker').value = project;
   document.querySelectorAll('nav [data-route]').forEach(b=>{
-    if (b.dataset.route === (taskRoute ? 'tasks' : inProduct ? 'roadmap' : screen)) b.setAttribute('aria-current','page');
+    if (b.dataset.route === (taskRoute ? 'tasks' : selectedFeature() ? 'specs' : screen)) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
+  reportToolbar();
   content.scrollTop = scroll[pathFor(project,screen)] || 0;
-  document.title = ((taskRoute && 'Tasks') || (selectedFeature() && selectedFeature().title) || ({specs:'Spec',pitch:'Pitch board',tasks:'Tasks',roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
+  document.title = ((taskRoute && 'Tasks') || (selectedFeature() && selectedFeature().title) || ({settings:'Project settings',specs:'Spec',pitch:'Pitch board',tasks:'Tasks',roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
 }
 function go(route) {
   document.body.classList.remove('chat-open');
+  if (layoutMode === 'chat') setLayout(narrowLayout.matches?'full':'split');
   if (route===screen) return;
   location.hash = pathFor(project,route);
 }
@@ -289,7 +294,7 @@ function discuss(label, route) {
   const close = document.createElement('button');
   close.textContent = '×'; close.dataset.action = 'remove-context'; close.ariaLabel = 'Remove context';
   chip.append(close);
-  if (matchMedia('(max-width:720px)').matches) document.body.classList.add('chat-open');
+  if (layoutMode !== 'full' && matchMedia('(max-width:720px)').matches) setLayout('chat');
   draft.focus();
 }
 const send = document.querySelector('#send');
@@ -344,5 +349,136 @@ document.addEventListener('click',e=>{
     }
   }
 });
+
+const destinations = [
+  ['overview','Overview','layout'], ['roadmap','Roadmap','roadmap'], ['specs','Spec','file'],
+  ['pitch','Pitch board','bookmark'], ['tasks','Tasks','checked'], ['agents','Agents','branch'],
+  ['review','Code','diff'], ['preview','Preview','layout'], ['terminal','Terminal','terminal'],
+  ['settings','Settings','settings']
+];
+document.querySelector('#tool-tabs').innerHTML = destinations.map(([route,label,symbol]) =>
+  '<button data-route="'+route+'" title="'+label+'" aria-label="'+label+'" '+(route==='agents'?'disabled':'')+'>'+
+  icon(symbol)+'<span>'+label+'</span></button>').join('');
+
+const nativeSpace = document.documentElement.hasAttribute('data-native-space');
+function nativeAction(action, id, values = {}) {
+  location.href = 'yab-development://'+action+'/'+id+'?'+new URLSearchParams(values);
+}
+const defaultNames = Object.fromEntries(Object.entries(projects).map(([id,item])=>[id,item.name]));
+let directory = {};
+function applyDirectory(entries) {
+  const changed = JSON.stringify(directory) !== JSON.stringify(entries);
+  const openForm = document.querySelector('#project-settings');
+  const oldDetails = directory[project] || {};
+  const newDetails = entries[project] || {};
+  const folderChanged = openForm && newDetails.folder !== oldDetails.folder &&
+    (newDetails.name || defaultNames[project]) === (oldDetails.name || defaultNames[project]) &&
+    (newDetails.icon || '') === (oldDetails.icon || '');
+  const edits = folderChanged ? [openForm.elements.name.value,openForm.elements.symbol.value] : null;
+  directory = entries;
+  for (const [id,item] of Object.entries(projects)) {
+    item.name = entries[id]?.name || defaultNames[id];
+    item.symbol = entries[id]?.icon || '';
+  }
+  const picker = document.querySelector('#project-picker');
+  picker.replaceChildren(...Object.entries(projects).map(([id,item])=>new Option(item.name,id)));
+  if (!project) return;
+  picker.value = project;
+  if (!changed) return;
+  document.querySelector('#project-title').textContent = projects[project].name;
+  document.querySelector('#chat-mark').innerHTML = projectMark(project);
+  render();
+  if (edits) {
+    const fields = document.querySelector('#project-settings').elements;
+    [fields.name.value,fields.symbol.value] = edits;
+  }
+}
+document.querySelector('#project-picker').addEventListener('change', event=>{
+  if (nativeSpace) nativeAction('select',event.target.value);
+  else chooseProject(event.target.value);
+});
+function renderSettings() {
+  content.innerHTML = '<section class="page">'+tabHeader('settings','Project settings')+
+    '<form id="project-settings" class="panel tool-form"><label>Project name<input name="name" maxlength="80" required></label>'+
+    '<label>Project icon<input name="symbol" placeholder="Default icon"></label>'+
+    '<label>Source folder<input name="folder" '+(nativeSpace?'readonly':'')+' placeholder="Choose a source folder"></label>'+
+    (nativeSpace?action('Choose folder','type="button" data-action="folder"'):'')+' '+action('Save changes','type="submit"',true)+'</form></section>';
+  const form = document.querySelector('#project-settings');
+  form.elements.name.value = projects[project].name;
+  form.elements.symbol.value = projects[project].symbol || '';
+  form.elements.folder.value = directory[project]?.folder || '';
+}
+document.addEventListener('submit', event=>{
+  if (event.target.id !== 'project-settings') return;
+  event.preventDefault();
+  const fields = event.target.elements;
+  const name = fields.name.value.trim();
+  if (!name) { fields.name.focus(); return; }
+  const symbol = Array.from(new Intl.Segmenter().segment(fields.symbol.value))[0]?.segment || '';
+  if (nativeSpace) nativeAction('save',project,{name,icon:symbol});
+  else {
+    const entries = {...directory,[project]:{name,icon:symbol,folder:fields.folder.value.trim()}};
+    localStorage.setItem('development-directory',JSON.stringify(entries));
+    applyDirectory(entries);
+  }
+});
+const body = document.querySelector('.body');
+const divider = document.querySelector('#divider');
+let layoutMode = 'split';
+let previousMode = 'split';
+function setLayout(mode) {
+  layoutMode = mode;
+  body.dataset.layout = mode;
+  reportToolbar();
+  for (const [action,label] of [['panel',mode==='chat'?'Show tools panel':'Hide tools panel'],
+                                ['full',mode==='full'?'Exit full view':'Enter full view']]) {
+    const button = document.querySelector('[data-action="'+action+'"]');
+    button.title = button.ariaLabel = label;
+    button.setAttribute('aria-pressed',String(action==='full'?mode==='full':mode!=='chat'));
+  }
+}
+function reportToolbar() {
+  window.webkit?.messageHandlers?.toolbar?.postMessage({
+    active:document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
+    mode:layoutMode,width:document.querySelector('#chat').offsetWidth
+  });
+}
+new ResizeObserver(reportToolbar).observe(document.querySelector('#chat'));
+function toggleLayout(action) {
+  if (action === 'panel') setLayout(layoutMode==='chat'?(narrowLayout.matches?'full':'split'):'chat');
+  if (action === 'full') {
+    if (layoutMode === 'full') setLayout(narrowLayout.matches?'chat':previousMode);
+    else { previousMode=layoutMode; setLayout('full'); }
+  }
+}
+document.addEventListener('click',event=>{
+  const action = event.target.closest('button')?.dataset.action;
+  if (action === 'folder') nativeAction('folder',project);
+  else toggleLayout(action);
+});
+function resizeChat(value) {
+  const width = Math.max(210,Math.min(value,body.clientWidth-280));
+  body.style.setProperty('--chat-width',width+'px');
+  divider.setAttribute('aria-valuenow',Math.round(width));
+  return width;
+}
+divider.addEventListener('pointerdown',event=>{
+  if (event.button!==0) return;
+  divider.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+divider.addEventListener('pointermove',event=>{
+  if (divider.hasPointerCapture(event.pointerId)) resizeChat(event.clientX-body.getBoundingClientRect().left);
+});
+divider.addEventListener('keydown',event=>{
+  if (!['ArrowLeft','ArrowRight'].includes(event.key)) return;
+  event.preventDefault();
+  resizeChat(document.querySelector('#chat').offsetWidth+(event.key==='ArrowRight'?16:-16));
+});
+const narrowLayout = matchMedia('(max-width:720px)');
+function adaptLayout() { setLayout(narrowLayout.matches?'full':'split'); }
+narrowLayout.addEventListener('change',adaptLayout);
+adaptLayout();
+applyDirectory(nativeSpace?{}:JSON.parse(localStorage.getItem('development-directory') || '{}'));
 window.addEventListener('hashchange',render);
 render();

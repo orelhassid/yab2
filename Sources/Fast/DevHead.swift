@@ -95,14 +95,9 @@ struct DevHead: View {
         // Network warns, as Chromium's tab does, while something holds the
         // network back: throttling, or a rule that blocks or slows.
         let warns = item == .tab(.network) && net.warns
-        return Button { browser.pickDevPane(item.pane) } label: {
-            HStack(spacing: 4) {
-                if warns { Symbol("exclamationmark.triangle", size: 9).foregroundStyle(DevLook.amber) }
-                Text(item.title).font(.system(size: 11.5, weight: .medium)).fixedSize()
-            }
+        return DevToolTabButton(title: item.title, selected: isShown(item), action: { browser.pickDevPane(item.pane) }) {
+            if warns { Symbol("exclamationmark.triangle", size: 9).foregroundStyle(DevLook.amber) }
         }
-        .buttonStyle(.yab(isShown(item) ? .secondary : .quiet, .small, tint: Palette.ink))
-        .focusable(false)
         .keyTip(warns ? "Network throttling or request conditions are on" : "")
     }
 
@@ -329,5 +324,25 @@ struct DevRowLayout: Layout {
             let binding = $fit
             DispatchQueue.main.async { binding.wrappedValue = chosen }
         }
+    }
+}
+
+/// Shared tool destination in the inspector and the Development Space.
+struct DevToolTabButton<Mark: View>: View {
+    let title: String
+    let selected: Bool
+    let action: () -> Void
+    @ViewBuilder let mark: () -> Mark
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                mark()
+                Text(title).font(.system(size: 11.5, weight: .medium)).fixedSize()
+            }
+        }
+        .buttonStyle(.yab(selected ? .secondary : .quiet, .small, tint: Palette.ink))
+        .focusable(false)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

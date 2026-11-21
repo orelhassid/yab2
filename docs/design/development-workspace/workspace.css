@@ -289,3 +289,43 @@ nav button { padding:4px 9px; border-radius:8px; flex:none }
 [data-native-space] .tab-frame { flex:1; border:0; box-shadow:none }
 [data-native-space] .space-sidebar,[data-native-space] .sidebar-door,[data-native-space] [data-action="sidebar"],[data-native-space] .compact-bar { display:none }
 [data-native-space] .dock-scene { background-image:linear-gradient(#0a111a27,#0a122047),url('eclipse.webp') }
+
+/* The same primary navigation serves every project tool and layout. */
+.body {
+  position:relative; display:grid; grid-template-columns:minmax(0,clamp(210px,var(--chat-width,var(--col)),calc(100% - 280px))) minmax(0,1fr);
+  grid-template-rows:var(--tool-strip) minmax(0,1fr); container-type:inline-size
+}
+.workspace-header { grid-column:1/-1; display:grid; grid-template-columns:subgrid; position:relative; min-width:0; border-bottom:1px solid var(--line) }
+.workspace-header .chat-title { grid-column:1; margin:0; padding:0 12px; border:0; min-width:0 }
+.workspace-header nav { grid-column:2; min-width:0; margin-right:72px; padding:0 5px; border:0; scrollbar-width:none }
+.tool-tabs,.layout-actions,.project-picker,.tool-tabs button { display:flex; align-items:center; gap:5px }
+.tool-tabs { gap:1px; height:100% }
+.tool-tabs button .i,.layout-actions .i,.project-picker .i { width:15px; height:15px }
+.layout-actions { position:absolute; right:6px; height:100%; gap:2px }
+.layout-actions button { display:grid; place-items:center; width:29px; height:28px; border-radius:8px; color:var(--muted) }
+.layout-actions button:hover,.project-picker:hover,.layout-actions button[aria-pressed=true]:last-child { background:var(--wash);color:var(--ink) }
+.project-picker { position:relative; padding:4px 6px; border-radius:8px; min-width:0 }
+.project-picker select { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer }
+.project-picker:focus-within { outline:2px solid var(--blue) }
+.project-picker > [data-icon] .i { width:10px }
+#project-settings { max-width:530px }
+#project-settings label { display:grid; grid-template-columns:110px 1fr; align-items:center; gap:12px; margin:0 0 14px }
+.body #chat { position:static; display:flex; height:auto; grid-column:1;grid-row:2 }
+.body main { grid-column:2; grid-row:2; height:auto;visibility:visible }
+#divider { grid-column:1;grid-row:2;justify-self:end;width:8px;margin-right:-4px;z-index:2;cursor:col-resize;touch-action:none }
+#divider:hover,#divider:focus-visible { background:var(--blue);background-clip:content-box;padding-inline:3px }
+.body:is([data-layout=chat],[data-layout=full]) { grid-template-columns:minmax(0,1fr) }
+.body:is([data-layout=chat],[data-layout=full]) .workspace-header { display:flex }
+.body:is([data-layout=chat],[data-layout=full]) nav { flex:1 }
+.body:is([data-layout=chat],[data-layout=full]) #divider,.body[data-layout=chat] main { display:none }
+.body[data-layout=chat] #chat { grid-column:1; border:0 }
+.body[data-layout=chat] .composer,.body[data-layout=chat] .messages { width:min(100%,760px);align-self:center }
+.body[data-layout=full] main { grid-column:1 }
+.body[data-layout=full] #chat { display:contents }
+.body[data-layout=full] .messages { display:none }
+.body[data-layout=full] .composer { position:absolute;z-index:3;bottom:14px;left:50%;transform:translateX(-50%);width:min(calc(100% - 32px),660px);margin:0;box-shadow:0 4px 20px #0004 }
+.body[data-layout=full] #content { padding-bottom:150px }
+@container(max-width:1250px){ .tool-tabs button:not([aria-current]) span { display:none } }
+@container(max-width:770px){ .tool-tabs button span { display:none } .tool-tabs button { padding:5px 7px } }
+[data-native-space] .workspace-header { display:none }
+[data-native-space] .body { grid-template-rows:0 minmax(0,1fr) }

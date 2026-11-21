@@ -31,8 +31,14 @@
     <div class="compact-bar"><button data-action="sidebar" aria-label="Show sidebar" data-icon="sidebar"></button><b id="compact-title">Yab Browser</b><span class="spacer"></span><button class="chat-toggle" data-action="chat" aria-label="Show or hide manager chat" data-icon="chat"></button></div>
     <div id="work-home" hidden><div><span data-icon="folder"></span><h1>Work</h1><button class="btn" data-space="Development">Open Development Space</button></div></div>
   <div class="body">
+    <header class="workspace-header">
+      <div class="chat-title"><button class="sidebar-door" data-action="sidebar" aria-label="Show sidebar" data-icon="sidebar"></button>
+        <label class="project-picker"><span id="chat-mark"></span><b id="project-title"></b><span data-icon="down"></span><select id="project-picker" aria-label="Switch project"></select></label>
+      </div>
+      <nav aria-label="Project tools"><div class="tool-tabs" id="tool-tabs"></div></nav>
+      <div class="layout-actions"><button data-action="panel" aria-label="Hide tools panel" data-icon="sidebar"></button><button data-action="full" aria-label="Enter full view" data-icon="expand"></button></div>
+    </header>
     <aside aria-label="Project manager chat" id="chat">
-      <div class="chat-title"><button class="sidebar-door" data-action="sidebar" aria-label="Show sidebar" data-icon="sidebar"></button><span id="chat-mark"></span><b id="project-title"></b><button class="mobile-close" data-action="chat" aria-label="Close chat" data-icon="close"></button></div>
       <div class="messages" id="messages">
         <div class="day">Today</div>
         <p class="bubble you">Can we show download progress on the Dock icon?</p>
@@ -48,11 +54,8 @@
         <div class="composer-tools"><span data-icon="plus"></span><span class="spacer"></span><span class="auto">Auto</span><button id="send" data-action="send" aria-label="Add message to prototype" data-icon="up" disabled></button></div>
       </div>
     </aside>
+    <div id="divider" role="separator" aria-label="Chat width" aria-orientation="vertical" tabindex="0"></div>
     <main aria-label="Project tools panel">
-      <nav aria-label="Project tools">
-        <button class="phone-door" data-action="sidebar" aria-label="Show sidebar" data-icon="sidebar"></button><button class="phone-door" data-action="chat" aria-label="Show manager chat" data-icon="chat"></button>
-        <button data-route="overview">Overview</button><button data-route="roadmap">Product</button><button data-route="tasks">Tasks</button><button disabled title="Outside this design review">Agents</button><button data-route="review">Code</button><button data-route="preview">Preview</button><button data-route="terminal">Terminal</button>
-      </nav>
       <div id="content" tabindex="-1"></div>
     </main>
   </div>

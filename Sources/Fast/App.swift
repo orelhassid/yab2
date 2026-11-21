@@ -1055,7 +1055,7 @@ struct ContentView: View {
                     // on the stage it was on, so it can be held and drawn to
                     // its half rather than handed to another view.
                     if browser.inDevelopment {
-                        DevelopmentPane(browser: browser, project: browser.developmentProject)
+                        DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries)
                             .clipShape(RoundedRectangle(cornerRadius: corner))
                             .padding(margins)
                     } else if let tab = browser.active {
