@@ -158,8 +158,9 @@ struct RadialMenuTests {
 
         try mouse(.rightMouseDown, x: 320, y: 240)
         try await Task.sleep(for: .milliseconds(450))
-        let wheel = try #require(window.contentView?.subviews.compactMap { $0 as? RadialMenuHost }.first)
+        #expect(!tab.page.subviews.contains { $0 is RadialMenuHost })
         try mouse(.rightMouseDragged, x: 367, y: 159)
+        let wheel = try #require(tab.page.subviews.compactMap { $0 as? RadialMenuHost }.first)
         #expect(wheel.rootView.selection.wedge == 1)
         #expect(browser.active === tab)
         try mouse(.rightMouseUp, x: 367, y: 159)
@@ -193,16 +194,16 @@ struct RadialMenuTests {
         browser.select(tab)
         Store.settings.set("dropdown", forKey: RadialPreferences.layoutKey)
         try mouse(.rightMouseDown, x: 320, y: 240)
-        try await Task.sleep(for: .milliseconds(450))
-        try mouse(.rightMouseUp, x: 320, y: 240)
+        try mouse(.rightMouseDragged, x: 320, y: 230)
         let list = try #require(window.contentView?.subviews.compactMap { $0 as? RadialDropdownHost }.first)
         func downloadsRow(_ host: RadialDropdownHost) -> CGPoint {
             let y = RadialDropdown.inset + RadialDropdown.rowHeight * 1.5
             return host.convert(CGPoint(x: 60, y: host.isFlipped ? y : host.bounds.height - y), to: nil)
         }
         let row = downloadsRow(list)
-        try mouse(.mouseMoved, x: row.x, y: row.y)
+        try mouse(.rightMouseDragged, x: row.x, y: row.y)
         #expect(list.rootView.selected == 1)
+        try mouse(.rightMouseUp, x: row.x, y: row.y)
 
         let child = try #require(tab.page.subviews.compactMap { $0 as? RadialDropdownHost }.first { $0 !== list })
         let childPoint = child.convert(CGPoint(x: 60, y: child.isFlipped ? 25 : child.bounds.height - 25), to: nil)
@@ -214,12 +215,12 @@ struct RadialMenuTests {
         browser.select(tab)
         RadialPreferences.save(RadialSelection.commands)
 
-        // Repeat the hold over native content and release directly on Downloads.
+        // A drag over native content can select Downloads on release.
         let nativePage = NativePage(frame: window.contentView!.bounds)
         window.contentView = nativePage
         RadialMenuInput.shared.registerPage(nativePage)
         try mouse(.rightMouseDown, x: 320, y: 240)
-        try await Task.sleep(for: .milliseconds(450))
+        try mouse(.rightMouseDragged, x: 320, y: 230)
         let nativeMenu = try #require(nativePage.subviews.compactMap { $0 as? RadialDropdownHost }.first)
         let nativeRow = downloadsRow(nativeMenu)
         try mouse(.rightMouseDragged, x: nativeRow.x, y: nativeRow.y)
@@ -228,10 +229,16 @@ struct RadialMenuTests {
         #expect(browser.active?.libraryPage == .downloads)
         #expect(nativeMenu.superview == nil)
 
-        try mouse(.rightMouseDown, x: 320, y: 240)
-        try mouse(.rightMouseUp, x: 320, y: 240)
-        #expect(nativePage.contextPresses == 1)
-        #expect(!nativePage.subviews.contains { $0 is RadialDropdownHost })
+        // A stationary press never opens either command menu, even after the old hold delay.
+        for (index, layout) in ["wheel", "dropdown"].enumerated() {
+            Store.settings.set(layout, forKey: RadialPreferences.layoutKey)
+            try mouse(.rightMouseDown, x: 320, y: 240)
+            try await Task.sleep(for: .milliseconds(450))
+            #expect(!nativePage.subviews.contains { $0 is RadialMenuHost || $0 is RadialDropdownHost })
+            try mouse(.rightMouseUp, x: 320, y: 240)
+            #expect(nativePage.contextPresses == index + 1)
+            #expect(!nativePage.subviews.contains { $0 is RadialMenuHost || $0 is RadialDropdownHost })
+        }
 
         browser.select(tab)
         browser.enterDevelopment()
@@ -243,10 +250,12 @@ struct RadialMenuTests {
         Store.settings.set("wheel", forKey: RadialPreferences.layoutKey)
         try mouse(.rightMouseDown, x: 320, y: 240)
         try mouse(.rightMouseUp, x: 320, y: 240)
+        #expect(!pane.subviews.contains { $0 is RadialMenuHost })
+        try mouse(.rightMouseDown, x: 320, y: 240)
+        try mouse(.rightMouseDragged, x: 367, y: 159)
         let projectWheel = try #require(pane.subviews.compactMap { $0 as? RadialMenuHost }.first)
-        try mouse(.mouseMoved, x: 367, y: 159)
         #expect(projectWheel.rootView.selection.wedge == 1)
-        try mouse(.leftMouseDown, x: 367, y: 159)
+        try mouse(.rightMouseUp, x: 367, y: 159)
         #expect(projectWheel.superview == nil)
         #expect(browser.active?.libraryPage == .downloads)
     }

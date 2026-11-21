@@ -1,6 +1,6 @@
 import AppKit
 
-/// Defers a page's right press so a quick click can still build the page's context menu.
+/// Defers a page's right press until the pointer moves far enough to open the command menu.
 @MainActor
 final class RadialMenuInput {
     static let shared = RadialMenuInput()
@@ -9,12 +9,9 @@ final class RadialMenuInput {
     private weak var window: NSWindow?
     private weak var target: NSView?
     private var down: NSEvent?
-    private var hold: Task<Void, Never>?
     private var wheel: RadialMenuHost?
     private var dropdown: RadialDropdownHost?
     private var submenu: RadialDropdownHost?
-    private var pickingMainRing = false
-    private var moved = false
     private var flickDistance: CGFloat?
     private var replaying = false
     private let pages = NSHashTable<NSView>.weakObjects()
@@ -38,35 +35,21 @@ final class RadialMenuInput {
     }
 
     private func clear() {
-        hold?.cancel()
-        hold = nil
         dropdown?.removeFromSuperview()
         dropdown = nil
         submenu?.removeFromSuperview()
         submenu = nil
         wheel?.removeFromSuperview()
         wheel = nil
-        pickingMainRing = false
-        moved = false
         flickDistance = nil
         window = nil
         target = nil
         down = nil
     }
 
-    private func scheduleMenu(for browser: Browser) {
-        hold = Task { @MainActor [weak self, weak browser] in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled, let self, let browser else { return }
-            showMenu(for: browser)
-        }
-    }
-
     private func showMenu(for browser: Browser) {
         guard let window, window.isKeyWindow, window.attachedSheet == nil,
               target?.window === window, let root = window.contentView, let down else { return }
-        hold?.cancel()
-        hold = nil
         let slots = RadialPreferences.saved
         let origin = root.convert(down.locationInWindow, from: nil)
         let paint = browser.developmentLook ?? SpacePaint(browser.prefs)
@@ -169,9 +152,8 @@ final class RadialMenuInput {
 
     private func trackWheel(_ wheel: RadialMenuHost, at location: CGPoint, in browser: Browser) {
         var menu = wheel.rootView
-        if down != nil || pickingMainRing {
-            let origin = flickDistance == nil ? nil : down?.locationInWindow
-            let delta = wheel.delta(at: location, from: origin)
+        if let down {
+            let delta = wheel.delta(at: location, from: down.locationInWindow)
             menu.selection.move(delta, childCount: menu.rows.count, activationDistance: flickDistance)
             menu.rows = menu.selection.wedge.map { children(of: menu.selection.slots[$0], in: browser).map(\.row) } ?? []
         } else {
@@ -181,7 +163,7 @@ final class RadialMenuInput {
     }
 
     private func finishWheel(_ wheel: RadialMenuHost, at location: CGPoint, in browser: Browser) {
-        if moved || pickingMainRing { trackWheel(wheel, at: location, in: browser) }
+        trackWheel(wheel, at: location, in: browser)
         guard target?.window === window,
               let index = wheel.rootView.selection.wedge, wheel.rootView.available[index] else {
             clear()
@@ -196,8 +178,7 @@ final class RadialMenuInput {
         } else if case .command(let command) = item {
             clear()
             RadialPreferences.run(command, in: browser)
-        } else if !wheel.rootView.rows.isEmpty, pickingMainRing || (down != nil && item != .spaces) {
-            pickingMainRing = false
+        } else if down != nil, item != .spaces, !wheel.rootView.rows.isEmpty {
             down = nil
         } else {
             clear()
@@ -244,38 +225,25 @@ final class RadialMenuInput {
             target = page
             self.window = window
             down = event
-            scheduleMenu(for: browser)
             return nil
         case .rightMouseDragged, .rightMouseUp:
             guard let press = down else { return event }
             startFlick(at: location, press: press, in: browser)
             let isDrag = event.type == .rightMouseDragged
-            moved = moved || isDrag || flickDistance != nil
-            // The app owns this surface. A click opens the picker, while a drag
-            // still uses the same hold and flick thresholds as a website.
-            if !isDrag, !moved, tabBodies.contains(target), wheel == nil, dropdown == nil {
-                showMenu(for: browser)
-            }
             if let wheel {
                 if isDrag { trackWheel(wheel, at: location, in: browser) }
-                else if tabBodies.contains(target), !moved {
-                    down = nil
-                    pickingMainRing = true
-                } else { finishWheel(wheel, at: location, in: browser) }
+                else { finishWheel(wheel, at: location, in: browser) }
             } else if dropdown != nil {
-                if isDrag {
-                    _ = trackDropdown(location)
-                } else {
+                let selection = trackDropdown(location)
+                if !isDrag {
                     down = nil
-                    if moved {
-                        if let (host, index) = trackDropdown(location) { host.rootView.choose(index) }
-                        else { clear() }
-                    }
+                    if let (host, index) = selection { host.rootView.choose(index) }
+                    else { clear() }
                 }
             } else if !isDrag {
                 let valid = target?.window === window
                 clear()
-                if valid, !browser.inDevelopment {
+                if valid {
                     replaying = true
                     NSApp.postEvent(event, atStart: true)
                     window.sendEvent(press)
