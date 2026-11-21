@@ -106,6 +106,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## OpenUI and React
+
+Development chat renders optional OpenUI Lang replies with the official
+[OpenUI](https://github.com/thesysdev/openui) React renderer and component
+library. OpenUI and [React](https://github.com/facebook/react) are MIT
+licensed. The app bundles their license files and the renderer's
+dependency notices in `Contents/Resources/OpenUI`.
+
 ## Yab (original source)
 
 ```

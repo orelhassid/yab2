@@ -7,3 +7,12 @@ mkdir -p "$out"
 src=docs/design/development-workspace
 cp "$src"/*.js "$src"/workspace.css Icon/Mark.png Resources/HomeBackgrounds/eclipse.webp "$out/"
 sed 's/<html lang="en">/<html lang="en" data-native-space>/' "$src/index.html" > "$out/index.html"
+
+# Build the installed OpenUI components from the lockfile for offline rendering.
+openui_out="$(cd "$1" && pwd)/OpenUI"
+cd scripts/openui
+if ! cmp -s package-lock.json node_modules/.yab-lock; then
+  npm ci --no-audit --no-fund
+  cp package-lock.json node_modules/.yab-lock
+fi
+npm run --silent build -- "$openui_out"

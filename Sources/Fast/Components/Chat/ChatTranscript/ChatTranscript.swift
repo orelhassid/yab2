@@ -522,6 +522,17 @@ private struct ChatTurn: View, Equatable {
         return text.isEmpty || renderedWords.contains(text)
     }
 
+    private func openUIReply(_ text: String) -> OpenUIReply? {
+        projectStyle ? OpenUIReply(text) : nil
+    }
+
+    @ViewBuilder private func richContent(_ reply: OpenUIReply?, streaming: Bool) -> some View {
+        if let reply, let program = reply.program {
+            ChatOpenUI(browser: browser, program: program, streaming: streaming && !reply.complete, chatID: chat.id)
+                .padding(.top, 4)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: projectStyle ? 16 : 6) {
             if let report, let asked {
@@ -562,9 +573,11 @@ private struct ChatTurn: View, Equatable {
                         // The tail only on the last of its run: the next
                         // message, or the answer after it, carries it on.
                         let next = index + 1 < along.count ? Self.said(along[index + 1]) : (writing ?? answer) != nil
-                        ChatWords(text: item.text, streaming: false, bubbles: !projectStyle, tail: !next)
+                        let reply = openUIReply(item.text)
+                        ChatWords(text: reply?.prose ?? item.text, streaming: false, bubbles: !projectStyle, tail: !next)
                             .contextMenu { Button("Copy") { ChatCopy.put(item.text) } }
                             .padding(.bottom, next ? -2 : 0) // design: its messages in a run 4 apart, as within one answer
+                        richContent(reply, streaming: false)
                     } else if item.kind == .widget {
                         // Drawn where it was made, between its words.
                         ChatWidget(browser: browser, item: item)
@@ -594,7 +607,9 @@ private struct ChatTurn: View, Equatable {
                     let arriving = last && Date().timeIntervalSince(shown.began ?? .distantPast) < 3
                     // The typing capsule itself grows into its first message.
                     let grow = arriving && !still && ChatWords.opensSaid(shown.text)
-                    let words = ChatWords(text: writing == nil && notebook ? KnowPage.linked(shown.text) : shown.text, streaming: writing != nil,
+                    let reply = openUIReply(shown.text)
+                    let prose = reply?.prose ?? shown.text
+                    let words = ChatWords(text: writing == nil && notebook ? KnowPage.linked(prose) : prose, streaming: writing != nil,
                                           partial: writing != nil && shown.state == .running,
                                           fresh: arriving, bubbles: !projectStyle, grow: grow && !projectStyle)
                         // What you can do with it once it is all written out, in its menu.
@@ -609,10 +624,13 @@ private struct ChatTurn: View, Equatable {
                         .environment(\.openURL, openAnswerURL)
                         .onPreferenceChange(ChatWords.Rendered.self) { renderedWords = $0 }
                         .transition(still || !arriving || grow ? .identity : ChatArrival.message)
+                    richContent(reply, streaming: writing != nil)
                 } else if writing == nil, !working, !failed, messages.isEmpty, !fallen.isEmpty {
-                    ChatWords(text: fallen, streaming: false, bubbles: !projectStyle)
+                    let reply = openUIReply(fallen)
+                    ChatWords(text: reply?.prose ?? fallen, streaming: false, bubbles: !projectStyle)
                         .padding(.bottom, 2) // design: what follows the answer stands 8 under it
                         .onPreferenceChange(ChatWords.Rendered.self) { renderedWords = $0 }
+                    richContent(reply, streaming: false)
                 }
                 // What its tools made, a card each, under the answer
                 // (ChatResultCard); with nothing said, out of the capsule.

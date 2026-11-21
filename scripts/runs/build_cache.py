@@ -124,7 +124,12 @@ def valid_icons(folder, key):
 # held the compiler 10-14 s even when Swift had nothing to do, and waited for
 # it behind other lanes' compiles (up to 800 s on adhd).
 APP_TREES = ("Sources", "Resources", "Icon", "Skills", "DockTile")
-APP_FILES = ("Package.swift", "Package.resolved", "build.sh", "VERSION", "THIRD_PARTY_NOTICES.md")
+APP_FILES = (
+    "Package.swift", "Package.resolved", "build.sh", "VERSION", "THIRD_PARTY_NOTICES.md",
+    "scripts/package-development-space", "scripts/openui/package.json", "scripts/openui/package-lock.json",
+    "scripts/openui/build.mjs", "scripts/openui/index.html", "scripts/openui/library.mjs",
+    "scripts/openui/renderer.jsx", "scripts/openui/theme.css",
+)
 APP_CACHE = Path(os.environ.get("YAB_APP_CACHE_DIR") or Path.home() / ".local/state/yab-farm/apps")
 # 40 apps of about 80 MB, 3.2 GB. With ten, m4 kept an app about an hour on
 # 2026-10-20 (15 sessions, each with its own trees and its main "before"),

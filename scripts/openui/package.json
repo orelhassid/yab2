@@ -1,0 +1,17 @@
+{
+  "name": "yab-development-openui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@openuidev/lang-core": "1.1.1",
+    "@openuidev/react-lang": "1.1.1",
+    "@openuidev/react-ui": "0.18.10",
+    "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "zod": "4.6.7"
+  }
+}

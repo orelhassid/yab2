@@ -16,6 +16,7 @@ Before anything else: security problems are reported privately, see [SECURITY.md
 - A Mac with Apple silicon or Intel, on macOS 15.4 or later.
 - Xcode 26 or later, opened once so it finishes installing its components. The Mac app is linked against the macOS 26 SDK.
 - Git and Python 3 (both come with Xcode's command line tools).
+- Node.js and npm to bundle the OpenUI renderer used by Development chat.
 
 You do not need an Apple developer account, a signing certificate, or any of the maintainers' machines. Builds you make are signed ad hoc and run on the Mac that built them.
 

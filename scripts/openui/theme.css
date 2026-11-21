@@ -1,0 +1,41 @@
+html, body {
+    margin: 0;
+    background: transparent !important;
+}
+
+#reply {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#reply, #reply > * {
+    --openui-font-body: -apple-system, BlinkMacSystemFont, sans-serif;
+    --openui-font-heading: var(--openui-font-body);
+    --openui-font-label: var(--openui-font-body);
+    --openui-foreground: var(--yab-surface);
+    --openui-border-default: var(--yab-border);
+    --openui-text-neutral-primary: var(--yab-text);
+    --openui-text-neutral-secondary: var(--yab-muted);
+    --openui-interactive-accent-default: var(--yab-accent);
+}
+
+#reply .openui-card {
+    max-width: 100%;
+    min-width: 0;
+}
+
+#reply:not(:empty) {
+    box-sizing: border-box;
+    padding: 14px;
+    border: 1px solid var(--yab-border);
+    border-radius: 12px;
+    background: var(--yab-surface);
+    color: var(--yab-text);
+}
+
+#reply .sent {
+    color: var(--yab-muted);
+    font-size: 12px;
+    margin: 8px 0 0;
+}

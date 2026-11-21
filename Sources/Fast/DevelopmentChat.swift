@@ -29,6 +29,7 @@ struct DevelopmentChat: View {
             }
         }
         .environment(\.projectChatStyle, true)
+        .environment(\.openUIProject, project)
         .onChange(of: details.selectedChatID, initial: true) { _, id in feed.follow(id) }
         .onDisappear { feed.stop() }
     }
