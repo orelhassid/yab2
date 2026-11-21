@@ -43,6 +43,10 @@ extension DevelopmentDirectory {
             browser.toaster.pop("Remove Codex mentions or select Codex", mark: "at")
             return false
         }
+        guard references.allSatisfy(DevelopmentPlugins.shared.allows) else {
+            browser.toaster.pop("Remove the disabled plugin or enable it in Development Settings", mark: "puzzlepiece.extension")
+            return false
+        }
         var isDirectory: ObjCBool = false
         guard details.cli != "codex" || (FileManager.default.fileExists(atPath: details.folder, isDirectory: &isDirectory) && isDirectory.boolValue) else {
             browser.developmentContent.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
@@ -143,37 +147,72 @@ final class DevelopmentCatalog: ObservableObject {
 
 }
 
-struct DevelopmentIntegrations: View {
+/// Per-environment overrides for plugins enabled in the connected Codex installation.
+@MainActor @Observable
+final class DevelopmentPlugins {
+    static let shared = DevelopmentPlugins()
+    private static let key = "development.disabledPlugins"
+    private(set) var disabled = Set(Store.settings.stringArray(forKey: key) ?? [])
+
+    func allows(_ ref: DevelopmentReference) -> Bool {
+        ref.kind != .plugin || !disabled.contains(ref.path)
+    }
+
+    func set(_ ref: DevelopmentReference, enabled: Bool) {
+        if enabled { disabled.remove(ref.path) } else { disabled.insert(ref.path) }
+        Store.settings.set(disabled.sorted(), forKey: Self.key)
+    }
+
+    var launchArguments: [String] {
+        disabled.sorted().compactMap { path -> String? in
+            guard path.hasPrefix("plugin://") else { return nil }
+            let id = String(path.dropFirst("plugin://".count))
+            guard let quoted = try? JSONEncoder().encode(id) else { return nil }
+            return "plugins." + String(decoding: quoted, as: UTF8.self) + ".enabled=false"
+        }.flatMap { ["-c", $0] }
+    }
+}
+
+struct DevelopmentEnvironmentSettings: View {
     let browser: Browser
-    let project: DevelopmentProject
-    @State private var section = "Providers"
+    let state: DevelopmentToolbarState
+    private var section: String { state.environmentSection }
     @StateObject private var catalog = DevelopmentCatalog()
     @State private var query = ""
     var body: some View {
-        LibraryPageFrame(page: .settings, breadcrumbs: ["Integrations"]) {
+        LibraryPageFrame(page: .settings, breadcrumbs: ["Development", section]) {
             EmptyView()
-        } search: { ThemedSearchField("Search integrations", text: $query) } content: {
+        } search: { ThemedSearchField("Search settings", text: $query) } content: {
             VStack(alignment: .leading, spacing: CardFrame.inset) {
                 HStack {
                     ForEach(["Providers", "Plugins", "Skills"], id: \.self) { name in
-                        SidebarTabButton(title: name, selected: section == name, prefs: browser.prefs, inTabStrip: true, action: { section = name; query = "" }) { EmptyView() }
+                        SidebarTabButton(title: name, selected: section == name, prefs: browser.prefs, inTabStrip: true, action: { state.environmentSection = name; query = "" }) { EmptyView() }
                     }
                 }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: CardFrame.inset) {
                         if section == "Providers" {
-                            DevelopmentProviders(project: project, browser: browser, query: query)
+                            ForEach(AgentPlan.all.filter { query.isEmpty || $0.tool.localizedCaseInsensitiveContains(query) || $0.name.localizedCaseInsensitiveContains(query) }, id: \.cli) { plan in
+                                SettingsRow(plan.tool, detail: ProviderConsent.shared.allows(plan.cli) ? "Connected" : "Disconnected") {
+                                    Button("Manage") { browser.openSettings(.agents) }.buttonStyle(.yab(.secondary, .small))
+                                }
+                            }
                         } else {
                             if section == "Plugins", !catalog.status.isEmpty { Text(catalog.status).foregroundStyle(.secondary) }
                             ForEach(catalog.references.filter { ($0.kind == (section == "Plugins" ? .plugin : .skill)) && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }) { ref in
-                                SettingsRow(ref.name, detail: ref.kind.rawValue) { EmptyView() }
+                                SettingsRow(ref.name) {
+                                    if ref.kind == .plugin {
+                                        Toggle("Enable " + ref.name, isOn: Binding(get: { DevelopmentPlugins.shared.allows(ref) },
+                                            set: { DevelopmentPlugins.shared.set(ref, enabled: $0) })).labelsHidden()
+                                    }
+                                }
                                 LibrarySeparator()
                             }
                         }
                     }.padding(CardFrame.inset).modifier(LibraryCardSurface())
                 }
             }
-        }.task { await catalog.load(folder: DevelopmentDirectory.shared.details(project).folder) }
+        }.task { await catalog.load(folder: "") }
     }
 }
 

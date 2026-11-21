@@ -3799,6 +3799,7 @@ struct SidebarTabButton<Mark: View>: View {
     let selected: Bool
     let prefs: Preferences
     var inTabStrip = false
+    var showsDisclosure = false
     let action: () -> Void
     @ViewBuilder var mark: () -> Mark
     @Environment(\.tabTitleSize) private var titleSize
@@ -3829,6 +3830,7 @@ struct SidebarTabButton<Mark: View>: View {
     @ViewBuilder private var label: some View {
         mark().frame(width: SideBar.mark, height: SideBar.mark)
         Text(title).font(.system(size: titleSize)).lineLimit(1)
+        if showsDisclosure { Symbol("chevron.down", size: 9) }
     }
 }
 

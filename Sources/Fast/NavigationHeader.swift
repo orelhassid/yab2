@@ -11,7 +11,7 @@ struct NavigationHeader: View {
     @State private var switcher: Switcher?
     @State private var sidebarPeeking = false
 
-    private enum Switcher { case spaces, tabs }
+    private enum Switcher { case tabs }
 
     static func height(topInset: CGFloat) -> CGFloat {
         Metrics.strip - Backdrop.inset - topInset
@@ -46,12 +46,16 @@ struct NavigationHeader: View {
         let showToggle = sidebarHidden && browser.prefs.sidebarButton && (!browser.prefs.sidebar || !browser.bandDoors)
         return GeometryReader { room in
             TabWindowHeader(selection: tab?.id) {
-                TabWindowSwitcher(title: browser.sidebarSpace.name, action: { switcher = .spaces }) {
+                let order = browser.switcherSpaces + (browser.offersDevelopment ? [.development] : [])
+                TabWindowSwitcher(title: browser.sidebarSpace.name, prefs: browser.prefs, items: order,
+                                  label: { $0.name }, selected: { $0.id == browser.sidebarSpaceID },
+                                  choose: { space in
+                    if space.id == Space.development.id { browser.enterDevelopment() } else { browser.switchSpace(to: space.id) }
+                }, rowIcon: { SpaceMark(icon: $0.icon, size: SideBar.mark) }) {
                     SpaceMark(icon: browser.sidebarSpace.icon, size: SideBar.mark)
                 }
                 .disabled(!(browser.offersAllTabs || browser.swipesSpaces) || browser.blank)
                 .keyTip("Switch Space")
-                .popover(isPresented: presented(.spaces), arrowEdge: .bottom) { spaces }
             } tabs: {
                 ForEach(browser.tabs.filter { !Agents.shared.sealed($0) }) { candidate in
                     NavigationPageTab(tab: candidate, selected: candidate.id == tab?.id, prefs: browser.prefs) {
@@ -82,20 +86,6 @@ struct NavigationHeader: View {
         }
         .frame(height: Self.height(topInset: topInset))
         .onReceive(browser.peek.$out.removeDuplicates()) { sidebarPeeking = $0 }
-    }
-
-    private var spaces: some View {
-        let order = browser.switcherSpaces + (browser.offersDevelopment ? [.development] : [])
-        return choices(count: order.count) {
-            ForEach(order) { space in
-                TrailMenuRow(title: space.name, selected: space.id == browser.sidebarSpaceID, action: {
-                    switcher = nil
-                    if space.id == Space.development.id { browser.enterDevelopment() } else { browser.switchSpace(to: space.id) }
-                }) {
-                    SpaceMark(icon: space.icon, size: SideBar.mark)
-                }
-            }
-        }
     }
 
     private var tabs: some View {
@@ -149,20 +139,37 @@ struct TabWindowHeader<ID: Hashable, Switcher: View, Tabs: View, Actions: View>:
     }
 }
 
-struct TabWindowSwitcher<Icon: View>: View {
+struct TabWindowSwitcher<Item: Identifiable, Icon: View, RowIcon: View>: View {
     let title: String
-    let action: () -> Void
+    let prefs: Preferences
+    let items: [Item]
+    let label: (Item) -> String
+    let selected: (Item) -> Bool
+    let choose: (Item) -> Void
+    @ViewBuilder let rowIcon: (Item) -> RowIcon
     @ViewBuilder let icon: () -> Icon
+    @State private var open = false
+    @Environment(\.tone) private var tone
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: SideBar.markGap) {
-                icon()
-                Text(title).lineLimit(1).truncationMode(.tail)
-                Symbol("chevron.down", size: 9)
+        SidebarTabButton(title: title, selected: open, prefs: prefs, inTabStrip: true,
+                         showsDisclosure: true, action: { open.toggle() }, mark: icon)
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                ThreadScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(items) { item in
+                            TrailMenuRow(title: label(item), selected: selected(item), action: {
+                                open = false
+                                choose(item)
+                            }) { rowIcon(item) }
+                        }
+                    }
+                }
+                .frame(width: 240, height: CGFloat(min(8, max(1, items.count))) * SideBar.row)
+                .padding(6)
+                .background(tone?.color ?? Palette.ground)
+                .toned(tone)
             }
-        }
-        .buttonStyle(.yab(.quiet, .small))
     }
 }
 

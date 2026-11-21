@@ -108,6 +108,20 @@ struct CodexServerTests {
         #expect(input?["text"] as? String == "hello")
     }
 
+    @Test func developmentPluginSwitchControlsMentionsAndNewLaunches() {
+        let settings = DevelopmentPlugins.shared
+        let id = "check-" + UUID().uuidString.lowercased() + "@local"
+        let ref = DevelopmentReference(kind: .plugin, name: "Check", path: "plugin://" + id)
+        let override = "plugins.\"" + id + "\".enabled=false"
+        defer { settings.set(ref, enabled: true) }
+        settings.set(ref, enabled: false)
+        #expect(!settings.allows(ref))
+        #expect(settings.launchArguments.contains(override))
+        settings.set(ref, enabled: true)
+        #expect(settings.allows(ref))
+        #expect(!settings.launchArguments.contains(override))
+    }
+
     @Test func developmentReferencesFollowTheirTurn() {
         let (server, wire) = Self.opened()
         let skill = DevelopmentReference(kind: .skill, name: "Review", path: "/project/.agents/skills/review/SKILL.md")

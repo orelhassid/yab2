@@ -969,7 +969,6 @@ struct ContentView: View {
                     Color(nsColor: paint.color)
                     CardGround(paint: paint, step: look.shift ? browser.lookStep : 0).environment(browser)
                     if workspaceTheme.hasPhoto { HomePhoto(space: browser.spaceID) }
-                    if browser.developmentLook != nil { SpaceSurface.navigationShade(for: paint.color) }
                 }.allowsHitTesting(false)
             } else if let backdrop = backdrop ?? edgeBackdrop {
                 Worn(browser: browser, mode: privateWindow ? .color : browser.prefs.backdrop, swatch: Tone(backdrop, lifted: true, glass: glassActive), glassActive: glassActive) { tone in
@@ -999,6 +998,14 @@ struct ContentView: View {
                 PageGround(tab: tab, away: frontImmersed)
             } else {
                 Palette.ground
+            }
+            if browser.leadingSidebarRoom > 0 || browser.trailingSidebarRoom > 0 {
+                let shade = SpaceSurface.navigationShade(for: SpaceSurface.tone(in: browser)?.page ?? NSColor(Palette.ground))
+                HStack(spacing: 0) {
+                    shade.frame(width: browser.leadingSidebarRoom)
+                    Spacer(minLength: 0)
+                    shade.frame(width: browser.trailingSidebarRoom)
+                }.allowsHitTesting(false)
             }
             if carded {
                 // Not under the tabs: a real view takes a click before

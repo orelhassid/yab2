@@ -119,3 +119,5 @@ Show project providers as horizontal tabs backed by the shared provider
 registry. Keep model choices and chat IDs scoped to the project and provider.
 When changing Codex access, test the composer switch in a temporary source
 folder and verify both the edited file and the test result on disk.
+
+Keep Development environment settings and plugin availability shared across projects. Put project-specific settings in the project tab strip. Space and project header switchers share the tab control and popover.

@@ -141,8 +141,8 @@ function overview() {
   }).join('');
   const shortcuts = destinations.filter(([route]) => ['roadmap','specs','tasks','review'].includes(route))
     .map(([route,label,symbol]) => '<button class="tool-card" data-route="'+route+'">'+icon(symbol)+escapeHTML(label)+icon('right')+'</button>').join('');
-  return '<section class="page overview"><div class="project-cover">'+
-    tabHeader('folder',projects[project].name,[],action(icon('settings')+' Settings','data-route="settings"'))+'</div>'+
+  return '<div class="project-cover" aria-hidden="true"></div><section class="page overview">'+
+    tabHeader('folder',projects[project].name,[],action(icon('settings')+' Project settings','data-route="settings"'))+
     sectionBlock('Project details','<dl class="project-facts"><div><dt>Source folder</dt><dd>'+escapeHTML(details.folder || 'No folder selected')+'</dd></div>'+
       '<div><dt>Created</dt><dd>'+(details.createdAt ? date(details.createdAt).toLocaleDateString(undefined,{dateStyle:'medium'}) : 'Not recorded')+'</dd></div>'+
       '<div><dt>Roadmap progress</dt><dd>'+shipped+' of '+features.length+' shipped or accepted</dd>'+
@@ -258,11 +258,11 @@ function render() {
   lastProject = project;
   screen = parts.at(-1);
   const taskRoute = screen.startsWith('tasks-') && buildPlans.get(project)?.has(screen.slice(6));
-  if (!(nativeSpace && screen === 'integrations') && !views.includes(screen) && !selectedFeature() && !taskRoute) screen = 'overview';
+  if (!views.includes(screen) && !selectedFeature() && !taskRoute) screen = 'overview';
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  if (['settings','integrations'].includes(screen) && nativeSpace) content.replaceChildren();
+  if (screen === 'settings' && nativeSpace) content.replaceChildren();
   else if (screen === 'settings') renderSettings();
   else if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
   else if (screen === 'specs' || screen === 'pitch') content.innerHTML = productIndex();
@@ -286,7 +286,11 @@ function render() {
 }
 function go(route) {
   document.body.classList.remove('chat-open');
-  if (layoutMode === 'chat') setLayout(narrowLayout.matches?'full':'split');
+  if (route === 'chat') {
+    if (layoutMode !== 'chat') setLayout('chat');
+    return;
+  }
+  if (layoutMode === 'chat') setLayout(chatOrigin === 'full' || narrowLayout.matches ? 'full' : 'split');
   if (route===screen) return;
   location.hash = pathFor(project,route);
 }
@@ -450,7 +454,9 @@ const body = document.querySelector('.body');
 const divider = document.querySelector('#divider');
 let layoutMode = 'split';
 let previousMode = 'split';
+let chatOrigin = 'split';
 function setLayout(mode) {
+  if (mode === 'chat' && layoutMode !== 'chat') chatOrigin = layoutMode;
   layoutMode = mode;
   body.dataset.layout = mode;
   reportToolbar();
@@ -466,7 +472,7 @@ function reportToolbar() {
   const bottom = layoutMode === 'full' ? document.querySelector('.composer').getBoundingClientRect().top - 8 : pane.bottom;
   window.webkit?.messageHandlers?.toolbar?.postMessage({
     project, toolFrame:[pane.x,pane.y,pane.width,Math.max(0,bottom-pane.y)],
-    active:screen === 'integrations' ? screen : document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
+    active:document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
     mode:layoutMode,width:document.querySelector('#chat').offsetWidth
   });
 }

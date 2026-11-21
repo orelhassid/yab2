@@ -6,7 +6,8 @@ extension Space {
                                    name: "Development", icon: "terminal", ownSignIns: false)
 }
 
-struct DevelopmentProject: RawRepresentable, Hashable {
+struct DevelopmentProject: RawRepresentable, Hashable, Identifiable {
+    var id: String { rawValue }
     let rawValue: String
     static let yab = Self(rawValue: "yab")
     static let sunday = Self(rawValue: "sunday")
@@ -138,21 +139,23 @@ struct DevelopmentProjects: View {
                             let details = DevelopmentDirectory.shared.details(project)
                             let selected = browser.developmentProject == project
                             SidebarTabButton(title: details.name, selected: selected, prefs: browser.prefs,
-                                             action: { browser.developmentProject = project }) {
+                                             action: { browser.developmentContent.toolbar.environmentSelected = false; browser.developmentProject = project }) {
                                 if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
                                 else { Text(details.icon) }
                             }
                         }
                     }
-                    SidebarSectionDivider()
-                    ForEach([("settings", "Settings", "gearshape"), ("integrations", "Integrations", "puzzlepiece.extension")], id: \.0) { item in
-                        SidebarTabButton(title: item.1, selected: browser.developmentContent.toolbar.active == item.0 && browser.developmentContent.toolbar.mode != "chat", prefs: browser.prefs, action: {
-                            browser.developmentContent.view.callAsyncJavaScript("go(route)", arguments: ["route": item.0], in: nil, in: .page, completionHandler: nil)
-                        }) { Symbol(item.2, size: SideBar.mark) }
-                    }
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
+            SidebarSectionDivider()
+            ForEach([("Providers", "Settings", "gearshape"), ("Plugins", "Plugins", "puzzlepiece.extension")], id: \.0) { item in
+                let state = browser.developmentContent.toolbar
+                SidebarTabButton(title: item.1, selected: state.environmentSelected && state.environmentSection == item.0,
+                                 prefs: browser.prefs, action: { state.openEnvironment(item.0) }) {
+                    Symbol(item.2, size: SideBar.mark)
+                }
+            }
         }
     }
 }
@@ -271,6 +274,15 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
     var chatWidth: CGFloat = 300
     var toolFrame = CGRect.zero
     var reportedProject: String?
+    var environmentOpen = false
+    var environmentSelected = false
+    var environmentSection = "Providers"
+
+    func openEnvironment(_ section: String) {
+        environmentSection = section
+        environmentOpen = true
+        environmentSelected = true
+    }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame, let info = message.body as? [String: Any] else { return }
@@ -313,47 +325,42 @@ extension Browser {
 }
 
 struct DevelopmentPane: View {
+    @Environment(\.workspaceTheme) private var workspaceTheme
     let browser: Browser
     let project: DevelopmentProject
     let entries: [String: DevelopmentDetails]
-    @State private var projectAnchor = ChatViewAnchor()
     private let tabs = [
         ("overview", "Overview", "rectangle.grid.2x2"), ("roadmap", "Roadmap", "point.3.connected.trianglepath.dotted"),
         ("specs", "Spec", "doc.text"), ("pitch", "Pitch board", "rectangle.3.group"),
         ("tasks", "Tasks", "checklist"), ("agents", "Agents", "person.2"),
         ("review", "Code", "chevron.left.forwardslash.chevron.right"), ("preview", "Preview", "globe"),
-        ("terminal", "Terminal", "terminal")
+        ("terminal", "Terminal", "terminal"), ("settings", "Project settings", "slider.horizontal.3")
     ]
 
     var body: some View {
         let content = browser.developmentContent
         let state = content.toolbar
-        let look = entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)
+        let look = workspaceTheme.look ?? entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)
         let paint = SpaceWash.painted(look)
         VStack(spacing: 0) {
-            TabWindowHeader(selection: state.active) {
-                let details = DevelopmentDirectory.shared.details(project)
-                TabWindowSwitcher(title: details.name, action: {
-                    guard let anchor = projectAnchor.view else { return }
-                    let menu = NSMenu(title: "Switch project")
-                    for item in DevelopmentDirectory.shared.projects {
-                        let row = ClosureItem(DevelopmentDirectory.shared.details(item).name) { browser.developmentProject = item }
-                        row.state = item == project ? .on : .off
-                        menu.addItem(row)
-                    }
-                    ActionMenu.show(menu, under: anchor)
-                }) {
-                    if !details.icon.isEmpty { Text(details.icon) }
-                    else if project == .yab { Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: SideBar.mark, height: SideBar.mark) }
-                    else { Symbol("folder", size: SideBar.mark) }
-                }
-                .background(ChatProjectAnchorView(box: projectAnchor))
-                .accessibilityLabel("Switch project, " + DevelopmentDirectory.shared.details(project).name)
-                .keyTip("Switch project")
+            let selected = state.environmentSelected ? "environment" : state.mode == "chat" ? "chat" : state.active
+            TabWindowHeader(selection: selected) {
+                TabWindowSwitcher(title: DevelopmentDirectory.shared.details(project).name, prefs: browser.prefs,
+                                  items: DevelopmentDirectory.shared.projects,
+                                  label: { DevelopmentDirectory.shared.details($0).name }, selected: { $0 == project },
+                                  choose: { state.environmentSelected = false; browser.developmentProject = $0 },
+                                  rowIcon: { projectIcon($0) }) { projectIcon(project) }
+                    .accessibilityLabel("Switch project, " + DevelopmentDirectory.shared.details(project).name)
+                    .keyTip("Switch project")
             } tabs: {
-                ForEach(tabs, id: \.0) { item in
-                    SidebarTabButton(title: item.1, selected: state.active == item.0, prefs: browser.prefs, inTabStrip: true, action: {
-                        content.view.callAsyncJavaScript("go(route)", arguments: ["route": item.0], in: nil, in: .page, completionHandler: nil)
+                let chatTab = [("chat", "Chat", "bubble.left")]
+                let settingsTab = [("environment", "Settings", "gearshape")]
+                ForEach((state.mode == "split" && !state.environmentSelected ? [] : chatTab) + tabs + (state.environmentOpen ? settingsTab : []), id: \.0) { item in
+                    SidebarTabButton(title: item.1, selected: selected == item.0, prefs: browser.prefs, inTabStrip: true, action: {
+                        state.environmentSelected = item.0 == "environment"
+                        if !state.environmentSelected {
+                            content.view.callAsyncJavaScript("go(route)", arguments: ["route": item.0], in: nil, in: .page, completionHandler: nil)
+                        }
                     }) { Symbol(item.2, size: 12) }
                     .disabled(item.0 == "agents")
                     .id(item.0)
@@ -363,43 +370,51 @@ struct DevelopmentPane: View {
                     ColumnDoor(browser: browser, prefs: browser.prefs)
                         .environment(\.doorSize, .header)
                 }
-                layoutAction("sidebar.right", state.mode == "chat" ? "Show tools panel" : "Hide tools panel", "panel")
-                layoutAction(state.mode == "full" ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                             state.mode == "full" ? "Exit full view" : "Enter full view", "full")
+                if !state.environmentSelected {
+                    layoutAction("sidebar.right", state.mode == "chat" ? "Show tools panel" : "Hide tools panel", "panel")
+                    layoutAction(state.mode == "full" ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                                 state.mode == "full" ? "Exit full view" : "Enter full view", "full")
+                }
             }
             .padding(.horizontal, SideBar.margin).frame(height: NavigationHeader.height(topInset: 0))
             Divider()
-            DevelopmentWebPane(browser: browser, project: project, entries: entries)
-                .overlay(alignment: .topLeading) {
-                    if ["settings", "integrations", "terminal"].contains(state.active), state.reportedProject == project.rawValue,
-                       !state.toolFrame.isEmpty, state.mode != "chat" {
-                        Group {
-                            if state.active == "settings" {
-                                DevelopmentSettings(project: project, prefs: browser.prefs)
-                            } else if state.active == "integrations" {
-                                DevelopmentIntegrations(browser: browser, project: project)
-                            } else {
-                                DevelopmentTerminalPane(terminals: content.terminals, project: project,
-                                                        folder: entries[project.rawValue]?.folder ?? "") {
-                                    content.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
+            ZStack {
+                DevelopmentWebPane(browser: browser, project: project, entries: entries)
+                    .overlay(alignment: .topLeading) {
+                        if ["settings", "terminal"].contains(state.active), state.reportedProject == project.rawValue,
+                           !state.toolFrame.isEmpty, state.mode != "chat" {
+                            Group {
+                                if state.active == "settings" {
+                                    DevelopmentSettings(project: project, prefs: browser.prefs)
+                                } else {
+                                    DevelopmentTerminalPane(terminals: content.terminals, project: project,
+                                                            folder: entries[project.rawValue]?.folder ?? "") {
+                                        content.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
+                                    }
                                 }
                             }
-                        }
-                        .id(project)
-                        .frame(width: state.toolFrame.width, height: state.toolFrame.height)
-                        .offset(x: state.toolFrame.minX, y: state.toolFrame.minY)
-                    }
-                }
-                .overlay(alignment: state.mode == "full" ? .bottom : .leading) {
-                    if state.reportedProject == project.rawValue {
-                        GeometryReader { room in
-                            DevelopmentChat(browser: browser, project: project, attach: content.draft(for: project), compact: state.mode == "full")
-                                .id(project)
-                                .frame(width: state.mode == "split" ? max(0, min(room.size.width, state.chatWidth) - 5) : min(room.size.width, state.mode == "full" ? 680 : room.size.width))
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: state.mode == "split" ? .leading : .bottom)
+                            .id(project)
+                            .frame(width: state.toolFrame.width, height: state.toolFrame.height)
+                            .offset(x: state.toolFrame.minX, y: state.toolFrame.minY)
                         }
                     }
+                    .overlay(alignment: state.mode == "full" ? .bottom : .leading) {
+                        if state.reportedProject == project.rawValue {
+                            GeometryReader { room in
+                                DevelopmentChat(browser: browser, project: project, attach: content.draft(for: project), compact: state.mode == "full")
+                                    .id(project)
+                                    .frame(width: state.mode == "split" ? max(0, min(room.size.width, state.chatWidth) - 5) : min(room.size.width, state.mode == "full" ? 680 : room.size.width))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: state.mode == "split" ? .leading : .bottom)
+                            }
+                        }
+                    }
+                    .opacity(state.environmentSelected ? 0 : 1)
+                    .allowsHitTesting(!state.environmentSelected)
+                    .accessibilityHidden(state.environmentSelected)
+                if state.environmentSelected {
+                    DevelopmentEnvironmentSettings(browser: browser, state: state)
                 }
+            }
         }
         .toned(SpaceSurface.tone(for: paint.color))
         .background {
@@ -407,6 +422,13 @@ struct DevelopmentPane: View {
                 .environment(browser)
                 .background(Color(nsColor: paint.color))
         }
+    }
+
+    @ViewBuilder private func projectIcon(_ item: DevelopmentProject) -> some View {
+        let details = DevelopmentDirectory.shared.details(item)
+        if !details.icon.isEmpty { Text(details.icon) }
+        else if item == .yab { Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: SideBar.mark, height: SideBar.mark) }
+        else { Symbol("folder", size: SideBar.mark) }
     }
 
     private func layoutAction(_ icon: String, _ title: String, _ action: String) -> some View {

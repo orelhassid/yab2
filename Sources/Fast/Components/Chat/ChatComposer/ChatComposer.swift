@@ -258,7 +258,7 @@ struct ChatComposer: View {
             rows.append(DevelopmentMention(name: file.lastPathComponent, detail: String(file.path.dropFirst(prefix.count)), symbol: "doc", attachment: .file(file)))
         }
         for kind in [DevelopmentReference.Kind.skill, .plugin] where DevelopmentDirectory.shared.details(development).cli == "codex" {
-            for ref in catalog.references.lazy.filter({ $0.kind == kind && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }).prefix(limit) {
+            for ref in catalog.references.lazy.filter({ DevelopmentPlugins.shared.allows($0) && $0.kind == kind && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }).prefix(limit) {
                 rows.append(DevelopmentMention(name: ref.name, detail: kind.rawValue, symbol: kind == .skill ? "book" : "puzzlepiece.extension", reference: ref))
             }
         }

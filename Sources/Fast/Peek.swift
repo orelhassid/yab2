@@ -92,6 +92,7 @@ struct Column: View {
     /// The words worn on the site's color, when they aren't `tone`'s own
     /// (ColumnRoot.ink).
     var ink: Tone? = nil
+    @Environment(\.workspaceTheme) private var workspaceTheme
     @Environment(\.colorScheme) private var scheme
 
     /// What the column paints under its rows itself. Docked, nothing: the
@@ -151,7 +152,7 @@ struct Column: View {
         // the way between alike, as Arc's sidebar always wears its theme.
         let ground = tone == nil ? card : Self.ground(floating: floating, tone: tone)
         let paint = ground.map { ground in
-            browser.developmentLook.map(SpaceWash.painted) ?? Self.paint(ground, prefs: prefs, privateWindow: browser.windowPurpose == .privateOnly)
+            workspaceTheme.look.map(SpaceWash.painted) ?? Self.paint(ground, prefs: prefs, privateWindow: browser.windowPurpose == .privateOnly)
         }
         // What the card's own hairline and the island at its foot are
         // drawn on: the window's backdrop, or edge to edge the column's.
@@ -175,7 +176,7 @@ struct Column: View {
                     ZStack {
                         if let paint {
                             ownGround(paint)
-                            if browser.developmentLook != nil { SpaceSurface.navigationShade(for: paint.color) }
+                            SpaceSurface.navigationShade(for: paint.color)
                         }
                     }
                     // Taken or given back at once when Window changes, with

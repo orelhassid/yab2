@@ -338,10 +338,9 @@ input:focus, textarea:focus, select:focus { outline: 0; box-shadow: inset 0 0 0 
 .preview-surface form div { flex: 1 }
 .preview-surface iframe { flex: 1; width: 100%; border: none; background: var(--ground) }
 .body[data-layout=full] #content:has(.preview-surface,.terminal-surface) { padding-bottom: 0 }
-.project-cover { --photo: url('../../../Resources/HomeBackgrounds/eclipse.webp'); background: linear-gradient(90deg,#13191fee,#13191f66),var(--photo) center 47%/cover; border-radius: var(--radius); padding: clamp(18px,4%,36px) }
+.project-cover { --photo: url('../../../Resources/HomeBackgrounds/eclipse.webp'); width: 100%; height: clamp(100px, 16vh, 200px); background: var(--photo) center 47%/cover no-repeat }
 [data-native-space] .project-cover { --photo: url('eclipse.webp') }
-.project-cover .tab-heading { border: 0; margin: 0; padding: 0; min-height: 60px }
-.project-cover .btn { display: inline-flex; align-items: center; gap: 6px }
+.overview .tab-heading .btn { display: inline-flex; align-items: center; gap: 6px }
 .project-facts,.tool-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,150px),1fr)); gap: 8px }
 .project-facts { margin: 0 }
 .project-facts div,.tool-card { padding: 14px; background: var(--wash); border-radius: 12px }
@@ -370,7 +369,6 @@ input:focus, textarea:focus, select:focus { outline: 0; box-shadow: inset 0 0 0 
 [data-native-space] :is(.composer,.panel,.list,.feature-hero,.run-card,.file[aria-pressed=true],#context) { background: var(--wash); border-color: var(--line) }
 [data-native-space] .composer-tools, [data-native-space] textarea::placeholder { color: var(--muted) }
 [data-native-space] .btn:not(.primary) { background: var(--wash); border-color: var(--line); color:var(--ink) }
-[data-native-space] .project-cover { color:white }
 [data-native-space] .code-scroll { color:var(--ink); background:var(--ground) }
 [data-native-space] :is(.timeline li,.check-row,.lane .current) { color:var(--ink) }
 [data-native-space] :is(.timeline svg,.row > svg:last-child,.code-line .number,.code-line .sign,.label) { color:var(--muted) }

@@ -1927,6 +1927,9 @@ final class Agents: ObservableObject {
                 // could reach the Mac with them.
                 browserOnly = Agents.codexBrowserOnly(session.binary, ignoresConfig: !serving && Agents.codexIgnoresConfig[session.binary] ?? true, config: config)
             }
+            if session.developmentFolder != nil, !session.remembering {
+                browserOnly += DevelopmentPlugins.shared.launchArguments
+            }
             args = Agents.codexArgs(launch, serving: serving, browserOnly: browserOnly, message: message)
             if !serving, !session.remembering { asked(session, message) }
         } else {

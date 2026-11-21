@@ -57,6 +57,7 @@ struct WorkspaceThemeReader<Content: View>: View {
 
 private struct StoredWorkspaceTheme<Content: View>: View {
     let projectLook: SpacePaint?
+    @State private var appDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     let privateWindow: Bool
     let content: (WorkspaceTheme) -> Content
     @AppStorage private var look: Data
@@ -71,10 +72,12 @@ private struct StoredWorkspaceTheme<Content: View>: View {
     }
 
     var body: some View {
-        let theme = privateWindow ? WorkspaceTheme() :
-            WorkspaceTheme(look: projectLook ?? (try? JSONDecoder().decode(SpacePaint.self, from: look)), hasPhoto: projectLook == nil && !photo.isEmpty)
+        var resolved = projectLook ?? (try? JSONDecoder().decode(SpacePaint.self, from: look))
+        if resolved?.mode == LookMode.auto.rawValue { resolved?.mode = appDark ? LookMode.dark.rawValue : LookMode.light.rawValue }
+        let theme = privateWindow ? WorkspaceTheme() : WorkspaceTheme(look: resolved, hasPhoto: projectLook == nil && !photo.isEmpty)
         let tone = theme.tone
-        content(theme)
+        return content(theme)
+            .onReceive(NSApp.publisher(for: \.effectiveAppearance)) { appDark = $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
             .environment(\.workspaceTheme, theme)
             .transformEnvironment(\.tone) { if let tone { $0 = tone } }
             .transformEnvironment(\.colorScheme) { if let tone { $0 = tone.scheme } }
