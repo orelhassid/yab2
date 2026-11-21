@@ -44,7 +44,11 @@ struct DevelopmentDetails: Codable, Equatable {
     var paint: SpacePaint?
     var createdAt: TimeInterval?
     var activity: [DevelopmentEvent]?
+    // Existing provider chats remain the project's coordinator conversations.
     var chatID: String?
+    var sessionIDs: [String]?
+    var chatSelection: String?
+    static let newChat = "new-chat"
     var provider: String?
     var providerChats: [String: String]?
     var modelChoices: [String: ModelChoice]?
@@ -62,9 +66,18 @@ struct DevelopmentDetails: Codable, Equatable {
     var cli: String { provider ?? "codex" }
     var choice: ModelChoice { modelChoices?[cli] ?? ModelChoice(cli: cli) }
     var selectedChatID: String? {
-        get { cli == "codex" ? chatID : providerChats?[cli] }
+        get {
+            if let chatSelection { return sessionIDs?.contains(chatSelection) == true ? chatSelection : nil }
+            return cli == "codex" ? chatID : providerChats?[cli]
+        }
         set {
-            if cli == "codex" { chatID = newValue }
+            if let chatSelection, let newValue {
+                var ids = sessionIDs ?? []
+                if chatSelection != newValue { ids.removeAll { $0 == chatSelection } }
+                if !ids.contains(newValue) { ids.append(newValue) }
+                sessionIDs = ids
+                self.chatSelection = newValue
+            } else if cli == "codex" { chatID = newValue }
             else {
                 var chats = providerChats ?? [:]
                 chats[cli] = newValue
@@ -184,8 +197,16 @@ struct DevelopmentSettingsButton: View {
 final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     let toolbar = DevelopmentToolbarState()
     let terminals = DevelopmentTerminals()
+    private var newChatDrafts: [DevelopmentProject: ChatAttach] = [:]
     private var drafts: [DevelopmentProject: ChatAttach] = [:]
     func draft(for project: DevelopmentProject) -> ChatAttach {
+        if DevelopmentDirectory.shared.details(project).chatSelection == DevelopmentDetails.newChat {
+            if let saved = newChatDrafts[project] { return saved }
+            let draft = ChatAttach()
+            draft.set([])
+            newChatDrafts[project] = draft
+            return draft
+        }
         if let saved = drafts[project] { return saved }
         let draft = ChatAttach()
         draft.set([])
@@ -426,7 +447,7 @@ struct DevelopmentPane: View {
                         if state.reportedProject == project.rawValue {
                             GeometryReader { room in
                                 DevelopmentChat(browser: browser, project: project, attach: content.draft(for: project), compact: state.mode == "full")
-                                    .id(project)
+                                    .id(project.rawValue + "/" + (DevelopmentDirectory.shared.details(project).chatSelection ?? ""))
                                     .frame(width: state.mode == "split" ? max(0, min(room.size.width, state.chatWidth) - 5) : min(room.size.width, state.mode == "full" ? 680 : room.size.width))
                                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: state.mode == "split" ? .leading : .bottom)
                             }

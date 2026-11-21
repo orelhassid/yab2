@@ -28,6 +28,38 @@ struct ChatDraftTests {
              started: Date(), updated: Date())
     }
 
+    @Test func projectContinuationMovesRichDraftAndMergesAttachments() {
+        let attach = ChatAttach()
+        let file = URL(fileURLWithPath: "/tmp/dashboard.swift")
+        let mention = DevelopmentMention(name: "dashboard.swift", detail: "dashboard.swift", symbol: "doc", attachment: .file(file))
+        let rich = NSMutableAttributedString(string: "Filter ")
+        rich.append(DevelopmentDraft.chip(mention))
+        attach.keepProjectDraft(rich, for: nil)
+        attach.keep(DevelopmentDraft.plain(rich), for: nil)
+        attach.set([.file(file)])
+        attach.keep("Earlier draft", for: "destination")
+        attach.moveProjectDraft(from: nil, to: "destination")
+        #expect(attach.words(for: "destination") == "Earlier draft\n\nFilter @dashboard.swift")
+        #expect(attach.items(for: "destination") == [.file(file)])
+        #expect(attach.projectDraft(for: "destination").map { DevelopmentDraft.mentioned(in: $0).first?.id } == mention.id)
+        #expect(attach.words(for: nil).isEmpty && attach.items(for: nil).isEmpty && attach.projectDraft(for: nil) == nil)
+    }
+
+    @Test func namedSessionLeavesCoordinatorResumable() throws {
+        var details = try JSONDecoder().decode(DevelopmentDetails.self, from: Data(#"{"name":"Yab","icon":"","folder":"","chatID":"original"}"#.utf8))
+        #expect(details.selectedChatID == "original")
+        details.chatSelection = DevelopmentDetails.newChat
+        #expect(details.selectedChatID == nil)
+        details.selectedChatID = "dashboard"
+        #expect(details.sessionIDs == ["dashboard"])
+        #expect(details.selectedChatID == "dashboard")
+        details.chatSelection = nil
+        #expect(details.selectedChatID == "original")
+        let session = Self.chat("Dashboard prototype")
+        #expect(DevelopmentDetails.suggestedChat(for: "Add dashboard filters", among: [session])?.id == session.id)
+        #expect(DevelopmentDetails.suggestedChat(for: "What about this?", among: [session]) == nil)
+    }
+
     private func settle() async {
         for _ in 0..<8 {
             await Task.yield()

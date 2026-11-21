@@ -7,11 +7,59 @@ struct DevelopmentChat: View {
     let compact: Bool
     @StateObject private var feed = ChatFeed()
     @State private var away = false
+    @State private var switcherOpen = false
+    @ObservedObject private var history = Chats.shared
     private var details: DevelopmentDetails { DevelopmentDirectory.shared.details(project) }
+
+    private var sessions: [Chat] {
+        details.recentSessions(in: history)
+    }
+
+    private func select(_ id: String?, provider: String? = nil) {
+        var next = details
+        next.chatSelection = id
+        if let provider { next.provider = provider }
+        DevelopmentDirectory.shared.save(next, for: project)
+        switcherOpen = false
+    }
+
+    private var switcher: some View {
+        let active = sessions.first { $0.id == details.chatSelection }
+        let title = active?.title ?? (details.chatSelection == nil ? "Project chat" : "New chat")
+        return SidebarTabButton(title: title, selected: switcherOpen, prefs: browser.prefs, inTabStrip: true,
+                                showsDisclosure: true, action: { switcherOpen.toggle() }) {
+            Symbol("bubble.left", size: SideBar.mark)
+        }
+        .accessibilityLabel("Switch chat, " + title)
+        .popover(isPresented: $switcherOpen, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 2) {
+                TrailMenuRow(title: "Project chat", selected: details.chatSelection == nil,
+                             action: { select(nil) }) { Symbol("bubble.left", size: 14) }
+                TrailMenuRow(title: "New chat", selected: details.chatSelection == DevelopmentDetails.newChat,
+                             action: { select(DevelopmentDetails.newChat) }) { Symbol("plus", size: 14) }
+                if !sessions.isEmpty {
+                    LibrarySeparator()
+                    Text("Recent chats").font(.caption).foregroundStyle(.secondary).padding(.horizontal, SideBar.inner)
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(sessions) { session in
+                                TrailMenuRow(title: session.title, selected: session.id == details.chatSelection,
+                                             lastActivity: session.updated, action: { select(session.id, provider: session.cli) }) {
+                                    Symbol("bubble.left", size: 14)
+                                }
+                            }
+                        }
+                    }.frame(height: CGFloat(min(sessions.count, 7)) * (SideBar.row + 2))
+                }
+            }.padding(6).frame(width: 260)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             if !compact {
+                switcher.frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, ChatLook.fieldInset).padding(.vertical, 4)
                 if let chat = feed.chat {
                     ChatTranscript(browser: browser, chat: chat, live: feed.live, away: $away)
                 } else {
@@ -31,7 +79,40 @@ struct DevelopmentChat: View {
         .environment(\.projectChatStyle, true)
         .environment(\.openUIProject, project)
         .onChange(of: details.selectedChatID, initial: true) { _, id in feed.follow(id) }
+        .onAppear { history.load() }
         .onDisappear { feed.stop() }
+    }
+}
+
+extension DevelopmentDetails {
+    @MainActor func recentSessions(in history: Chats) -> [Chat] {
+        (sessionIDs ?? []).compactMap { id in
+            history.chat(id) ?? Agents.shared.session(id).map { Agents.shared.chat(of: $0) }
+        }.filter { $0.archived != true }.sorted { $0.updated > $1.updated }
+    }
+
+    static func suggestedChat(for draft: String, among sessions: [Chat]) -> Chat? {
+        let ignored: Set<String> = ["that", "this", "with", "from", "have", "what", "please", "would", "could", "should",
+                                    "need", "want", "make", "about", "again", "chat", "some", "them", "there", "into", "your"]
+        func tokens(_ text: String) -> Set<String> {
+            Set(text.lowercased().split { !$0.isLetter && !$0.isNumber }
+                .filter { $0.count >= 4 }.map(String.init)).subtracting(ignored)
+        }
+        let query = tokens(draft)
+        guard !query.isEmpty else { return nil }
+        var best: Chat?
+        var bestScore = 0
+        for chat in sessions {
+            let title = query.intersection(tokens(chat.title)).count
+            let recent = chat.items.lazy.filter { $0.kind == .asked }.suffix(4)
+            let body = query.intersection(tokens(recent.map(\.text).joined(separator: " "))).count
+            let score = title * 3 + body
+            if score >= 2, score > bestScore {
+                best = chat
+                bestScore = score
+            }
+        }
+        return best
     }
 }
 
@@ -67,6 +148,7 @@ extension DevelopmentDirectory {
             + (text.isEmpty ? ChatAttachment.noWords : text)
         let agents = Agents.shared
         let session: Agents.Session
+        let isNewSession = details.chatSelection == DevelopmentDetails.newChat
         let running = agents.session(details.selectedChatID)
         let continuing = running?.state.live == true
         if let running, continuing {
@@ -79,7 +161,10 @@ extension DevelopmentDirectory {
             }
             details.selectedChatID = session.id
             save(details, for: project)
-            session.title = details.name
+            if details.chatSelection == nil { session.title = details.name }
+            else if isNewSession {
+                session.title = text.isEmpty ? (labels.first ?? "New chat") : String(text.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(72))
+            }
         }
         for tab in tabs { tab.allowed.insert(session.id) }
         session.saying.append(text)
@@ -294,6 +379,9 @@ struct DevelopmentProviders: View {
     private func set(_ model: AgentModel?, effort: String?, plan: AgentPlan) {
         guard ProviderConsent.shared.allows(plan.cli), !busy else { return }
         var next = details
+        if next.cli != plan.cli, next.chatSelection != nil {
+            next.chatSelection = DevelopmentDetails.newChat
+        }
         next.provider = plan.cli
         var choices = next.modelChoices ?? [:]
         choices[plan.cli] = ModelChoice(cli: plan.cli, model: model?.model, effort: effort)

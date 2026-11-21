@@ -156,12 +156,18 @@ struct TrailMenuRow<Icon: View>: View {
     let title: String
     var selected = false
     var focused = false
+    var lastActivity: Date?
     let action: () -> Void
     @ViewBuilder var icon: () -> Icon
 
     var body: some View {
         TrailMenuItem(selected: selected, focused: focused, action: action, icon: icon) {
             Text(title).lineLimit(1)
+            if let lastActivity {
+                Spacer(minLength: 4)
+                Text(lastActivity, format: .relative(presentation: .named))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
     }
 }

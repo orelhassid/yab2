@@ -128,6 +128,8 @@ struct ChatComposer: View {
             }
             if let development, mentionQuery != nil {
                 mentionMenu(development)
+            } else if let development, !trimmed.isEmpty {
+                continuationSuggestion(for: development)
             }
             if let trouble { troubleRow(trouble.0, trouble.1) }
             field
@@ -237,6 +239,34 @@ struct ChatComposer: View {
 
     private var activeMention: DevelopmentMentionToken? {
         mentionToken == dismissedMention ? nil : mentionToken
+    }
+
+    @ViewBuilder private func continuationSuggestion(for project: DevelopmentProject) -> some View {
+        let directory = DevelopmentDirectory.shared
+        let details = directory.details(project)
+        if details.chatSelection == nil,
+           let match = DevelopmentDetails.suggestedChat(for: words, among: details.recentSessions(in: .shared)) {
+            Button {
+                var next = directory.details(project)
+                guard next.chatSelection == nil, next.sessionIDs?.contains(match.id) == true else { return }
+                attach.moveProjectDraft(from: chat?.id, to: match.id)
+                next.provider = match.cli
+                next.chatSelection = match.id
+                directory.save(next, for: project)
+            } label: {
+                SidebarTabRow {
+                    SidebarTabLabel(title: match.title) { Symbol("bubble.left", size: 13) }
+                    Text(match.updated, format: .relative(presentation: .named)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 2)
+                    Text("Continue this chat").font(.caption).fixedSize()
+                    Symbol("chevron.right", size: 10)
+                }
+            }
+            .buttonStyle(.plain)
+            .background(composerSurfaceShape.fill(Palette.wash(on: composerTone)))
+            .overlay { composerSurfaceShape.strokeBorder(Palette.muted(on: composerTone).opacity(0.25)).allowsHitTesting(false) }
+            .accessibilityLabel("Continue this chat, " + match.title)
+        }
     }
 
     private var mentionQuery: String? { toolsOpen ? toolsSearch : activeMention?.query }
@@ -2060,6 +2090,25 @@ final class ChatAttach: ObservableObject {
 
     func keepProjectDraft(_ draft: NSAttributedString, for chat: String?) {
         projectDrafts[Self.key(chat)] = draft.length == 0 ? nil : draft
+    }
+
+    func moveProjectDraft(from source: String?, to destination: String) {
+        guard source != destination else { return }
+        func rich(_ id: String?) -> NSAttributedString {
+            projectDraft(for: id) ?? NSAttributedString(string: words(for: id))
+        }
+        let merged = NSMutableAttributedString(attributedString: rich(destination))
+        let incoming = rich(source)
+        if merged.length > 0, incoming.length > 0 { merged.append(NSAttributedString(string: "\n\n")) }
+        merged.append(incoming)
+        keepProjectDraft(merged, for: destination)
+        keep(DevelopmentDraft.plain(merged), for: destination)
+        var items = items(for: destination)
+        for item in self.items(for: source) where !items.contains(item) { items.append(item) }
+        hands[destination] = Hand(items: items, touched: true)
+        keep("", for: source)
+        keepProjectDraft(NSAttributedString(string: ""), for: source)
+        hands[Self.key(source)] = Hand(items: [], touched: true)
     }
 
     /// What was added by hand to this chat's field.
