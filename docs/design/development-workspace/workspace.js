@@ -27,7 +27,7 @@ function icon(name) {
 }
 for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = icon(el.dataset.icon);
 const appMark = '../../../Icon/Mark.png';
-const views = ['overview','roadmap','feature','review','preview','terminal'];
+const views = ['overview','roadmap','tasks','feature','review','preview','terminal'];
 const content = document.querySelector('#content');
 const draft = document.querySelector('#draft');
 let selectedFile = 0;
@@ -89,7 +89,7 @@ function projectList() {
 }
 function otherProject() {
   const item = projects[project];
-  if (screen === 'feature') return '<article class="page">'+roadmapCrumb(item.area)+'<h1>'+item.feature+'</h1><section class="block doc"><h2>Feature definition</h2><p class="body-copy">'+item.goal+'</p></section><div class="block">'+action(icon('chat')+' Discuss feature','data-action="discuss"')+'</div></article>';
+  if (screen === 'feature') return '<article class="page">'+roadmapCrumb(item.area)+'<h1>'+item.feature+'</h1><section class="block doc"><h2>Feature definition</h2><p class="body-copy">'+item.goal+'</p></section><div class="block btns">'+buildButton(selectedFeature())+action(icon('chat')+' Discuss feature','data-action="discuss"')+'</div></article>';
   if (screen === 'review') return '<section class="page"><h1>Code review</h1><p class="body-copy">No changes awaiting review in '+item.name+'.</p></section>';
   return '<section class="page"><header class="head"><div class="well">'+projectMark(project)+'</div><h1>'+item.name+'</h1></header><section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list"><button class="row" data-route="feature"><span class="well small">'+icon('roadmap')+'</span><span><b>'+item.feature+'</b><small>'+item.area+'</small></span><span class="trail">Planned</span>'+icon('right')+'</button></div></section></section>';
 }
@@ -148,7 +148,7 @@ function feature() {
     <div class="feature-doc"><div class="doc"><section><h2>Feature definition</h2><p class="body-copy">See the progress of active downloads from the macOS Dock, even when Yab is in the background. When the last download stops, the plain Yab icon returns.</p></section>
     <section><h2>Acceptance criteria</h2>${checks.map(c=>'<div class="check-row">'+icon('checked')+'<span>'+c+'</span></div>').join('')}</section>
     <section><h2>Latest decision</h2><p class="body-copy">Cancellation clears the bar immediately. If another download is running, its progress stays visible.</p><small style="margin-top:8px">You and Project manager · Yesterday</small></section>
-    <div class="btns">${action(accepted ? 'View changes' : 'Review changes','data-route="review"',true)}${action(icon('chat')+' Discuss feature','data-action="discuss"')}</div></div>
+    <div class="btns">${buildButton(selectedFeature())}${action(accepted ? 'View changes' : 'Review changes','data-route="review"',true)}${action(icon('chat')+' Discuss feature','data-action="discuss"')}</div></div>
     <div class="info-side">${scene()}<section class="panel"><h3>Downloads roadmap</h3><ol class="lane"><li class="done"><i></i>Downloads preview</li><li class="current"><i></i>Dock download progress</li><li><i></i>Retry interrupted downloads</li></ol></section></div>
     </div></article>`;
 }
@@ -251,11 +251,13 @@ function render() {
   restoreChat(id);
   lastProject = project;
   screen = parts.at(-1);
-  if (!views.includes(screen) && !selectedFeature()) screen = 'overview';
+  const taskRoute = screen.startsWith('tasks-') && buildPlans.get(project)?.has(screen.slice(6));
+  if (!views.includes(screen) && !selectedFeature() && !taskRoute) screen = 'overview';
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  if (screen === 'roadmap') content.innerHTML = roadmap();
+  if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
+  else if (screen === 'roadmap') content.innerHTML = roadmap();
   else if (screen !== 'feature' && selectedFeature()) content.innerHTML = productSpec(selectedFeature());
   else if (screen === 'preview') {
     content.innerHTML = preview();
@@ -263,11 +265,11 @@ function render() {
   } else if (screen === 'terminal') content.innerHTML = terminal();
   else content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
   document.querySelectorAll('nav [data-route]').forEach(b=>{
-    if (b.dataset.route === (selectedFeature() ? 'roadmap' : screen)) b.setAttribute('aria-current','page');
+    if (b.dataset.route === (taskRoute ? 'tasks' : selectedFeature() ? 'roadmap' : screen)) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
   content.scrollTop = scroll[pathFor(project,screen)] || 0;
-  document.title = ((selectedFeature() && selectedFeature().title) || ({roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
+  document.title = ((taskRoute && 'Tasks') || (selectedFeature() && selectedFeature().title) || ({tasks:'Tasks',roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
 }
 function go(route) {
   document.body.classList.remove('chat-open');
@@ -314,6 +316,12 @@ document.addEventListener('click',e=>{
   if (b.dataset.space) chooseSpace(b.dataset.space);
   if (b.dataset.project) chooseProject(b.dataset.project);
   if (b.dataset.route) go(b.dataset.route);
+  if (b.dataset.build) openBuild(b.dataset.build);
+  if (b.dataset.taskIndex !== undefined) {
+    const id = currentPlan.get(project);
+    const f = productLanes().flatMap(l=>l.features).find(f=>f.id===id);
+    discuss(taskRows(f)[Number(b.dataset.taskIndex)].title, 'tasks-'+id);
+  }
   if (b.dataset.file!==undefined) { selectedFile=Number(b.dataset.file); render(); document.querySelector('[data-file="'+selectedFile+'"]').focus({preventScroll:true}); }
   switch(b.dataset.action) {
     case 'sidebar':

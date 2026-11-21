@@ -20,15 +20,16 @@ function productLanes() {
   return [{name:p.area, goal:p.goal, icon:'roadmap', features:[{id:'feature',title:p.feature,state:'Planned',goal:p.goal}]}];
 }
 function featureState(f) {
+  if (f.state !== 'In review' && buildPlans.get(project)?.has(f.id)) return 'Queued';
   return project === 'yab' && f.id === 'feature' && accepted ? 'Accepted' : f.state;
 }
 function roadmap() {
   const lanes = productLanes();
   const features = lanes.flatMap(l => l.features);
-  const suggestions = features.filter(f => f.state === 'Suggested').length;
+  const suggestions = features.filter(f => featureState(f) === 'Suggested').length;
   return '<section class="page product-map"><header><h1>Roadmap</h1><p class="meta">'+lanes.length+' '+(lanes.length === 1 ? 'lane' : 'lanes')+' · '+features.length+' '+(features.length === 1 ? 'feature' : 'features')+' · '+suggestions+' suggested</p></header>'+
     lanes.map(l => '<section class="product-lane"><h2>'+icon(l.icon)+l.name+'</h2><p>'+l.goal+'</p><div class="milestones">'+l.features.map(f =>
-      '<button data-route="'+f.id+'" class="milestone '+(f.state === 'Suggested' ? 'suggestion' : '')+'"><small>'+featureState(f)+'</small><b>'+f.title+'</b><span>'+f.goal+'</span></button>').join('')+'</div></section>').join('')+'</section>';
+      '<div class="build-card"><button data-route="'+f.id+'" class="milestone '+(featureState(f) === 'Suggested' ? 'suggestion' : '')+'"><small>'+featureState(f)+'</small><b>'+f.title+'</b><span>'+f.goal+'</span></button>'+buildButton(f)+'</div>').join('')+'</div></section>').join('')+'</section>';
 }
 function selectedFeature() {
   return productLanes().flatMap(l => l.features).find(f => f.id === screen);
@@ -40,5 +41,5 @@ function productSpec(f) {
   const lane = productLanes().find(l => l.features.includes(f));
   return '<article class="page doc">'+roadmapCrumb(lane.name)+'<header><h1>'+f.title+'</h1><p class="meta">'+featureState(f)+'</p></header><section class="block"><h2>Feature definition</h2><p class="body-copy">'+f.goal+'</p></section>'+
     (f.why ? '<section class="block"><h2>Why suggest this?</h2><p class="body-copy">'+f.why+'</p></section>' : '')+
-    '<section class="block"><h2>Acceptance criteria</h2>'+f.checks.map(c=>'<div class="check-row">'+icon('list')+c+'</div>').join('')+'</section><div class="block">'+action(icon('chat')+' Discuss feature','data-action="discuss"',true)+'</div></article>';
+    '<section class="block"><h2>Acceptance criteria</h2>'+f.checks.map(c=>'<div class="check-row">'+icon('list')+c+'</div>').join('')+'</section><div class="block btns">'+buildButton(f)+action(icon('chat')+' Discuss feature','data-action="discuss"',true)+'</div></article>';
 }
