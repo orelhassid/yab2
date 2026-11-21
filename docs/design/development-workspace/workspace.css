@@ -265,3 +265,21 @@ nav button { padding:4px 9px; border-radius:8px; flex:none }
 .task-discuss,.handoff .btn { margin-left:auto; flex-shrink:0 }
 .handoff { flex-wrap:wrap }
 @media(max-width:1060px){.build-card + .build-card::before{display:none}}
+
+.page .tab-heading { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin:0 0 19px; padding-bottom:13px; border-bottom:1px solid var(--line) }
+.tab-heading > svg { width:17px; height:17px; flex:none; color:var(--muted) }
+.page .tab-heading h1 { margin:0 3px 0 0; font-size:17px; line-height:1.35; letter-spacing:-.02em }
+.ui-badge { padding:2px 7px; border-radius:6px; background:var(--wash); color:var(--muted); font-size:11px; white-space:nowrap }
+.header-actions { display:flex; align-items:center; flex-wrap:wrap; gap:5px; margin-left:auto }
+.header-actions .btn { font-size:12px; padding:5px 9px }
+.product-subnav { display:flex; gap:13px; padding:0 clamp(24px,2.5vw,48px); border-bottom:1px solid var(--line) }
+.product-subnav button { padding:9px 2px; border-bottom:2px solid transparent; font-size:12px; color:var(--muted) }
+.product-subnav [aria-current] { border-color:var(--blue); color:var(--blue) }
+.view-menu { position:relative; font-size:12px }
+.view-menu summary { cursor:pointer; padding:5px 8px; border-radius:6px; background:var(--wash) }
+.view-menu > div { position:absolute; z-index:2; right:0; padding:10px; border-radius:9px; border:1px solid var(--line); background:var(--wash); min-width:165px }
+.view-menu label { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:3px 0 }
+.collection-table { overflow-x:auto }
+.collection-table table { width:100%; border-collapse:collapse; text-align:left; font-size:13px }
+.collection-table td,.collection-table th { padding:10px; border-bottom:1px solid var(--line) }
+.collection-table th { font-size:11px; color:var(--muted) }

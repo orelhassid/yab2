@@ -27,7 +27,7 @@ function roadmap() {
   const lanes = productLanes();
   const features = lanes.flatMap(l => l.features);
   const suggestions = features.filter(f => featureState(f) === 'Suggested').length;
-  return '<section class="page product-map"><header><h1>Roadmap</h1><p class="meta">'+lanes.length+' '+(lanes.length === 1 ? 'lane' : 'lanes')+' · '+features.length+' '+(features.length === 1 ? 'feature' : 'features')+' · '+suggestions+' suggested</p></header>'+
+  return  '<section class="page product-map">'+tabHeader('roadmap','Roadmap',[features.length+' features',suggestions+' suggested'])+
     lanes.map(l => '<section class="product-lane"><h2>'+icon(l.icon)+l.name+'</h2><p>'+l.goal+'</p><div class="milestones">'+l.features.map(f =>
       '<div class="build-card"><button data-route="'+f.id+'" class="milestone '+(featureState(f) === 'Suggested' ? 'suggestion' : '')+'"><small>'+featureState(f)+'</small><b>'+f.title+'</b><span>'+f.goal+'</span></button>'+buildButton(f)+'</div>').join('')+'</div></section>').join('')+'</section>';
 }
@@ -39,7 +39,19 @@ function roadmapCrumb(name) {
 }
 function productSpec(f) {
   const lane = productLanes().find(l => l.features.includes(f));
-  return '<article class="page doc">'+roadmapCrumb(lane.name)+'<header><h1>'+f.title+'</h1><p class="meta">'+featureState(f)+'</p></header><section class="block"><h2>Feature definition</h2><p class="body-copy">'+f.goal+'</p></section>'+
+  return '<article class="page doc">'+roadmapCrumb(lane.name)+tabHeader('file',f.title,[featureState(f)],buildButton(f)+action('Discuss','data-action="discuss"'))+'<section class="block"><h2>Feature definition</h2><p class="body-copy">'+f.goal+'</p></section>'+
     (f.why ? '<section class="block"><h2>Why suggest this?</h2><p class="body-copy">'+f.why+'</p></section>' : '')+
-    '<section class="block"><h2>Acceptance criteria</h2>'+f.checks.map(c=>'<div class="check-row">'+icon('list')+c+'</div>').join('')+'</section><div class="block btns">'+buildButton(f)+action(icon('chat')+' Discuss feature','data-action="discuss"',true)+'</div></article>';
+    '<section class="block"><h2>Acceptance criteria</h2>'+f.checks.map(c=>'<div class="check-row">'+icon('list')+c+'</div>').join('')+'</section></article>';
+}
+function productNavigation() {
+  const active = selectedFeature() ? 'specs' : screen;
+  return '<div class="product-subnav" role="navigation" aria-label="Product sections">'+
+    [['roadmap','Roadmap'],['specs','Spec'],['pitch','Pitch board']].map(([route,label])=>
+      '<button data-route="'+route+'" '+(route===active?'aria-current="page"':'')+'>'+label+'</button>').join('')+'</div>';
+}
+function productIndex() {
+  if (screen==='pitch') return '<section class="page">'+tabHeader('layout','Pitch board')+
+    sectionBlock('Pitches','<p class="body-copy">No pitches yet.</p>')+'</section>';
+  return '<section class="page">'+tabHeader('file','Spec')+productLanes().map(l=>
+    sectionBlock(l.name,'<div class="list">'+l.features.map(f=>'<button class="row" data-route="'+f.id+'">'+icon('file')+'<b>'+f.title+'</b><span class="trail">'+featureState(f)+'</span>'+icon('right')+'</button>').join('')+'</div>')).join('')+'</section>';
 }

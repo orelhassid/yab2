@@ -27,7 +27,7 @@ function icon(name) {
 }
 for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = icon(el.dataset.icon);
 const appMark = '../../../Icon/Mark.png';
-const views = ['overview','roadmap','tasks','feature','review','preview','terminal'];
+const views = ['overview','roadmap','specs','pitch','tasks','feature','review','preview','terminal'];
 const content = document.querySelector('#content');
 const draft = document.querySelector('#draft');
 let selectedFile = 0;
@@ -89,9 +89,9 @@ function projectList() {
 }
 function otherProject() {
   const item = projects[project];
-  if (screen === 'feature') return '<article class="page">'+roadmapCrumb(item.area)+'<h1>'+item.feature+'</h1><section class="block doc"><h2>Feature definition</h2><p class="body-copy">'+item.goal+'</p></section><div class="block btns">'+buildButton(selectedFeature())+action(icon('chat')+' Discuss feature','data-action="discuss"')+'</div></article>';
-  if (screen === 'review') return '<section class="page"><h1>Code review</h1><p class="body-copy">No changes awaiting review in '+item.name+'.</p></section>';
-  return '<section class="page"><header class="head"><div class="well">'+projectMark(project)+'</div><h1>'+item.name+'</h1></header><section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list"><button class="row" data-route="feature"><span class="well small">'+icon('roadmap')+'</span><span><b>'+item.feature+'</b><small>'+item.area+'</small></span><span class="trail">Planned</span>'+icon('right')+'</button></div></section></section>';
+  if (screen === 'feature') return '<article class="page">'+roadmapCrumb(item.area)+tabHeader('file',item.feature,[featureState(selectedFeature())],buildButton(selectedFeature())+action('Discuss','data-action="discuss"'))+sectionBlock('Feature definition','<p class="body-copy">'+item.goal+'</p>')+'</article>';
+  if (screen === 'review') return '<section class="page">'+tabHeader('diff','Code review')+'<p class="body-copy">No changes awaiting review in '+item.name+'.</p></section>';
+  return '<section class="page">'+tabHeader('folder',item.name,[],action('Open roadmap','data-route="roadmap"'))+'<section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list"><button class="row" data-route="feature"><span class="well small">'+icon('roadmap')+'</span><span><b>'+item.feature+'</b><small>'+item.area+'</small></span><span class="trail">Planned</span>'+icon('right')+'</button></div></section></section>';
 }
 function pathFor(id, view) {
   return id === 'yab' ? view : id + '/' + view;
@@ -124,7 +124,7 @@ function status() {
 }
 function overview() {
   return `<section class="page">
-    <header class="head"><img class="project-icon" src="${appMark}" alt=""><div><h1>Yab Browser</h1><div class="meta">${icon('folder')} orelhassid/yab2 <span>·</span> ${icon('branch')} main</div></div></header>
+    ${tabHeader('layout','Yab Browser',['orelhassid/yab2','main'],action('Open roadmap','data-route="roadmap"'))}
     <div class="section-heading"><h2>${accepted ? 'Recently accepted' : 'Needs your review'}</h2></div>
     <div class="feature-hero"><div class="feature-copy">${status()}<h2>Dock download progress</h2><p>Clear the Dock indicator when the last active download is canceled.</p>
       <div class="btns">${action(accepted ? 'View changes' : 'Review changes','data-route="review"',true)}${action('Open feature','data-route="feature"')}</div></div>${scene()}</div>
@@ -144,11 +144,11 @@ function feature() {
     'Restore the plain icon when the final download ends or is canceled.'];
   return `<article class="page">
     ${roadmapCrumb('Downloads')}
-    <header class="detail-intro"><div><h1>Dock download progress</h1><div class="meta">${status()} · Owner: Codex</div></div></header>
+    ${tabHeader('file','Dock download progress',[accepted?'Accepted':'In review','Codex'],buildButton(selectedFeature())+action('Discuss','data-action="discuss"'))}
     <div class="feature-doc"><div class="doc"><section><h2>Feature definition</h2><p class="body-copy">See the progress of active downloads from the macOS Dock, even when Yab is in the background. When the last download stops, the plain Yab icon returns.</p></section>
     <section><h2>Acceptance criteria</h2>${checks.map(c=>'<div class="check-row">'+icon('checked')+'<span>'+c+'</span></div>').join('')}</section>
     <section><h2>Latest decision</h2><p class="body-copy">Cancellation clears the bar immediately. If another download is running, its progress stays visible.</p><small style="margin-top:8px">You and Project manager · Yesterday</small></section>
-    <div class="btns">${buildButton(selectedFeature())}${action(accepted ? 'View changes' : 'Review changes','data-route="review"',true)}${action(icon('chat')+' Discuss feature','data-action="discuss"')}</div></div>
+    <div class="btns">${action(accepted ? 'View changes' : 'Review changes','data-route="review"',true)}</div></div>
     <div class="info-side">${scene()}<section class="panel"><h3>Downloads roadmap</h3><ol class="lane"><li class="done"><i></i>Downloads preview</li><li class="current"><i></i>Dock download progress</li><li><i></i>Retry interrupted downloads</li></ol></section></div>
     </div></article>`;
 }
@@ -177,9 +177,8 @@ function review() {
     return '<div class="code-line '+type+'"><span class="number">'+oldLine+'</span><span class="number">'+newLine+'</span><span class="sign">'+sign+'</span>'+escapeHTML(code)+'</div>';
   }).join('');
   return `<section class="page">
-    <div class="crumb">Code ${icon('right')} Review ${icon('right')} <button data-route="feature">Downloads</button></div>
-    <div class="detail-intro"><div><h1>Review changes</h1><div class="review-meta"><button class="crumb" style="margin:0;padding:0;color:var(--blue)" data-route="feature">Dock download progress</button> · Codex</div></div>
-    ${action(accepted ? icon('check')+' Accepted' : 'Accept changes','data-action="accept" '+(accepted ? 'disabled' : ''),true)}</div>
+    <div class="crumb">Code ${icon('right')} Review ${icon('right')} <button data-route="feature">Dock download progress</button></div>
+    ${tabHeader('diff','Review changes',[accepted?'Accepted':'In review','Codex'],action(accepted?'Accepted':'Accept changes','data-action="accept" '+(accepted?'disabled':''),true))}
     <div class="review-meta">${icon('branch')} dock-progress ${icon('arrow')} main <span>·</span> 2 files <span class="add-text">+5</span><span class="del-text">−2</span></div>
     <div class="review-grid"><div class="file-list panel"><h3>Changed files</h3>
     ${files.map((file,i)=>'<button class="file" data-file="'+i+'" aria-pressed="'+(i===selectedFile)+'">'+icon('file')+file.title+'</button>').join('')}</div>
@@ -191,7 +190,7 @@ function review() {
 const previewURLs = new Map();
 const terminalHistory = new Map();
 function toolSurface(title, body) {
-  return '<section class="page"><header class="head"><h1>'+title+'</h1></header>'+body+'</section>';
+  return '<section class="page">'+tabHeader(({Tasks:'list',Preview:'layout',Terminal:'terminal'})[title],title)+' '+body+'</section>';
 }
 function preview() {
   return toolSurface('Preview','<form id="preview-form" class="panel tool-form"><label for="app-url">App URL</label><div><input id="app-url" type="url" required placeholder="http://localhost:3000"><button class="btn primary">Open in browser ↗</button></div></form>');
@@ -257,6 +256,7 @@ function render() {
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
   if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
+  else if (screen === 'specs' || screen === 'pitch') content.innerHTML = productIndex();
   else if (screen === 'roadmap') content.innerHTML = roadmap();
   else if (screen !== 'feature' && selectedFeature()) content.innerHTML = productSpec(selectedFeature());
   else if (screen === 'preview') {
@@ -264,12 +264,14 @@ function render() {
     document.querySelector('#app-url').value = previewURLs.get(project) ?? '';
   } else if (screen === 'terminal') content.innerHTML = terminal();
   else content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
+  const inProduct = ['roadmap','specs','pitch'].includes(screen) || selectedFeature();
+  if (inProduct) content.insertAdjacentHTML('afterbegin',productNavigation());
   document.querySelectorAll('nav [data-route]').forEach(b=>{
-    if (b.dataset.route === (taskRoute ? 'tasks' : selectedFeature() ? 'roadmap' : screen)) b.setAttribute('aria-current','page');
+    if (b.dataset.route === (taskRoute ? 'tasks' : inProduct ? 'roadmap' : screen)) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
   content.scrollTop = scroll[pathFor(project,screen)] || 0;
-  document.title = ((taskRoute && 'Tasks') || (selectedFeature() && selectedFeature().title) || ({tasks:'Tasks',roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
+  document.title = ((taskRoute && 'Tasks') || (selectedFeature() && selectedFeature().title) || ({specs:'Spec',pitch:'Pitch board',tasks:'Tasks',roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
 }
 function go(route) {
   document.body.classList.remove('chat-open');

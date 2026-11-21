@@ -44,9 +44,8 @@ function tasksPage() {
   const ready = rows.filter(t=>t.state==='Ready for code review');
   const done = rows.filter(t=>t.state==='Done').length;
   const picker = features.length > 1 ? '<select id="plan-picker" aria-label="Feature task plan">'+features.map(option=>'<option value="'+option.id+'" '+(option.id===id?'selected':'')+'>'+option.title+'</option>').join('')+'</select>' : '';
-  return '<section class="page tasks-page"><div class="crumb">Tasks '+icon('right')+' Feature build '+picker+'</div><header><h1>'+f.title+'</h1><div class="meta">'+done+' of '+rows.length+' tasks complete · <button class="spec-link" data-route="'+id+'">Open spec '+icon('right')+'</button></div></header>'+
-    '<div class="task-progress" aria-hidden="true">'+rows.map(t=>'<i class="'+(t.state==='Done'?'done':t.state==='Queued'?'queued':'ready')+'"></i>').join('')+'</div>'+
-    '<section class="block"><h2>Task breakdown</h2><div class="list">'+rows.map((t,i)=>'<div class="task-line"><span class="task-marker">'+icon(t.state==='Done'?'checked':t.state==='Queued'?'list':'diff')+'</span><div><b>'+t.title+'</b><small>'+t.owner+' · '+t.state+'</small></div><button class="task-discuss" data-task-index="'+i+'" aria-label="Discuss '+t.title+'">'+icon('chat')+'</button></div>').join('')+'</div></section>'+
+  return '<section class="page tasks-page">'+tabHeader('list',f.title,[done+' of '+rows.length+' complete'],picker+action('Open spec','data-route="'+id+'"'))+
+    progressChart(rows)+taskCollection(rows,id)+
     '<section class="block"><h2>Ready for code review</h2>'+(ready.length ? '<div class="panel handoff"><div><b>'+ready[0].title+'</b><small>Codex · 2 files · 2 checks passed</small></div>'+action('Review changes','data-route="review"',true)+'</div>' : '<p class="body-copy">'+(done===rows.length?'All changes accepted.':'No changes ready for review yet.')+'</p>')+'</section></section>';
 }
 document.addEventListener('change',e=>{
