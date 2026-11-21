@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yab Browser · Project workspace design</title>
+<link rel="stylesheet" href="workspace.css">
+<script defer src="workspace.js"></script>
+</head>
+<body>
+<div class="window">
+  <header class="shell">
+    <div class="chrome left"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span data-icon="sidebar"></span>
+      <span class="spacer"></span><span data-icon="left"></span><span data-icon="right"></span><span data-icon="reload"></span></div>
+    <div class="chrome right"><span data-icon="plus"></span><span data-icon="folder"></span>
+      <span class="tab-label"><img src="../../../Icon/Mark.png" alt=""> Yab Browser</span><span data-icon="down"></span>
+      <span class="spacer"></span><button class="chat-toggle" data-action="chat" aria-label="Show or hide manager chat" data-icon="chat"></button></div>
+  </header>
+  <div class="body">
+    <aside aria-label="Project manager chat" id="chat">
+      <div class="chat-title"><span class="manager-mark" data-icon="chat"></span><div><b>Project manager</b><small>Yab Browser</small></div><button class="mobile-close" data-action="chat" aria-label="Close chat" data-icon="close"></button></div>
+      <div class="messages" id="messages">
+        <div class="day">Today</div>
+        <p class="bubble you">Can we show download progress on the Dock icon?</p>
+        <p class="bubble them">Yes. I’ve linked this to Downloads. The bar will show progress across all active downloads.</p>
+        <button class="chat-link" data-route="feature"><span data-icon="roadmap"></span> Dock download progress <span data-icon="right"></span></button>
+        <p class="bubble you">And when I cancel the last one?</p>
+        <p class="bubble them">The bar should disappear immediately. Codex has a change ready for you to review.</p>
+        <button class="run-card" data-route="review"><span class="well small" data-icon="diff"></span><span><b>Review changes</b><small>2 files · 2 checks passed</small></span><span data-icon="right"></span></button>
+      </div>
+      <div class="composer">
+        <span id="context" hidden></span>
+        <textarea id="draft" rows="2" aria-label="Manager message draft" placeholder="Message project manager…"></textarea>
+        <div class="composer-tools"><span data-icon="plus"></span><span class="spacer"></span><span class="auto">Auto</span><button id="send" data-action="send" aria-label="Add message to prototype" data-icon="up" disabled></button></div>
+      </div>
+    </aside>
+    <main>
+      <nav aria-label="Project tools">
+        <button data-route="overview">Overview</button><button data-route="feature">Product</button><button disabled title="Outside this design review">Tasks</button><button disabled title="Outside this design review">Agents</button><button data-route="review">Code</button>
+      </nav>
+      <div id="content" tabindex="-1"></div>
+    </main>
+  </div>
+</div>
+</body>
+</html>
