@@ -194,21 +194,49 @@ enum SettingsNavigation {
 private struct SettingsLibraryBody: View {
     @ObservedObject var browser: Browser
     @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        SettingsLibraryLayout(maximumWidth: SettingsNavigation.maximumWidth(for: model.page)) {
+            SettingsSidebar(model: model, inLibrary: true)
+        } detail: {
+            SettingsDetail(browser: browser, prefs: browser.prefs, model: model, inLibrary: true)
+        }
+    }
+}
+
+struct SettingsLibraryLayout<Navigation: View, Detail: View>: View {
+    let maximumWidth: CGFloat
+    @ViewBuilder let navigation: () -> Navigation
+    @ViewBuilder let detail: () -> Detail
+
     var body: some View {
         GeometryReader { bounds in
             let narrow = bounds.size.width < 650
             HStack(alignment: .top, spacing: LibraryPageLayout.columnGap) {
                 if !narrow {
-                    SettingsSidebar(model: model, inLibrary: true)
+                    navigation()
                         .frame(width: LibraryPageLayout.navigationWidth)
                 }
                 VStack(alignment: .leading, spacing: 0) {
-                    SettingsDetail(browser: browser, prefs: browser.prefs, model: model, inLibrary: true)
+                    detail()
                         .environment(\.settingsLibraryNavigationVisible, !narrow)
-                }.frame(maxWidth: SettingsNavigation.maximumWidth(for: model.page), alignment: .leading)
+                }.frame(maxWidth: maximumWidth, alignment: .leading)
                 Spacer(minLength: 0)
             }
         }
+    }
+}
+
+struct SettingsSectionsButton<Navigation: View>: View {
+    @ViewBuilder let navigation: () -> Navigation
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing.toggle() } label: { Label("Sections", systemImage: "sidebar.left") }
+            .buttonStyle(.yab(.quiet, .small))
+            .popover(isPresented: $showing) {
+                navigation().padding(CardFrame.inset).frame(width: 220, height: 400)
+            }
     }
 }
 
@@ -225,17 +253,12 @@ struct SettingsTabToolbar: View {
     @ObservedObject var browser: Browser
     @ObservedObject var model: SettingsModel
     @Environment(\.settingsLibraryNavigationVisible) private var navigationVisible
-    @State private var showSections = false
 
     var body: some View {
         if !navigationVisible || model.page == .shortcuts || model.page == .engine || model.page == .extensions || model.page.master != nil {
         HStack(spacing: 8) {
             if !navigationVisible {
-                Button { showSections.toggle() } label: { Label("Sections", systemImage: "sidebar.left") }
-                    .popover(isPresented: $showSections) {
-                        SettingsSidebar(model: model, inLibrary: true)
-                            .padding(CardFrame.inset).frame(width: 220, height: 400)
-                    }
+                SettingsSectionsButton { SettingsSidebar(model: model, inLibrary: true) }
             }
             Spacer(minLength: 8)
             if model.page == .shortcuts {

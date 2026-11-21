@@ -52,7 +52,7 @@ struct AgentPlan {
         needs: "Claude needs Pro, Max, Team or Enterprise.",
         binary: \.claude, connected: \.claude)
     static let codex = AgentPlan(
-        cli: "codex", name: "ChatGPT", tool: "Codex", mark: "brand.openai", maker: "OpenAI", skilled: true,
+        cli: "codex", name: "ChatGPT", tool: "Codex", mark: "brand.codex", maker: "OpenAI", skilled: true,
         install: "npm install -g @openai/codex", signIn: ["login"],
         apps: ["com.openai.codex", "com.openai.chat"], tile: ("brand.openai", .systemPurple), listedAway: true,
         needs: "ChatGPT works on Plus, Pro, Business, Enterprise and Edu. Free and Go may too, with low limits.",
@@ -65,7 +65,7 @@ struct AgentPlan {
         binary: \.cursor, connected: \.cursor)
 
     static let gemini = AgentPlan(
-        cli: "gemini", name: "Gemini", tool: "Antigravity CLI", mark: "brand.gemini", maker: "Google", skilled: false,
+        cli: "gemini", name: "Gemini", tool: "Antigravity CLI", mark: "brand.antigravity", maker: "Google", skilled: false,
         install: "curl -fsSL https://antigravity.google/cli/install.sh | bash", signIn: [],
         apps: [], tile: ("brand.gemini", .systemIndigo), listedAway: false,
         needs: "Gemini runs on your Google AI plan, within its limits.",

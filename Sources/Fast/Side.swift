@@ -107,6 +107,7 @@ struct SideBar: View {
     /// The agents' row over the foot and its gap (AgentRow), which the rows
     /// go on under as they do under the foot.
     @State private var agentRoom: CGFloat = 0
+    @State private var sidebarFootHeight: CGFloat = 0
     /// The player's island over the foot (BandRoom), which the rows go on
     /// under as they do under the foot.
     @State private var bandRoom: CGFloat = 0
@@ -468,10 +469,11 @@ struct SideBar: View {
                 }
                 // Clear of the foot, which sits over the column's bottom,
                 // and of the band over it while something plays elsewhere.
-                Spacer(minLength: SideBar.footHeight)
+                let footHeight = browser.inDevelopment ? sidebarFootHeight : SideBar.footHeight
+                Spacer(minLength: footHeight)
                     // Where the space's own part ends, over the foot
                     // (SpacePager).
-                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY - SideBar.footHeight } action: { [browser] in browser.spaceFloor = $0 }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY - footHeight } action: { [browser] in browser.spaceFloor = $0 }
                 // The note's room next to the foot's, the rows' scroll view
                 // reaching down through both to the foot's bottom.
                 Color.clear.frame(height: agentRoom)
@@ -508,8 +510,21 @@ struct SideBar: View {
                 // Peek.swift), so its card can stand out over the page.
                 // Here, its room.
                 BandRoom(room: browser.player.room, visible: prefs.showsPlayer, edge: browser.bandEdge)
-                if !ColumnKit.cut.contains("foot") {
-                    SideFoot(browser: browser, prefs: prefs, hoard: browser.hoard)
+                VStack(spacing: 0) {
+                    if browser.inDevelopment {
+                        VStack(spacing: SideBar.gap) {
+                            SidebarSectionDivider()
+                            DevelopmentSettingsButton(browser: browser)
+                        }
+                        .padding(.horizontal, SideBar.margin)
+                        .padding(.bottom, SideBar.margin)
+                    }
+                    if !ColumnKit.cut.contains("foot") {
+                        SideFoot(browser: browser, prefs: prefs, hoard: browser.hoard)
+                    }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+                    sidebarFootHeight = $0
                 }
             }
             .overlayPreferenceValue(UpdateMarks.Key.self) {

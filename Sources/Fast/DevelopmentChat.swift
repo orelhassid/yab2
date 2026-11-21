@@ -173,49 +173,6 @@ final class DevelopmentPlugins {
     }
 }
 
-struct DevelopmentEnvironmentSettings: View {
-    let browser: Browser
-    let state: DevelopmentToolbarState
-    private var section: String { state.environmentSection }
-    @StateObject private var catalog = DevelopmentCatalog()
-    @State private var query = ""
-    var body: some View {
-        LibraryPageFrame(page: .settings, breadcrumbs: ["Development", section]) {
-            EmptyView()
-        } search: { ThemedSearchField("Search settings", text: $query) } content: {
-            VStack(alignment: .leading, spacing: CardFrame.inset) {
-                HStack {
-                    ForEach(["Providers", "Plugins", "Skills"], id: \.self) { name in
-                        SidebarTabButton(title: name, selected: section == name, prefs: browser.prefs, inTabStrip: true, action: { state.environmentSection = name; query = "" }) { EmptyView() }
-                    }
-                }
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: CardFrame.inset) {
-                        if section == "Providers" {
-                            ForEach(AgentPlan.all.filter { query.isEmpty || $0.tool.localizedCaseInsensitiveContains(query) || $0.name.localizedCaseInsensitiveContains(query) }, id: \.cli) { plan in
-                                SettingsRow(plan.tool, detail: ProviderConsent.shared.allows(plan.cli) ? "Connected" : "Disconnected") {
-                                    Button("Manage") { browser.openSettings(.agents) }.buttonStyle(.yab(.secondary, .small))
-                                }
-                            }
-                        } else {
-                            if section == "Plugins", !catalog.status.isEmpty { Text(catalog.status).foregroundStyle(.secondary) }
-                            ForEach(catalog.references.filter { ($0.kind == (section == "Plugins" ? .plugin : .skill)) && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query)) }) { ref in
-                                SettingsRow(ref.name) {
-                                    if ref.kind == .plugin {
-                                        Toggle("Enable " + ref.name, isOn: Binding(get: { DevelopmentPlugins.shared.allows(ref) },
-                                            set: { DevelopmentPlugins.shared.set(ref, enabled: $0) })).labelsHidden()
-                                    }
-                                }
-                                LibrarySeparator()
-                            }
-                        }
-                    }.padding(CardFrame.inset).modifier(LibraryCardSurface())
-                }
-            }
-        }.task { await catalog.load(folder: "") }
-    }
-}
-
 struct DevelopmentMention: Identifiable {
     let name: String
     let detail: String

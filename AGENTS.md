@@ -39,6 +39,10 @@ variation, extend the shared component and check both the Space and All Tabs.
 When a maintainer corrects a recurring UI pattern, record the specific rule
 and its owning component here or in the relevant project skill.
 
+Give navigation and catalog list rows a leading icon. Providers, plugins,
+and skills use the brand mark when available or the shared symbol for the
+item type.
+
 Browser pages and Development share the native `TabWindowHeader`,
 `TabWindowSwitcher` and strip variant of `SidebarTabButton`. Embedded
 workspaces leave header rendering to their native host in every layout.

@@ -1625,43 +1625,53 @@ struct SettingsLibrarySearch: View {
     }
 }
 
+struct SettingsSectionList<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @Environment(\.tone) private var tone
+
+    var body: some View {
+        ThreadScrollView {
+            VStack(alignment: .leading, spacing: 2, content: content)
+        }
+        .foregroundStyle(Palette.strong(on: tone))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct SettingsLibraryNavigation: View {
     @ObservedObject var model: SettingsModel
     let rows: [SettingsResult]
     @Environment(\.tone) private var tone
+
     var body: some View {
-        ThreadScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                if model.search.isEmpty {
-                    ForEach(0..<SettingsNavigation.groups.count, id: \.self) { index in
-                        let group = SettingsNavigation.groups[index]
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(SettingsWords.text(group.title))
-                                .font(.caption).foregroundStyle(Palette.muted(on: tone))
-                                .padding(.horizontal, CardFrame.inset)
-                                .padding(.bottom, 6)
-                            ForEach(group.pages.filter { $0.available }) { page in
-                                pageRow(page)
-                            }
-                            if group.title == "Other" {
-                                LibraryScopeRow(title: "Open Onboarding", symbol: Command.welcome.symbol,
-                                                selected: false, selectedIconTint: .accentColor) {
-                                    SettingsWindow.shared.openOnboarding()
-                                }
+        SettingsSectionList {
+            if model.search.isEmpty {
+                ForEach(0..<SettingsNavigation.groups.count, id: \.self) { index in
+                    let group = SettingsNavigation.groups[index]
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(SettingsWords.text(group.title))
+                            .font(.caption).foregroundStyle(Palette.muted(on: tone))
+                            .padding(.horizontal, CardFrame.inset)
+                            .padding(.bottom, 6)
+                        ForEach(group.pages.filter { $0.available }) { page in
+                            pageRow(page)
+                        }
+                        if group.title == "Other" {
+                            LibraryScopeRow(title: "Open Onboarding", symbol: Command.welcome.symbol,
+                                            selected: false, selectedIconTint: .accentColor) {
+                                SettingsWindow.shared.openOnboarding()
                             }
                         }
-                        .padding(.top, index == 0 ? 0 : 20)
                     }
-                } else {
-                    ForEach(rows, id: \.self) { row in navigationRow(row) }
-                    if rows.isEmpty {
-                        Text("No results").font(CardFrame.detail).foregroundStyle(Palette.muted(on: tone))
-                    }
+                    .padding(.top, index == 0 ? 0 : 20)
+                }
+            } else {
+                ForEach(rows, id: \.self) { row in navigationRow(row) }
+                if rows.isEmpty {
+                    Text("No results").font(CardFrame.detail).foregroundStyle(Palette.muted(on: tone))
                 }
             }
         }
-        .foregroundStyle(Palette.strong(on: tone))
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
     private func pageRow(_ page: SettingsPage) -> some View {
         LibraryScopeRow(title: SettingsNavigation.title(for: page), symbol: page.icon,
@@ -2344,24 +2354,30 @@ struct SettingsRow<Trailing: View>: View {
     let title: String
     var detail = ""
     var verbatimTitle = false
+    let symbol: String?
     @ViewBuilder let trailing: () -> Trailing
 
-    init(_ title: String, detail: String = "", bundle: Bundle = .main, @ViewBuilder trailing: @escaping () -> Trailing) {
+    init(_ title: String, detail: String = "", symbol: String? = nil, bundle: Bundle = .main, @ViewBuilder trailing: @escaping () -> Trailing) {
         self.title = SettingsWords.text(title, bundle: bundle)
         self.detail = SettingsWords.text(detail, bundle: bundle)
+        self.symbol = symbol
         self.trailing = trailing
     }
 
     /// A person's name or account is data even if it matches a table key.
-    init(verbatim title: String, detail: String = "", bundle: Bundle = .main, @ViewBuilder trailing: @escaping () -> Trailing) {
+    init(verbatim title: String, detail: String = "", symbol: String? = nil, bundle: Bundle = .main, @ViewBuilder trailing: @escaping () -> Trailing) {
         self.title = title
         self.verbatimTitle = true
         self.detail = SettingsWords.text(detail, bundle: bundle)
+        self.symbol = symbol
         self.trailing = trailing
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
+            if let symbol {
+                Symbol(symbol, size: 14).frame(width: 20).accessibilityHidden(true)
+            }
             VStack(alignment: .leading, spacing: 3) {
                 if verbatimTitle { Text(title) } else { SettingsText(title, size: 13) }
                 if !detail.isEmpty {
