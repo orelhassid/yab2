@@ -274,7 +274,10 @@ struct SideBar: View {
     var body: some View {
         let _ = SpacePager.touched()
         ZStack(alignment: .top) {
-            if browser.showingAllTabs, let paint = browser.sidebarSpace.paint {
+            if browser.inDevelopment {
+                Color.clear.modifier(DevelopmentLook(paint: DevelopmentDirectory.shared.details(browser.developmentProject).paint ?? SpacePaint(prefs)))
+                    .allowsHitTesting(false)
+            } else if browser.showingAllTabs, let paint = browser.sidebarSpace.paint {
                 Color(nsColor: paint.color(dark: scheme == .dark)).allowsHitTesting(false)
             }
             // Under the last row the window is dragged by, and a right
@@ -347,6 +350,7 @@ struct SideBar: View {
                 // The address, when nothing over the page has it.
                 if browser.inDevelopment {
                     DevelopmentProjects(browser: browser)
+                        .modifier(DevelopmentLook(paint: DevelopmentDirectory.shared.details(browser.developmentProject).paint ?? SpacePaint(prefs), drawsBackdrop: false))
                 } else {
                 if browser.sidePlated, !ColumnKit.cut.contains("plate") {
                     Group {

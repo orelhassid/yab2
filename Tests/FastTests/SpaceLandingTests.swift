@@ -81,7 +81,13 @@ struct SpaceLandingTests {
         Store.settings.set(Data(#"{"sunday":{"name":"Sunday Studio","icon":"","folder":""}}"#.utf8), forKey: key)
         let directory = DevelopmentDirectory()
         let project = directory.create(folder: URL(fileURLWithPath: "/tmp/Example"))
+        var details = directory.details(project)
+        details.paint = SpacePaint(swatch: .custom, color: .red, grain: 0.3,
+                                   colors: ["B6A6E6"], mode: "light")
+        directory.save(details, for: project)
         let reopened = DevelopmentDirectory()
+        #expect(reopened.details(project).paint == details.paint)
+        #expect(reopened.details(.sunday).paint == nil)
         #expect(reopened.projects.last == project)
         #expect(reopened.details(.sunday).name == "Sunday Studio")
         #expect(reopened.details(.sunday).createdAt == nil)

@@ -262,7 +262,8 @@ function render() {
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  if (screen === 'settings') renderSettings();
+  if (screen === 'settings' && nativeSpace) content.replaceChildren();
+  else if (screen === 'settings') renderSettings();
   else if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
   else if (screen === 'specs' || screen === 'pitch') content.innerHTML = productIndex();
   else if (screen === 'roadmap') content.innerHTML = roadmap();
@@ -421,8 +422,8 @@ function renderSettings() {
   content.innerHTML = '<section class="page">'+tabHeader('settings','Project settings')+
     '<form id="project-settings" class="panel tool-form"><label>Project name<input name="name" maxlength="80" required></label>'+
     '<label>Project icon<input name="symbol" placeholder="Default icon"></label>'+
-    '<label>Source folder<input name="folder" '+(nativeSpace?'readonly':'')+' placeholder="Choose a source folder"></label>'+
-    (nativeSpace?action('Choose folder','type="button" data-action="folder"'):'')+' '+action('Save changes','type="submit"',true)+'</form></section>';
+    '<label>Source folder<input name="folder" placeholder="Choose a source folder"></label>'+
+    action('Save changes','type="submit"',true)+'</form></section>';
   const form = document.querySelector('#project-settings');
   form.elements.name.value = projects[project].name;
   form.elements.symbol.value = projects[project].symbol || '';
@@ -435,13 +436,10 @@ document.addEventListener('submit', event=>{
   const name = fields.name.value.trim();
   if (!name) { fields.name.focus(); return; }
   const symbol = Array.from(new Intl.Segmenter().segment(fields.symbol.value))[0]?.segment || '';
-  if (nativeSpace) nativeAction('save',project,{name,icon:symbol});
-  else {
-    const entries = {...directory,[project]:{...directory[project],name,icon:symbol,folder:fields.folder.value.trim()}};
-    localStorage.setItem('development-directory',JSON.stringify(entries));
-    applyDirectory(entries);
-    recordActivity('Project settings updated');
-  }
+  const entries = {...directory,[project]:{...directory[project],name,icon:symbol,folder:fields.folder.value.trim()}};
+  localStorage.setItem('development-directory',JSON.stringify(entries));
+  applyDirectory(entries);
+  recordActivity('Project settings updated');
 });
 const body = document.querySelector('.body');
 const divider = document.querySelector('#divider');
@@ -462,7 +460,7 @@ function reportToolbar() {
   const pane = content.getBoundingClientRect();
   const bottom = layoutMode === 'full' ? document.querySelector('.composer').getBoundingClientRect().top - 8 : pane.bottom;
   window.webkit?.messageHandlers?.toolbar?.postMessage({
-    project, terminal:[pane.x,pane.y,pane.width,Math.max(0,bottom-pane.y)],
+    project, toolFrame:[pane.x,pane.y,pane.width,Math.max(0,bottom-pane.y)],
     active:document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
     mode:layoutMode,width:document.querySelector('#chat').offsetWidth
   });
@@ -478,8 +476,7 @@ function toggleLayout(action) {
 }
 document.addEventListener('click',event=>{
   const action = event.target.closest('button')?.dataset.action;
-  if (action === 'folder') nativeAction('folder',project);
-  else toggleLayout(action);
+  toggleLayout(action);
 });
 function resizeChat(value) {
   const width = Math.max(210,Math.min(value,body.clientWidth-280));

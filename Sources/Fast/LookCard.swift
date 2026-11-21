@@ -515,6 +515,7 @@ struct LookControls: View {
     var bare = false
     /// The welcome's window has no site to take a color from.
     var offersSite = true
+    var offersTabShift = true
     var backgroundControls: AnyView? = nil
     /// What a head held, in the field's top corner (LookCorner).
     var corner: AnyView? = nil
@@ -529,9 +530,9 @@ struct LookControls: View {
                     ColorEditor(color: look.color, transparency: look.transparency, grain: look.grain,
                                 colors: look.colors, mode: look.mode, corner: corner, glass: look.glass, plain: look.plain,
                                 width: width, showsSurfaceSliders: backgroundControls == nil, onPick: picked)
-                    if !look.colors.wrappedValue.isEmpty || offersSite {
+                    if (offersTabShift && !look.colors.wrappedValue.isEmpty) || offersSite {
                         VStack(spacing: 0) {
-                            if !look.colors.wrappedValue.isEmpty {
+                            if offersTabShift && !look.colors.wrappedValue.isEmpty {
                                 LookSwitchRow(title: "Shift with tabs", detail: "Each new tab moves your colors a step.", isOn: look.shift)
                                 if offersSite { Divider() }
                             }

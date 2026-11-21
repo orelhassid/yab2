@@ -36,6 +36,7 @@ struct DevelopmentDetails: Codable, Equatable {
     var name: String
     var icon: String
     var folder: String
+    var paint: SpacePaint?
     var createdAt: TimeInterval?
     var activity: [DevelopmentEvent]?
 
@@ -109,7 +110,7 @@ struct DevelopmentProjects: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: SideBar.gap) {
                     SidebarSection(collapsed: collapsed) {
-                        SidebarSectionHeader(title: "Projects", paint: Space.development.paint ?? SpacePaint(browser.prefs),
+                        SidebarSectionHeader(title: "Projects", paint: DevelopmentDirectory.shared.details(browser.developmentProject).paint ?? SpacePaint(browser.prefs),
                                              collapsed: collapsed, toggle: { collapsed.toggle() }) {
                             Symbol("folder", size: SideBar.mark)
                         }
@@ -147,6 +148,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
         configuration.userContentController.add(toolbar, name: "activity")
         configuration.websiteDataStore = .nonPersistent()
         let view = WKWebView(frame: .zero, configuration: configuration)
+        view.setValue(false, forKey: "drawsBackground")
         view.navigationDelegate = self
         view.uiDelegate = self
         if let file = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Development") {
@@ -191,33 +193,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
             browser.developmentProject = project
             return
         }
-        guard project == browser.developmentProject else { return }
-        var details = DevelopmentDirectory.shared.details(project)
-        if url.host == "save" {
-            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-            guard let name = items.first(where: { $0.name == "name" })?.value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !name.isEmpty, let icon = items.first(where: { $0.name == "icon" })?.value else { return }
-            let previous = details
-            details.name = String(name.prefix(80))
-            details.icon = String(icon.prefix(1))
-            guard details != previous else { return }
-            details.record("Project settings updated")
-        } else if url.host == "folder" {
-            let panel = NSOpenPanel()
-            panel.canChooseFiles = false
-            panel.canChooseDirectories = true
-            guard let window = webView.window else { return }
-            panel.beginSheetModal(for: window) { result in
-                guard result == .OK, let url = panel.url else { return }
-                var current = DevelopmentDirectory.shared.details(project)
-                guard current.folder != url.path else { return }
-                current.record("Source folder changed")
-                current.folder = url.path
-                DevelopmentDirectory.shared.save(current, for: project)
-            }
-            return
-        } else { return }
-        DevelopmentDirectory.shared.save(details, for: project)
+
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -242,7 +218,7 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
     var active = "overview"
     var mode = "split"
     var chatWidth: CGFloat = 300
-    var terminalFrame = CGRect.zero
+    var toolFrame = CGRect.zero
     var reportedProject: String?
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -260,11 +236,11 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
         guard let active = info["active"] as? String, let mode = info["mode"] as? String,
               let width = info["width"] as? NSNumber else { return }
         reportedProject = info["project"] as? String
-        if let frame = info["terminal"] as? [Double], frame.count == 4,
+        if let frame = info["toolFrame"] as? [Double], frame.count == 4,
            frame.allSatisfy({ $0.isFinite && $0 >= 0 }) {
-            terminalFrame = CGRect(x: frame[0], y: frame[1], width: frame[2], height: frame[3])
+            toolFrame = CGRect(x: frame[0], y: frame[1], width: frame[2], height: frame[3])
         } else {
-            terminalFrame = .zero
+            toolFrame = .zero
         }
         self.active = active
         self.mode = mode
@@ -333,18 +309,25 @@ struct DevelopmentPane: View {
             Divider()
             DevelopmentWebPane(browser: browser, project: project, entries: entries)
                 .overlay(alignment: .topLeading) {
-                    if state.active == "terminal", state.reportedProject == project.rawValue,
-                       !state.terminalFrame.isEmpty, state.mode != "chat" {
-                        DevelopmentTerminalPane(terminals: content.terminals, project: project,
-                                                folder: entries[project.rawValue]?.folder ?? "") {
-                            content.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
+                    if ["settings", "terminal"].contains(state.active), state.reportedProject == project.rawValue,
+                       !state.toolFrame.isEmpty, state.mode != "chat" {
+                        Group {
+                            if state.active == "settings" {
+                                DevelopmentSettings(project: project, prefs: browser.prefs)
+                            } else {
+                                DevelopmentTerminalPane(terminals: content.terminals, project: project,
+                                                        folder: entries[project.rawValue]?.folder ?? "") {
+                                    content.view.callAsyncJavaScript("go('settings')", arguments: [:], in: nil, in: .page, completionHandler: nil)
+                                }
+                            }
                         }
                         .id(project)
-                        .frame(width: state.terminalFrame.width, height: state.terminalFrame.height)
-                        .offset(x: state.terminalFrame.minX, y: state.terminalFrame.minY)
+                        .frame(width: state.toolFrame.width, height: state.toolFrame.height)
+                        .offset(x: state.toolFrame.minX, y: state.toolFrame.minY)
                     }
                 }
         }
+        .modifier(DevelopmentLook(paint: entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)))
     }
 
     private func layoutAction(_ icon: String, _ title: String, _ action: String) -> some View {
@@ -365,6 +348,7 @@ private struct DevelopmentWebPane: NSViewRepresentable {
         return browser.developmentContent.view
     }
     func updateNSView(_ view: WKWebView, context: Context) {
+        view.appearance = NSAppearance(named: context.environment.colorScheme == .dark ? .darkAqua : .aqua)
         browser.developmentContent.updateDirectory()
         browser.developmentContent.select(project)
     }

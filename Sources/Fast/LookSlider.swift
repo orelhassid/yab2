@@ -617,6 +617,7 @@ struct LookPicker<Footer: View>: View {
     /// No dot of its own: only the popover, over what it is laid behind
     /// (Appearance's Look row with spaces).
     var dotless = false
+    var offersBrowserTabs = true
     @State private var open = false
     /// The look the popover opened on, for Reset.
     @State private var opened: SpacePaint? = nil
@@ -626,7 +627,7 @@ struct LookPicker<Footer: View>: View {
         // Beside it: the controls are taller than the room under a row.
         .popover(isPresented: $open, arrowEdge: .leading) {
             VStack(alignment: .leading, spacing: 0) {
-                LookControls(look: .paint($paint),
+                LookControls(look: .paint($paint), offersSite: offersBrowserTabs, offersTabShift: offersBrowserTabs,
                              corner: AnyView(LookCorner(changed: opened.map { $0 != paint } ?? false,
                                                         reset: { if let opened { paint = opened } }, forAll: forAll)),
                              picked: onPick)
@@ -668,7 +669,7 @@ struct LookPicker<Footer: View>: View {
 
 extension LookPicker where Footer == EmptyView {
     init(paint: Binding<SpacePaint>, named: String, forAll: (() -> Void)? = nil, onPick: @escaping () -> Void = {},
-         asked: Binding<Bool>? = nil, dotless: Bool = false) {
-        self.init(paint: paint, named: named, forAll: forAll, onPick: onPick, footer: { EmptyView() }, asked: asked, dotless: dotless)
+         asked: Binding<Bool>? = nil, dotless: Bool = false, offersBrowserTabs: Bool = true) {
+        self.init(paint: paint, named: named, forAll: forAll, onPick: onPick, footer: { EmptyView() }, asked: asked, dotless: dotless, offersBrowserTabs: offersBrowserTabs)
     }
 }
