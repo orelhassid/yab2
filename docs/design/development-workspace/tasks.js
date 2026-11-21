@@ -17,6 +17,7 @@ function openBuild(id) {
     plans.add(id);
     buildPlans.set(project,plans);
     const f = productLanes().flatMap(l=>l.features).find(f=>f.id===id);
+    recordActivity('Created task plan for '+f.title);
     const link = document.createElement('button');
     link.className = 'chat-link';
     link.dataset.route = 'tasks-'+id;

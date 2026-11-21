@@ -6,16 +6,14 @@ extension Space {
                                    name: "Development", icon: "terminal", ownSignIns: false)
 }
 
-enum DevelopmentProject: String, CaseIterable {
-    case yab, sunday, webistory, agada
+struct DevelopmentProject: RawRepresentable, Hashable {
+    let rawValue: String
+    static let yab = Self(rawValue: "yab")
+    static let sunday = Self(rawValue: "sunday")
+    static let defaults = [yab, sunday, Self(rawValue: "webistory"), Self(rawValue: "agada")]
 
     var title: String {
-        switch self {
-        case .yab: "Yab Browser"
-        case .sunday: "Sunday"
-        case .webistory: "Webistory"
-        case .agada: "Agada"
-        }
+        rawValue == "yab" ? "Yab Browser" : rawValue.capitalized
     }
 }
 
@@ -38,6 +36,17 @@ struct DevelopmentDetails: Codable, Equatable {
     var name: String
     var icon: String
     var folder: String
+    var createdAt: TimeInterval?
+    var activity: [DevelopmentEvent]?
+
+    mutating func record(_ title: String) {
+        activity = (activity ?? []) + [DevelopmentEvent(title: title, time: Date().timeIntervalSince1970)]
+    }
+}
+
+struct DevelopmentEvent: Codable, Equatable {
+    let title: String
+    let time: TimeInterval
 }
 
 @MainActor @Observable
@@ -50,6 +59,21 @@ final class DevelopmentDirectory {
         entries = Store.settings.data(forKey: key).flatMap {
             try? JSONDecoder().decode([String: DevelopmentDetails].self, from: $0)
         } ?? [:]
+    }
+
+    var projects: [DevelopmentProject] {
+        DevelopmentProject.defaults + entries.keys.filter { $0.hasPrefix("project-") }.sorted {
+            (entries[$0]?.createdAt ?? 0, $0) < (entries[$1]?.createdAt ?? 0, $1)
+        }.map(DevelopmentProject.init(rawValue:))
+    }
+
+    func create(folder: URL) -> DevelopmentProject {
+        let project = DevelopmentProject(rawValue: "project-" + UUID().uuidString.lowercased())
+        var details = DevelopmentDetails(name: folder.lastPathComponent, icon: "", folder: folder.path,
+                                         createdAt: Date().timeIntervalSince1970)
+        details.record("Project created")
+        save(details, for: project)
+        return project
     }
 
     func details(_ project: DevelopmentProject) -> DevelopmentDetails {
@@ -67,21 +91,35 @@ struct DevelopmentProjects: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            TrailMenuRow(title: Space.development.name, selected: false, action: {
-                SpaceTray.openSpaces(browser, from: SpaceAnchors.heading(Space.development.id, overview: false))
-            }) { SpaceMark(icon: Space.development.icon, size: SideBar.mark) }
-            .background { SpaceAnchor(kind: .heading(Space.development.id)) }
+            SpaceName(space: .development, browser: browser)
             Divider()
-            Text("Projects").font(.caption).foregroundStyle(.secondary).padding(.horizontal, SideBar.inner)
-            ForEach(DevelopmentProject.allCases, id: \.self) { project in
-                let details = DevelopmentDirectory.shared.details(project)
-                TrailMenuRow(title: details.name, selected: browser.developmentProject == project, action: {
-                    browser.developmentProject = project
-                }) {
-                    if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
-                    else { Text(details.icon) }
+            Quiet(icon: "plus", title: "New Project", prefs: browser.prefs, browser: browser) {
+                guard let window = NSApp.keyWindow else { return }
+                let panel = NSOpenPanel()
+                panel.title = "Choose a project folder"
+                panel.prompt = "Create Project"
+                panel.canChooseFiles = false
+                panel.canChooseDirectories = true
+                panel.beginSheetModal(for: window) { result in
+                    guard result == .OK, let folder = panel.url else { return }
+                    browser.developmentProject = DevelopmentDirectory.shared.create(folder: folder)
                 }
             }
+            Text("Projects").font(.caption).foregroundStyle(.secondary).padding(.horizontal, SideBar.inner)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(DevelopmentDirectory.shared.projects, id: \.self) { project in
+                        let details = DevelopmentDirectory.shared.details(project)
+                        TrailMenuRow(title: details.name, selected: browser.developmentProject == project, action: {
+                            browser.developmentProject = project
+                        }) {
+                            if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
+                            else { Text(details.icon) }
+                        }
+                    }
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
         }
     }
 }
@@ -98,6 +136,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     lazy var view: WKWebView = {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(toolbar, name: "toolbar")
+        configuration.userContentController.add(toolbar, name: "activity")
         configuration.websiteDataStore = .nonPersistent()
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = self
@@ -131,14 +170,15 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         guard url.scheme == "yab-development" else {
             let local = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "Development")
-            let workspace = url.isFileURL && url.path == local?.path
-            let preview = action.targetFrame == nil && ["http", "https"].contains(url.scheme?.lowercased() ?? "")
-            decisionHandler(workspace || preview ? .allow : .cancel)
+            let workspace = action.targetFrame?.isMainFrame == true && url.isFileURL && url.path == local?.path
+            let preview = action.targetFrame?.isMainFrame != true && ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+            let emptyFrame = action.targetFrame?.isMainFrame == false && url.absoluteString == "about:blank"
+            decisionHandler(workspace || preview || emptyFrame ? .allow : .cancel)
             return
         }
         decisionHandler(.cancel)
         guard let browser, action.sourceFrame.isMainFrame,
-              let project = DevelopmentProject(rawValue: url.lastPathComponent) else { return }
+              let project = DevelopmentDirectory.shared.projects.first(where: { $0.rawValue == url.lastPathComponent }) else { return }
         if url.host == "select" {
             browser.developmentProject = project
             return
@@ -149,8 +189,11 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             guard let name = items.first(where: { $0.name == "name" })?.value?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !name.isEmpty, let icon = items.first(where: { $0.name == "icon" })?.value else { return }
+            let previous = details
             details.name = String(name.prefix(80))
             details.icon = String(icon.prefix(1))
+            guard details != previous else { return }
+            details.record("Project settings updated")
         } else if url.host == "folder" {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false
@@ -159,6 +202,8 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
             panel.beginSheetModal(for: window) { result in
                 guard result == .OK, let url = panel.url else { return }
                 var current = DevelopmentDirectory.shared.details(project)
+                guard current.folder != url.path else { return }
+                current.record("Source folder changed")
                 current.folder = url.path
                 DevelopmentDirectory.shared.save(current, for: project)
             }
@@ -191,8 +236,18 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
     var chatWidth: CGFloat = 300
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame, let info = message.body as? [String: Any],
-              let active = info["active"] as? String, let mode = info["mode"] as? String,
+        guard message.frameInfo.isMainFrame, let info = message.body as? [String: Any] else { return }
+        if message.name == "activity" {
+            let directory = DevelopmentDirectory.shared
+            guard let id = info["project"] as? String,
+                  let project = directory.projects.first(where: { $0.rawValue == id }),
+                  let title = info["title"] as? String, !title.isEmpty else { return }
+            var details = directory.details(project)
+            details.record(String(title.prefix(200)))
+            directory.save(details, for: project)
+            return
+        }
+        guard let active = info["active"] as? String, let mode = info["mode"] as? String,
               let width = info["width"] as? NSNumber else { return }
         self.active = active
         self.mode = mode
@@ -221,7 +276,7 @@ struct DevelopmentPane: View {
                 Button {
                     guard let anchor = projectAnchor.view else { return }
                     let menu = NSMenu(title: "Switch project")
-                    for item in DevelopmentProject.allCases {
+                    for item in DevelopmentDirectory.shared.projects {
                         let row = ClosureItem(DevelopmentDirectory.shared.details(item).name) { browser.developmentProject = item }
                         row.state = item == project ? .on : .off
                         menu.addItem(row)
@@ -281,7 +336,7 @@ private struct DevelopmentWebPane: NSViewRepresentable {
         return browser.developmentContent.view
     }
     func updateNSView(_ view: WKWebView, context: Context) {
-        browser.developmentContent.select(project)
         browser.developmentContent.updateDirectory()
+        browser.developmentContent.select(project)
     }
 }

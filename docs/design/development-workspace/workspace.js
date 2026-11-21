@@ -60,7 +60,7 @@ function restoreChat(id) {
   project = id;
   const item = projects[id];
   const previous = chats.get(id);
-  const starter = id === 'yab' ? initialMessages :
+  const starter = id === 'yab' ? initialMessages : !item.feature ? '' :
     '<div class="day">Today</div><p class="bubble you">What is next for '+escapeHTML(item.name)+'?</p>'+
     '<p class="bubble them">The next feature is '+item.feature+'. '+item.goal+'</p>'+
     '<button class="chat-link" data-route="feature">'+icon('roadmap')+item.feature+icon('right')+'</button>';
@@ -92,9 +92,9 @@ function projectList() {
 }
 function otherProject() {
   const item = projects[project];
-  if (screen === 'feature') return '<article class="page">'+roadmapCrumb(item.area)+tabHeader('file',item.feature,[featureState(selectedFeature())],buildButton(selectedFeature())+action('Discuss','data-action="discuss"'))+sectionBlock('Feature definition','<p class="body-copy">'+item.goal+'</p>')+'</article>';
+  if (screen === 'feature' && item.feature) return '<article class="page">'+roadmapCrumb(item.area)+tabHeader('file',item.feature,[featureState(selectedFeature())],buildButton(selectedFeature())+action('Discuss','data-action="discuss"'))+sectionBlock('Feature definition','<p class="body-copy">'+item.goal+'</p>')+'</article>';
   if (screen === 'review') return '<section class="page">'+tabHeader('diff','Code review')+'<p class="body-copy">No changes awaiting review in '+escapeHTML(item.name)+'.</p></section>';
-  return '<section class="page">'+tabHeader('folder',item.name,[],action('Open roadmap','data-route="roadmap"'))+'<section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list"><button class="row" data-route="feature"><span class="well small">'+icon('roadmap')+'</span><span><b>'+item.feature+'</b><small>'+item.area+'</small></span><span class="trail">Planned</span>'+icon('right')+'</button></div></section></section>';
+  return overview();
 }
 function pathFor(id, view) {
   return id === 'yab' ? view : id + '/' + view;
@@ -126,20 +126,29 @@ function status() {
   return '<span class="label ' + (accepted ? 'success' : '') + '"><i class="dot"></i>' + (accepted ? 'Accepted' : 'Ready for review') + '</span>';
 }
 function overview() {
-  return `<section class="page">
-    ${tabHeader('layout',projects[project].name,['orelhassid/yab2','main'],action('Open roadmap','data-route="roadmap"'))}
-    <div class="section-heading"><h2>${accepted ? 'Recently accepted' : 'Needs your review'}</h2></div>
-    <div class="feature-hero"><div class="feature-copy">${status()}<h2>Dock download progress</h2><p>Clear the Dock indicator when the last active download is canceled.</p>
-      <div class="btns">${action(accepted ? 'View changes' : 'Review changes','data-route="review"',true)}${action('Open feature','data-route="feature"')}</div></div>${scene()}</div>
-    <section class="block"><div class="section-heading"><h2>On the roadmap</h2></div><div class="list">
-      <button class="row" data-route="feature"><span class="well small">${icon('download')}</span><span><b>Downloads</b><small>Dock download progress</small></span><span class="trail">${accepted ? '3 of 3 tasks' : '2 of 3 tasks'}</span>${icon('right')}</button>
-      <div class="row"><span class="well small">${icon('layout')}</span><span><b>Navigation</b><small>Compact header controls</small></span><span class="trail">Planned</span></div>
-    </div></section>
-    <section class="block"><div class="section-heading"><h2>Since your last visit</h2></div><ul class="timeline">
-    ${accepted ? '<li><time>Just now</time>' + icon('checked') + 'You accepted Dock download progress</li>' : ''}
-    <li><time>10:42 AM</time>${icon('checked')} Dock progress checks passed</li>
-    <li><time>10:39 AM</time>${icon('diff')} Codex updated the cancellation behavior</li>
-    <li><time>Yesterday</time>${icon('roadmap')} You added cancellation to the feature scope</li></ul></section></section>`;
+  const details = directory[project] || {};
+  const features = productLanes().flatMap(lane => lane.features);
+  const shipped = features.filter(f => ['Accepted','Shipped'].includes(featureState(f))).length;
+  const date = seconds => new Date(seconds * 1000);
+  const events = [...(details.activity || [])].reverse();
+  if (project === 'yab') events.push(
+    {title:'Dock progress checks passed'}, {title:'Codex updated the cancellation behavior'},
+    {title:'Cancellation added to the feature scope'}
+  );
+  const activity = events.map(event => {
+    const when = event.time ? date(event.time).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'Earlier';
+    return '<li><time>'+when+'</time>'+icon('history')+escapeHTML(event.title)+'</li>';
+  }).join('');
+  const shortcuts = destinations.filter(([route]) => ['roadmap','specs','tasks','review'].includes(route))
+    .map(([route,label,symbol]) => '<button class="tool-card" data-route="'+route+'">'+icon(symbol)+escapeHTML(label)+icon('right')+'</button>').join('');
+  return '<section class="page overview"><div class="project-cover">'+
+    tabHeader('folder',projects[project].name,[],action(icon('settings')+' Settings','data-route="settings"'))+'</div>'+
+    sectionBlock('Project details','<dl class="project-facts"><div><dt>Source folder</dt><dd>'+escapeHTML(details.folder || 'No folder selected')+'</dd></div>'+
+      '<div><dt>Created</dt><dd>'+(details.createdAt ? date(details.createdAt).toLocaleDateString(undefined,{dateStyle:'medium'}) : 'Not recorded')+'</dd></div>'+
+      '<div><dt>Roadmap progress</dt><dd>'+shipped+' of '+features.length+' shipped or accepted</dd>'+
+      (features.length ? '<progress aria-label="Roadmap progress" value="'+shipped+'" max="'+features.length+'"></progress>' : '')+'</div></dl>')+
+    sectionBlock('Project tools','<div class="tool-cards">'+shortcuts+'</div>')+
+    sectionBlock('Activity',activity ? '<ul class="timeline">'+activity+'</ul>' : '<p class="body-copy">No activity recorded yet.</p>')+'</section>';
 }
 function feature() {
   const checks = ['Combine active downloads across windows into one indicator.',
@@ -191,16 +200,17 @@ function review() {
     <section class="block"><div class="section-heading"><h2>Verification</h2></div><details class="checks-box panel" open><summary><span class="success-text">${icon('checked')}</span> 2 checks passed</summary><ul><li>Another download in progress keeps its bar.</li><li>Canceling the last download clears the Dock tile.</li></ul></details></section></section>`;
 }
 const previewURLs = new Map();
+const loadedPreviews = new Map();
 const terminalHistory = new Map();
 function toolSurface(title, body) {
   return '<section class="page">'+tabHeader(({Tasks:'list',Preview:'layout',Terminal:'terminal'})[title],title)+' '+body+'</section>';
 }
 function preview() {
-  return toolSurface('Preview','<form id="preview-form" class="panel tool-form"><label for="app-url">App URL</label><div><input id="app-url" type="url" required placeholder="http://localhost:3000"><button class="btn primary">Open in browser ↗</button></div></form>');
+  return '<section class="preview-surface"><form id="preview-form" class="tool-form"><label for="app-url">App URL</label><div><input id="app-url" type="url" required placeholder="http://localhost:3000"><button class="btn primary">Preview</button><button class="btn" value="external">Open in browser ↗</button></div></form><iframe title="Project preview" sandbox="allow-scripts allow-forms allow-same-origin" referrerpolicy="no-referrer"></iframe></section>';
 }
 function terminal() {
   const history = terminalHistory.get(project) ?? [];
-  return toolSurface('Terminal','<div class="panel terminal-surface"><small>'+escapeHTML(projects[project].name)+' · Demo shell</small><pre>'+escapeHTML(history.join('\n'))+'</pre><form id="terminal-form"><label for="command">❯</label><input id="command" aria-label="Demo terminal command" autocomplete="off" placeholder="Type help"></form></div>');
+  return '<div class="terminal-surface"><small>'+escapeHTML(projects[project].name)+' · Demo shell</small><pre>'+escapeHTML(history.join('\n'))+'</pre><form id="terminal-form"><label for="command">❯</label><input id="command" aria-label="Demo terminal command" autocomplete="off" placeholder="Type help"></form></div>';
 }
 document.addEventListener('submit', event => {
   event.preventDefault();
@@ -213,13 +223,17 @@ document.addEventListener('submit', event => {
       return;
     }
     previewURLs.set(project,url.href);
-    window.open(url.href,'_blank','noopener,noreferrer');
+    if (event.submitter?.value === 'external') window.open(url.href,'_blank','noopener,noreferrer');
+    else {
+      loadedPreviews.set(project,url.href);
+      content.querySelector('iframe').src = url.href;
+    }
   }
   if (event.target.id === 'terminal-form') {
     const command = document.querySelector('#command').value.trim();
     if (!command) return;
     const history = terminalHistory.get(project) ?? [];
-    const result = command === 'help' ? 'help   pwd   clear' : command === 'pwd' ? '~/Projects/'+projects[project].name : 'Demo shell: type help for available commands.';
+    const result = command === 'help' ? 'help   pwd   clear' : command === 'pwd' ? (directory[project]?.folder || 'No source folder selected.') : 'Demo shell: type help for available commands.';
     terminalHistory.set(project,command === 'clear' ? [] : [...history,'❯ '+command,result]);
     render();
     document.querySelector('#command').focus();
@@ -265,8 +279,10 @@ function render() {
   else if (screen !== 'feature' && selectedFeature()) content.innerHTML = productSpec(selectedFeature());
   else if (screen === 'preview') {
     content.innerHTML = preview();
+    if (loadedPreviews.has(project)) content.querySelector('iframe').src = loadedPreviews.get(project);
     document.querySelector('#app-url').value = previewURLs.get(project) ?? '';
   } else if (screen === 'terminal') content.innerHTML = terminal();
+  else if (screen === 'overview') content.innerHTML = overview();
   else content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
   document.querySelector('#project-picker').value = project;
   document.querySelectorAll('nav [data-route]').forEach(b=>{
@@ -316,6 +332,7 @@ function addMessage() {
   }
   messages.append(bubble); bubble.scrollIntoView({block:'nearest'});
   draft.value=''; send.disabled=true;
+  recordActivity('Message added to project chat');
 }
 document.addEventListener('click',e=>{
   const b=e.target.closest('button');
@@ -341,6 +358,7 @@ document.addEventListener('click',e=>{
     case 'send': addMessage(); break;
     case 'accept': {
       accepted = true;
+      recordActivity('Accepted Dock download progress');
       const card = document.querySelector('.run-card');
       card.querySelector('b').textContent = 'Changes accepted';
       card.querySelector('small').textContent = 'View reviewed diff · 2 files';
@@ -366,6 +384,13 @@ function nativeAction(action, id, values = {}) {
 }
 const defaultNames = Object.fromEntries(Object.entries(projects).map(([id,item])=>[id,item.name]));
 let directory = {};
+function recordActivity(title) {
+  if (nativeSpace) { window.webkit?.messageHandlers.activity?.postMessage({project,title}); return; }
+  const details = directory[project] ||= {};
+  details.activity = [...(details.activity || []), {title,time:Date.now()/1000}];
+  localStorage.setItem('development-directory',JSON.stringify(directory));
+  if (screen === 'overview') render();
+}
 function applyDirectory(entries) {
   const changed = JSON.stringify(directory) !== JSON.stringify(entries);
   const openForm = document.querySelector('#project-settings');
@@ -376,6 +401,9 @@ function applyDirectory(entries) {
     (newDetails.icon || '') === (oldDetails.icon || '');
   const edits = folderChanged ? [openForm.elements.name.value,openForm.elements.symbol.value] : null;
   directory = entries;
+  for (const id of Object.keys(entries)) {
+    if (/^project-[a-f0-9-]+$/.test(id) && !projects[id]) projects[id] = {color:'var(--muted)'};
+  }
   for (const [id,item] of Object.entries(projects)) {
     item.name = entries[id]?.name || defaultNames[id];
     item.symbol = entries[id]?.icon || '';
@@ -387,7 +415,9 @@ function applyDirectory(entries) {
   if (!changed) return;
   document.querySelector('#project-title').textContent = projects[project].name;
   document.querySelector('#chat-mark').innerHTML = projectMark(project);
-  render();
+  const visualChange = ['name','icon','folder'].some(key=>oldDetails[key] !== newDetails[key]);
+  if (visualChange || screen === 'overview') render();
+  else projectList();
   if (edits) {
     const fields = document.querySelector('#project-settings').elements;
     [fields.name.value,fields.symbol.value] = edits;
@@ -417,9 +447,10 @@ document.addEventListener('submit', event=>{
   const symbol = Array.from(new Intl.Segmenter().segment(fields.symbol.value))[0]?.segment || '';
   if (nativeSpace) nativeAction('save',project,{name,icon:symbol});
   else {
-    const entries = {...directory,[project]:{name,icon:symbol,folder:fields.folder.value.trim()}};
+    const entries = {...directory,[project]:{...directory[project],name,icon:symbol,folder:fields.folder.value.trim()}};
     localStorage.setItem('development-directory',JSON.stringify(entries));
     applyDirectory(entries);
+    recordActivity('Project settings updated');
   }
 });
 const body = document.querySelector('.body');

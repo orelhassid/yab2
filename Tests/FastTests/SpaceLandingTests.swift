@@ -64,7 +64,30 @@ struct SpaceLandingTests {
             #expect(browser.activeID == source[1].id)
             browser.enterDevelopment()
             #expect(browser.developmentProject == .sunday)
+            let first = browser.switcherSpaces.first?.id
+            let last = browser.switcherSpaces.last?.id
+            browser.stepSpace(-1)
+            #expect(browser.sidebarSpaceID == last)
+            browser.enterDevelopment()
+            browser.stepSpace(1)
+            #expect(browser.sidebarSpaceID == first)
         }
+    }
+
+    @Test func developmentProjectSurvivesReloadAlongsideLegacyProjects() throws {
+        let key = "development.projectDetails"
+        let previous = Store.settings.data(forKey: key)
+        defer { Store.settings.set(previous, forKey: key) }
+        Store.settings.set(Data(#"{"sunday":{"name":"Sunday Studio","icon":"","folder":""}}"#.utf8), forKey: key)
+        let directory = DevelopmentDirectory()
+        let project = directory.create(folder: URL(fileURLWithPath: "/tmp/Example"))
+        let reopened = DevelopmentDirectory()
+        #expect(reopened.projects.last == project)
+        #expect(reopened.details(.sunday).name == "Sunday Studio")
+        #expect(reopened.details(.sunday).createdAt == nil)
+        #expect(reopened.details(project).folder == "/tmp/Example")
+        #expect(reopened.details(project).createdAt != nil)
+        #expect(reopened.details(project).activity?.first?.title == "Project created")
     }
 
     /// Hovering another space with a tab in hand opens nothing there: the

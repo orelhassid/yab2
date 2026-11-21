@@ -17,6 +17,7 @@ const browserLanes = [
 function productLanes() {
   if (project === 'yab') return browserLanes;
   const p = projects[project];
+  if (!p.feature) return [];
   return [{name:p.area, goal:p.goal, icon:'roadmap', features:[{id:'feature',title:p.feature,state:'Planned',goal:p.goal}]}];
 }
 function featureState(f) {

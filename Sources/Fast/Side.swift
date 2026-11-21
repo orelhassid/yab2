@@ -3116,6 +3116,9 @@ struct SpaceName: View {
     }
 
     private var controlsWidth: CGFloat {
+        if space.id == Space.development.id && !hovering && !onDots && onStep == nil {
+            return Self.dotsInset
+        }
         let count: CGFloat = stepsShown ? 3 : 1
         return count * Self.dots.width + (count - 1) * Self.controlGap + Self.dotsInset
     }
@@ -3123,7 +3126,7 @@ struct SpaceName: View {
     private var live: Bool { browser != nil }
     /// Something to fold: the chevron shows, and a click folds.
     private var folds: Bool {
-        guard let browser, space.id != Space.allTabs.id else { return false }
+        guard let browser, space.id != Space.allTabs.id, space.id != Space.development.id else { return false }
         if let scope, scope.id != browser.spaceID {
             return browser.parked[scope.id]?.tabs.contains(where: \.kept) == true || !folders.empties(in: scope.id).isEmpty
         }
@@ -3204,7 +3207,7 @@ struct SpaceName: View {
         .contentShape(RoundedRectangle(cornerRadius: SideBar.radius, style: .continuous))
         .onHover { hovering = live && $0 }
         .steadyMenu(actions: true, tone: browser.flatMap { SpaceSurface.tone(in: $0) }) {
-            if let browser { SpaceMenu(browser: browser, space: space) }
+            if let browser, space.id != Space.development.id { SpaceMenu(browser: browser, space: space) }
         }
     }
 
@@ -3249,6 +3252,7 @@ struct SpaceName: View {
     private func dots(_ browser: Browser) -> some View {
         // The searchable panel (ActionMenu.swift) from where it was pressed.
         Button {
+            if space.id == Space.development.id { openSpaces(browser); return }
             guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
             let at = NSApp.currentEvent.map { window.convertPoint(toScreen: $0.locationInWindow) } ?? NSEvent.mouseLocation
             ActionMenu.show(NSHostingMenu(rootView: SpaceMenu(browser: browser, space: space)), in: window, at: at, tone: SpaceSurface.tone(in: browser))

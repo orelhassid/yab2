@@ -9,7 +9,7 @@ body { margin: 0; background: var(--stage); color: var(--ink) }
 button,textarea { font: inherit; color: inherit }
 button { border: 0; background: none; cursor: pointer }
 button:disabled { cursor: default }
-button:focus-visible,textarea:focus-visible,summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px }
+button:focus-visible,summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px }
 button:not(:disabled):hover { filter: brightness(1.17) }
 button[hidden],[hidden] { display: none!important }
 svg.i { display: inline-block; width: 17px; height: 17px; flex: none; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round }
@@ -27,7 +27,7 @@ svg.i { display: inline-block; width: 17px; height: 17px; flex: none; vertical-a
 .spacer { flex: 1 }
 .filter { background: #ffffff0c; border-radius: 8px; padding: 8px 10px; margin: 1px 0 10px; color: #c5bbd4 }
 .filter input { width: 100%; min-width: 0; color: inherit; font: inherit; font-size: 13px; border: 0; background: none; outline: none }
-.filter:focus-within { outline: 2px solid var(--blue) }
+.filter:focus-within { box-shadow: inset 0 0 0 1px var(--muted) }
 .filter input::placeholder { color: #c1b7d0 }
 .space-picker { position: relative; border-bottom: 1px solid #ffffff16; padding-bottom: 9px; margin-bottom: 14px }
 .space-picker button,.project-entry { width: 100%; text-align: left; padding: 9px 10px; border-radius: 8px; font-size: 14px }
@@ -306,7 +306,7 @@ nav button { padding:4px 9px; border-radius:8px; flex:none }
 .layout-actions button:hover,.project-picker:hover,.layout-actions button[aria-pressed=true]:last-child { background:var(--wash);color:var(--ink) }
 .project-picker { position:relative; padding:4px 6px; border-radius:8px; min-width:0 }
 .project-picker select { position:absolute; inset:0; opacity:0; width:100%; cursor:pointer }
-.project-picker:focus-within { outline:2px solid var(--blue) }
+.project-picker:focus-within { box-shadow: inset 0 0 0 1px var(--muted) }
 .project-picker > [data-icon] .i { width:10px }
 #project-settings { max-width:530px }
 #project-settings label { display:grid; grid-template-columns:110px 1fr; align-items:center; gap:12px; margin:0 0 14px }
@@ -329,3 +329,31 @@ nav button { padding:4px 9px; border-radius:8px; flex:none }
 @container(max-width:770px){ .tool-tabs button span { display:none } .tool-tabs button { padding:5px 7px } }
 [data-native-space] .workspace-header { display:none }
 [data-native-space] .body { grid-template-rows:0 minmax(0,1fr) }
+
+/* Owned text fields share a neutral focus treatment. The composer owns its editor's focus. */
+input:focus, textarea:focus, select:focus { outline: 0; box-shadow: inset 0 0 0 1px var(--muted) }
+.composer:focus-within { border-color: var(--muted) }
+.composer textarea:focus,.filter input:focus,.project-picker select:focus { outline: 0; box-shadow: none }
+.terminal-surface { min-height: 100%; background: var(--ground) }
+.preview-surface { height: 100%; display: flex; flex-direction: column }
+.preview-surface form { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line) }
+.preview-surface form div { flex: 1 }
+.preview-surface iframe { flex: 1; width: 100%; border: none; background: var(--ground) }
+.body[data-layout=full] #content:has(.preview-surface,.terminal-surface) { padding-bottom: 0 }
+.project-cover { --photo: url('../../../Resources/HomeBackgrounds/eclipse.webp'); background: linear-gradient(90deg,#13191fee,#13191f66),var(--photo) center 47%/cover; border-radius: var(--radius); padding: clamp(18px,4%,36px) }
+[data-native-space] .project-cover { --photo: url('eclipse.webp') }
+.project-cover .tab-heading { border: 0; margin: 0; padding: 0; min-height: 60px }
+.project-cover .btn { display: inline-flex; align-items: center; gap: 6px }
+.project-facts,.tool-cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,150px),1fr)); gap: 8px }
+.project-facts { margin: 0 }
+.project-facts div,.tool-card { padding: 14px; background: var(--wash); border-radius: 12px }
+.project-facts dt { font-size: 12px; color: var(--muted) }
+.project-facts dd { margin: 4px 0 0; overflow-wrap: anywhere }
+.project-facts progress { width: 100%; height: 5px; accent-color: var(--green) }
+.tool-card { display: flex; align-items: center; gap: 10px; text-align: left; font-weight: 600; background: color-mix(in srgb,var(--tint) 10%,var(--ground)); border: 1px solid color-mix(in srgb,var(--tint) 25%,var(--line)) }
+.tool-card .i { color: var(--tint) }
+.tool-card .i:last-child { margin-left: auto; width: 12px }
+.tool-card[data-route=roadmap] { --tint: var(--blue) }
+.tool-card[data-route=specs] { --tint: #d0b0e8 }
+.tool-card[data-route=tasks] { --tint: var(--green) }
+.tool-card[data-route=review] { --tint: #e8bf82 }
