@@ -88,11 +88,12 @@ final class DevelopmentDirectory {
 
 struct DevelopmentProjects: View {
     let browser: Browser
+    @AppStorage("development.projects.collapsed", store: Store.settings) private var collapsed = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: SideBar.gap) {
             SpaceName(space: .development, browser: browser)
-            Divider()
+            SidebarSectionDivider()
             Quiet(icon: "plus", title: "New Project", prefs: browser.prefs, browser: browser) {
                 guard let window = NSApp.keyWindow else { return }
                 let panel = NSOpenPanel()
@@ -105,16 +106,22 @@ struct DevelopmentProjects: View {
                     browser.developmentProject = DevelopmentDirectory.shared.create(folder: folder)
                 }
             }
-            Text("Projects").font(.caption).foregroundStyle(.secondary).padding(.horizontal, SideBar.inner)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(DevelopmentDirectory.shared.projects, id: \.self) { project in
-                        let details = DevelopmentDirectory.shared.details(project)
-                        TrailMenuRow(title: details.name, selected: browser.developmentProject == project, action: {
-                            browser.developmentProject = project
-                        }) {
-                            if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
-                            else { Text(details.icon) }
+                LazyVStack(alignment: .leading, spacing: SideBar.gap) {
+                    SidebarSection(collapsed: collapsed) {
+                        SidebarSectionHeader(title: "Projects", paint: Space.development.paint ?? SpacePaint(browser.prefs),
+                                             collapsed: collapsed, toggle: { collapsed.toggle() }) {
+                            Symbol("folder", size: SideBar.mark)
+                        }
+                    } rows: {
+                        ForEach(DevelopmentDirectory.shared.projects, id: \.self) { project in
+                            let details = DevelopmentDirectory.shared.details(project)
+                            let selected = browser.developmentProject == project
+                            SidebarTabButton(title: details.name, selected: selected, prefs: browser.prefs,
+                                             action: { browser.developmentProject = project }) {
+                                if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
+                                else { Text(details.icon) }
+                            }
                         }
                     }
                 }

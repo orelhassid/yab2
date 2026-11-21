@@ -25,6 +25,20 @@ the user asks.
 - `./design-check --file PATH` checks a Swift file against the design
   system (shared frames, buttons, key marks). Fix what it reports.
 
+## Reuse the native sidebar
+
+Use All Tabs as the reference when changing a Space sidebar. Group rows with
+`SidebarSection` and `SidebarSectionHeader`. Use `SideRow` for browser tabs
+and `SidebarTabButton` for other selectable destinations. Both use
+`SidebarTabRow`. Use `Quiet` for a New action, `SpaceName` for the Space
+switcher and `SidebarSectionDivider` for a section divider. Locate the
+existing sidebar search control before adding a search field.
+
+Configure these components with content and actions. If a Space needs a
+variation, extend the shared component and check both the Space and All Tabs.
+When a maintainer corrects a recurring UI pattern, record the specific rule
+and its owning component here or in the relevant project skill.
+
 ## Shared local preview
 
 All chats working in this checkout share `build/Yab Sidebar Preview.app` and its `spaces-preview` profile. Reuse the running instance for interactive review. When an update is needed, build from the shared checkout and refresh that same app after checking for another session's active build or UI test. Keep isolated automated tests in their own test profiles and close any temporary test app when the run ends.

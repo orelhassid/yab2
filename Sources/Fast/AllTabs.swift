@@ -278,9 +278,33 @@ struct AllTabsOrganizationMenu: View {
     }
 }
 
-private struct AllTabsSectionHeader: View {
-    let section: AllTabsConfiguration.Section
-    let browser: Browser
+struct SidebarSection<Header: View, Rows: View>: View {
+    let collapsed: Bool
+    var indent: CGFloat = Folders.indent
+    @ViewBuilder var header: () -> Header
+    @ViewBuilder var rows: () -> Rows
+
+    var body: some View {
+        header()
+        if !collapsed { rows().padding(.leading, indent) }
+    }
+}
+
+struct SidebarSectionDivider: View {
+    var body: some View {
+        Divider().padding(.horizontal, SideBar.inner).frame(height: SideBar.line)
+    }
+}
+
+struct SidebarSectionHeader<Mark: View>: View {
+    let title: String
+    let paint: SpacePaint
+    let collapsed: Bool
+    let toggle: () -> Void
+    var subdued = true
+    var actionTitle = ""
+    var open: (() -> Void)?
+    @ViewBuilder var mark: () -> Mark
     @State private var hovered = false
     @Environment(\.tone) private var tone
     @Environment(\.tabTitleSize) private var titleSize
@@ -288,22 +312,20 @@ private struct AllTabsSectionHeader: View {
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        let config = AllTabsConfiguration.shared
-        let collapsed = config.isCollapsed(section.id)
-        let style = config.headerStyle
+        let style = AllTabsConfiguration.shared.headerStyle
         HStack(spacing: SideBar.markGap) {
-            Button { config.toggleCollapse(section.id) } label: {
+            Button { toggle() } label: {
                 HStack(spacing: SideBar.markGap) {
                     if style == .icon {
                         Group {
-                            if hovered { disclosure(collapsed) } else { groupIcon }
+                            if hovered { disclosure(collapsed) } else { mark() }
                         }
                         .frame(width: SideBar.mark, height: SideBar.mark)
                     }
                     if style == .badge {
-                        SidebarSpaceBadge(title: section.title, fill: badgeTone, titleSize: titleSize)
+                        SidebarSpaceBadge(title: title, fill: badgeTone, titleSize: titleSize)
                     } else {
-                        Text(section.title).lineLimit(1)
+                        Text(title).lineLimit(1)
                     }
                     if style != .icon { disclosure(collapsed) }
                     if style == .hairline {
@@ -315,37 +337,33 @@ private struct AllTabsSectionHeader: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(section.title)
+            .accessibilityLabel(title)
             .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
             .accessibilityAddTraits(.isHeader)
-            Button {
-                if case .space(let id) = section.id { browser.switchSpace(to: id) }
-                else if let first = section.rows.first {
-                    SidebarSpaceActions(browser: browser, id: first.space.id, allTabs: true)
-                        .run({ browser.select(first.tab) }, stay: true)
+            if let open {
+                Button(action: open) {
+                    Text("Open")
+                        .font(.system(size: titleSize - 2, weight: .medium))
+                        .foregroundStyle(Palette.muted(on: tone))
+                        .padding(.horizontal, 4)
+                        .frame(height: RowPlate.column.side)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Text("Open")
-                    .font(.system(size: titleSize - 2, weight: .medium))
-                    .foregroundStyle(Palette.muted(on: tone))
-                    .padding(.horizontal, 4)
-                    .frame(height: RowPlate.column.side)
-                    .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .accessibilityLabel(actionTitle)
+                .keyTip(actionTitle)
+                .opacity(hovered ? 1 : 0)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(actionTitle)
-            .keyTip(actionTitle)
-            .opacity(hovered ? 1 : 0)
-            .overlay(alignment: .trailing) {
-                if style == .dot && !hovered {
-                    Circle().fill(accent).frame(width: 6, height: 6)
-                        .accessibilityHidden(true)
-                }
+        }
+        .overlay(alignment: .trailing) {
+            if style == .dot && !hovered {
+                Circle().fill(accent).frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
             }
         }
         .font(.system(size: titleSize, weight: .semibold))
         .foregroundStyle(Palette.strong(on: tone))
-        .opacity(config.group == .space && !hovered && contrast == .standard ? 0.75 : 1)
+        .opacity(subdued && !hovered && contrast == .standard ? 0.75 : 1)
         .padding(.trailing, SideBar.inner)
         .frame(height: SideBar.row)
         .contentShape(Rectangle())
@@ -356,6 +374,31 @@ private struct AllTabsSectionHeader: View {
         Symbol(collapsed ? "chevron.right" : "chevron.down", size: 9, weight: .semibold)
             .foregroundStyle(Palette.muted(on: tone))
             .fixedSize()
+    }
+
+    private var dark: Bool { (tone?.scheme ?? scheme) == .dark }
+    private var accent: Color { Color(nsColor: paint.color(dark: !dark)) }
+    private var badgeTone: Tone { Tone(paint.color(dark: dark)) }
+
+}
+
+private struct AllTabsSectionHeader: View {
+    let section: AllTabsConfiguration.Section
+    let browser: Browser
+    @Environment(\.tone) private var tone
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let config = AllTabsConfiguration.shared
+        SidebarSectionHeader(title: section.title, paint: paint, collapsed: config.isCollapsed(section.id),
+                             toggle: { config.toggleCollapse(section.id) }, subdued: config.group == .space,
+                             actionTitle: actionTitle, open: {
+            if case .space(let id) = section.id { browser.switchSpace(to: id) }
+            else if let first = section.rows.first {
+                SidebarSpaceActions(browser: browser, id: first.space.id, allTabs: true)
+                    .run({ browser.select(first.tab) }, stay: true)
+            }
+        }) { groupIcon }
     }
 
     @ViewBuilder private var groupIcon: some View {
@@ -381,8 +424,6 @@ private struct AllTabsSectionHeader: View {
 
     private var dark: Bool { (tone?.scheme ?? scheme) == .dark }
     private var accent: Color { Color(nsColor: paint.color(dark: !dark)) }
-    private var badgeTone: Tone { Tone(paint.color(dark: dark)) }
-
     private var actionTitle: String {
         if case .space = section.id { return "Open " + section.title + " Space" }
         return "Show " + (section.rows.first?.tab.rowLabel ?? section.title)
@@ -425,18 +466,18 @@ struct AllTabsRows: View {
                         return true
                     }
             }
-            if pinned.count < rows.count { Divider().padding(.horizontal, SideBar.inner).frame(height: SideBar.line) }
+            if pinned.count < rows.count { SidebarSectionDivider() }
             Quiet(icon: "plus", title: "New tab", height: SideBar.row, news: true,
                   lit: browser.newTabLit, prefs: browser.prefs, browser: browser) { browser.newTab() }
             ForEach(sections) { section in
-                if section.id != .ungrouped {
-                    AllTabsSectionHeader(section: section, browser: browser)
-                        .padding(.top, pins.group == .space && section.id != sections.first?.id ? 12 : 0)
-                }
-                if !pins.isCollapsed(section.id) {
+                SidebarSection(collapsed: pins.isCollapsed(section.id), indent: pins.group == .space ? Folders.indent : 0) {
+                    if section.id != .ungrouped {
+                        AllTabsSectionHeader(section: section, browser: browser)
+                            .padding(.top, pins.group == .space && section.id != sections.first?.id ? 12 : 0)
+                    }
+                } rows: {
                     ForEach(section.rows) { entry in
                         row(entry, showSpaceBadge: pins.group != .space)
-                            .padding(.leading, pins.group == .space ? Folders.indent : 0)
                             .draggable(entry.tab.allTabsKey.uuidString)
                             .dropDestination(for: String.self) { items, point in
                                 guard let key = items.first.flatMap(UUID.init(uuidString:)) else { return false }

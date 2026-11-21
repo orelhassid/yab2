@@ -3793,6 +3793,35 @@ struct SidebarTabRow<Content: View>: View {
     }
 }
 
+/// A selectable sidebar destination that does not need browser-tab actions.
+struct SidebarTabButton<Mark: View>: View {
+    let title: String
+    let selected: Bool
+    let prefs: Preferences
+    let action: () -> Void
+    @ViewBuilder var mark: () -> Mark
+    @Environment(\.tabTitleSize) private var titleSize
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            SidebarTabRow {
+                mark().frame(width: SideBar.mark, height: SideBar.mark)
+                Text(title).font(.system(size: titleSize)).lineLimit(1)
+            }
+            .background {
+                if selected || hovered {
+                    SelectionPlate(corner: SideBar.radius, state: selected ? .selected : .hover, prefs: prefs)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 struct SideRow: View {
     /// The close control can keep the pointer when the row loses its hover.
     struct Hover {
