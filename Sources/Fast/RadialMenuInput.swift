@@ -13,10 +13,15 @@ final class RadialMenuInput {
     private var wheel: RadialMenuHost?
     private var dropdown: RadialDropdownHost?
     private var submenu: RadialDropdownHost?
+    private var pickingMainRing = false
     private var moved = false
     private var flickDistance: CGFloat?
     private var replaying = false
     private let pages = NSHashTable<NSView>.weakObjects()
+
+    private let tabBodies = NSHashTable<NSView>.weakObjects()
+
+    func registerTabBody(_ body: NSView) { tabBodies.add(body) }
 
     func registerPage(_ page: NSView) { pages.add(page) }
 
@@ -41,6 +46,7 @@ final class RadialMenuInput {
         submenu = nil
         wheel?.removeFromSuperview()
         wheel = nil
+        pickingMainRing = false
         moved = false
         flickDistance = nil
         window = nil
@@ -63,7 +69,7 @@ final class RadialMenuInput {
         hold = nil
         let slots = RadialPreferences.saved
         let origin = root.convert(down.locationInWindow, from: nil)
-        let paint = SpacePaint(browser.prefs)
+        let paint = browser.developmentLook ?? SpacePaint(browser.prefs)
         if Store.settings.string(forKey: RadialPreferences.layoutKey) == "dropdown" {
             dropdown = RadialDropdownHost.place(rows: RadialDropdownRow.commands(slots, browser: browser),
                 paint: paint, in: root, near: origin) { [weak self, weak browser] index in
@@ -130,7 +136,7 @@ final class RadialMenuInput {
         guard !children.isEmpty else { return }
         let offset = dropdown.topOffset(of: index)
         let y = root.isFlipped ? dropdown.frame.minY + offset : dropdown.frame.maxY - offset
-        submenu = RadialDropdownHost.place(rows: children.map(\.row), paint: SpacePaint(browser.prefs), in: root,
+        submenu = RadialDropdownHost.place(rows: children.map(\.row), paint: browser.developmentLook ?? SpacePaint(browser.prefs), in: root,
             near: CGPoint(x: 0, y: y), parent: dropdown) { [weak self, weak browser] index in
                 guard let self, let browser, children[index].row.enabled else { return }
                 clear()
@@ -163,8 +169,8 @@ final class RadialMenuInput {
 
     private func trackWheel(_ wheel: RadialMenuHost, at location: CGPoint, in browser: Browser) {
         var menu = wheel.rootView
-        if let down {
-            let origin = flickDistance == nil ? nil : down.locationInWindow
+        if down != nil || pickingMainRing {
+            let origin = flickDistance == nil ? nil : down?.locationInWindow
             let delta = wheel.delta(at: location, from: origin)
             menu.selection.move(delta, childCount: menu.rows.count, activationDistance: flickDistance)
             menu.rows = menu.selection.wedge.map { children(of: menu.selection.slots[$0], in: browser).map(\.row) } ?? []
@@ -175,7 +181,7 @@ final class RadialMenuInput {
     }
 
     private func finishWheel(_ wheel: RadialMenuHost, at location: CGPoint, in browser: Browser) {
-        if moved { trackWheel(wheel, at: location, in: browser) }
+        if moved || pickingMainRing { trackWheel(wheel, at: location, in: browser) }
         guard target?.window === window,
               let index = wheel.rootView.selection.wedge, wheel.rootView.available[index] else {
             clear()
@@ -190,14 +196,20 @@ final class RadialMenuInput {
         } else if case .command(let command) = item {
             clear()
             RadialPreferences.run(command, in: browser)
-        } else if case .submenu = item, down != nil, !wheel.rootView.rows.isEmpty {
+        } else if !wheel.rootView.rows.isEmpty, pickingMainRing || (down != nil && item != .spaces) {
+            pickingMainRing = false
             down = nil
         } else {
             clear()
         }
     }
 
-    private func page(in window: NSWindow, at location: CGPoint) -> NSView? {
+    private func page(in window: NSWindow, at location: CGPoint, browser: Browser) -> NSView? {
+        if browser.inDevelopment {
+            return tabBodies.allObjects.first { body in
+                body.window === window && !body.isHiddenOrHasHiddenAncestor && body.visibleRect.contains(body.convert(location, from: nil))
+            }
+        }
         guard let root = window.contentView?.superview else { return nil }
         var view = root.hitTest(root.convert(location, from: nil))
         while let current = view {
@@ -228,7 +240,7 @@ final class RadialMenuInput {
         switch event.type {
         case .rightMouseDown:
             clear()
-            guard let page = page(in: window, at: location) else { return event }
+            guard let page = page(in: window, at: location, browser: browser) else { return event }
             target = page
             self.window = window
             down = event
@@ -239,9 +251,17 @@ final class RadialMenuInput {
             startFlick(at: location, press: press, in: browser)
             let isDrag = event.type == .rightMouseDragged
             moved = moved || isDrag || flickDistance != nil
+            // The app owns this surface. A click opens the picker, while a drag
+            // still uses the same hold and flick thresholds as a website.
+            if !isDrag, !moved, tabBodies.contains(target), wheel == nil, dropdown == nil {
+                showMenu(for: browser)
+            }
             if let wheel {
                 if isDrag { trackWheel(wheel, at: location, in: browser) }
-                else { finishWheel(wheel, at: location, in: browser) }
+                else if tabBodies.contains(target), !moved {
+                    down = nil
+                    pickingMainRing = true
+                } else { finishWheel(wheel, at: location, in: browser) }
             } else if dropdown != nil {
                 if isDrag {
                     _ = trackDropdown(location)
@@ -255,7 +275,7 @@ final class RadialMenuInput {
             } else if !isDrag {
                 let valid = target?.window === window
                 clear()
-                if valid {
+                if valid, !browser.inDevelopment {
                     replaying = true
                     NSApp.postEvent(event, atStart: true)
                     window.sendEvent(press)

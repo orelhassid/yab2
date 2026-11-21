@@ -415,6 +415,7 @@ struct DevelopmentPane: View {
                     DevelopmentEnvironmentSettings(browser: browser, state: state)
                 }
             }
+            .background { RadialMenuSurface { RadialMenuInput.shared.registerTabBody($0) } }
         }
         .toned(SpaceSurface.tone(for: paint.color))
         .background {

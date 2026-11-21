@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 @testable import Fast
 
@@ -231,5 +232,22 @@ struct RadialMenuTests {
         try mouse(.rightMouseUp, x: 320, y: 240)
         #expect(nativePage.contextPresses == 1)
         #expect(!nativePage.subviews.contains { $0 is RadialDropdownHost })
+
+        browser.select(tab)
+        browser.enterDevelopment()
+        let project = browser.developmentProject
+        let pane = NSHostingView(rootView: DevelopmentPane(browser: browser, project: project, entries: [:])
+            .environment(browser))
+        window.contentView = pane
+        pane.layoutSubtreeIfNeeded()
+        Store.settings.set("wheel", forKey: RadialPreferences.layoutKey)
+        try mouse(.rightMouseDown, x: 320, y: 240)
+        try mouse(.rightMouseUp, x: 320, y: 240)
+        let projectWheel = try #require(pane.subviews.compactMap { $0 as? RadialMenuHost }.first)
+        try mouse(.mouseMoved, x: 367, y: 159)
+        #expect(projectWheel.rootView.selection.wedge == 1)
+        try mouse(.leftMouseDown, x: 367, y: 159)
+        #expect(projectWheel.superview == nil)
+        #expect(browser.active?.libraryPage == .downloads)
     }
 }
