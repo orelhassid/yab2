@@ -46,6 +46,8 @@ struct DevelopmentDetails: Codable, Equatable {
     var modelChoices: [String: ModelChoice]?
     var workspaceWrite: Bool?
 
+    var canWriteProject: Bool { workspaceWrite ?? true }
+
     var cli: String { provider ?? "codex" }
     var choice: ModelChoice { modelChoices?[cli] ?? ModelChoice(cli: cli) }
     var selectedChatID: String? {

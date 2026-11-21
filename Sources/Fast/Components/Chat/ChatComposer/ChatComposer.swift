@@ -22,6 +22,8 @@ struct ChatComposer: View {
     let chat: Chat?
     let live: Bool
     let development: DevelopmentProject?
+    @State private var toolsOpen = false
+    @State private var toolsSearch = ""
     @State private var mentionIndex = 0
     @State private var projectFiles: [URL] = []
     @StateObject private var catalog = DevelopmentCatalog()
@@ -245,12 +247,12 @@ struct ChatComposer: View {
         return start..<words.endIndex
     }
 
-    private var mentionQuery: String? { mentionToken.map { String(words[$0].dropFirst()) } }
+    private var mentionQuery: String? { mentionToken.map { String(words[$0].dropFirst()) } ?? (toolsOpen ? toolsSearch : nil) }
 
     private var mentions: [DevelopmentMention] {
         guard let query = mentionQuery, let development else { return [] }
         let folder = DevelopmentDirectory.shared.details(development).folder
-        let limit = query.isEmpty ? 2 : 6
+        let limit = query.isEmpty ? 6 : 20
         let tabs = browser.tabs.filter { Self.page($0) != nil && !Agents.shared.sealed($0) && (query.isEmpty || $0.label.localizedCaseInsensitiveContains(query)) }
         var rows = tabs.prefix(limit).map { DevelopmentMention(name: $0.label, detail: "Open tab", symbol: "globe", attachment: .tab($0.id)) }
         let prefix = URL(fileURLWithPath: folder).standardizedFileURL.path + "/"
@@ -265,11 +267,19 @@ struct ChatComposer: View {
         return rows
     }
 
+    private func moveMention(_ press: KeyPress) -> KeyPress.Result {
+        let count = mentions.count
+        guard !InputMethod.composing(), count > 0 else { return .ignored }
+        mentionIndex = (mentionIndex + (press.key == .upArrow ? count - 1 : 1)) % count
+        return .handled
+    }
+
     @discardableResult private func pickMention(_ choice: DevelopmentMention? = nil) -> Bool {
-        guard let token = mentionToken, let row = choice ?? mentions.dropFirst(mentionIndex).first else { return false }
+        guard let row = choice ?? mentions.dropFirst(mentionIndex).first else { return false }
         if let item = row.attachment { attach.add(item, chat: chat, browser: browser) }
         if let ref = row.reference, !attach.references.contains(ref) { attach.references.append(ref) }
-        put(String(words[..<token.lowerBound]))
+        if let token = mentionToken { put(String(words[..<token.lowerBound])) }
+        toolsOpen = false
         focused = true
         return true
     }
@@ -277,27 +287,34 @@ struct ChatComposer: View {
     private func mentionMenu(_ project: DevelopmentProject) -> some View {
         let folder = DevelopmentDirectory.shared.details(project).folder
         let rows = mentions
-        return ScrollViewReader { proxy in
-            ThreadScrollView {
-                VStack(spacing: 2) {
-                    if rows.isEmpty { Text("No matching context").foregroundStyle(.secondary) }
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                        Button { pickMention(row) } label: {
-                            HStack {
-                                Symbol(row.symbol, size: 12)
-                                Text(row.name).lineLimit(1)
-                                Spacer()
-                                Text(row.detail).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
+        return VStack(spacing: 4) {
+            if toolsOpen, mentionToken == nil {
+                ThemedSearchField("Find context", text: $toolsSearch)
+                    .onSubmit { _ = pickMention() }
+                    .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { moveMention($0) }
+            }
+            ScrollViewReader { proxy in
+                ThreadScrollView {
+                    VStack(spacing: 2) {
+                        if rows.isEmpty { Text("No matching context").foregroundStyle(.secondary) }
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            SidebarTabButton(title: row.name, selected: index == mentionIndex, prefs: browser.prefs,
+                                             badge: row.badge, action: { pickMention(row) }) {
+                                Symbol(row.symbol, size: 14)
                             }
-                        }.buttonStyle(.yab(index == mentionIndex ? .secondary : .quiet, .small))
-                        .id(index)
+                            .pointerTip(row.detail)
+                            .id(index)
+                        }
                     }
                 }
+                .onChange(of: mentionIndex) { _, index in proxy.scrollTo(index) }
+                .frame(height: min(212, CGFloat(max(rows.count, 1)) * (SideBar.row + 2)))
             }
-            .onChange(of: mentionIndex) { _, index in proxy.scrollTo(index) }
         }
-        .padding(6).frame(height: min(180, CGFloat(max(rows.count, 1)) * 30 + 12))
-        .modifier(LibraryCardSurface())
+        .padding(6)
+        .background(composerSurfaceShape.fill(Palette.wash(on: composerTone)))
+        .overlay { composerSurfaceShape.strokeBorder(Palette.muted(on: composerTone).opacity(0.25)) }
+        .onExitCommand { toolsOpen = false }
         .onChange(of: mentionQuery) { _, _ in mentionIndex = 0 }
         .task(id: folder) {
             let job = Task.detached(priority: .utility) { DevelopmentMention.files(in: folder) }
@@ -324,6 +341,8 @@ struct ChatComposer: View {
     }
 
     // MARK: the field
+
+    private var composerSurfaceShape: RoundedRectangle { RoundedRectangle(cornerRadius: Radius.card, style: .continuous) }
 
     private var field: some View {
         // One line until the words, or a tab to talk about, need more: then
@@ -359,7 +378,7 @@ struct ChatComposer: View {
         .padding(.bottom, 8)
         .frame(minHeight: 40)
         .background {
-            let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+            let shape = composerSurfaceShape
             if development != nil {
                 shape.fill(Palette.wash(on: composerTone))
                     .overlay { shape.strokeBorder(Palette.muted(on: composerTone).opacity(focused ? 0.6 : 0.25)) }
@@ -499,7 +518,8 @@ struct ChatComposer: View {
             // question still standing.
             .onKeyPress(.escape) {
                 if InputMethod.composing() { return .ignored }
-                if let token = mentionToken { put(String(words[..<token.lowerBound])); return .handled }
+                if let token = mentionToken { put(String(words[..<token.lowerBound])); toolsOpen = false; return .handled }
+                if toolsOpen { toolsOpen = false; return .handled }
                 if editing != nil {
                     cancelEdit()
                     return .handled
@@ -513,10 +533,7 @@ struct ChatComposer: View {
             }
             // ↑↓ over the choices from the empty field, ↩ picks the lit one.
             .onKeyPress(keys: [.upArrow, .downArrow], phases: .down) { press in
-                if mentionQuery != nil, !InputMethod.composing(), !mentions.isEmpty {
-                    mentionIndex = (mentionIndex + (press.key == .upArrow ? mentions.count - 1 : 1)) % mentions.count
-                    return .handled
-                }
+                if mentionQuery != nil { return moveMention(press) }
                 guard !InputMethod.composing(), words.isEmpty, press.modifiers.isEmpty, let asking, choosing else { return .ignored }
                 ChatChoosing.shared.move(asking, by: press.key == .upArrow ? -1 : 1)
                 return .handled
@@ -575,12 +592,16 @@ struct ChatComposer: View {
     /// + : tabs, a picture of the tab, a file, for the words to go with.
     private var plus: some View {
         Button {
-            if development != nil { put(words + (words.isEmpty || words.last?.isWhitespace == true ? "@" : " @")); focused = true }
+            if development != nil {
+                toolsSearch = ""; mentionIndex = 0
+                toolsOpen.toggle()
+            }
             else { attach.menu.toggle() }
         } label: { Symbol("plus", size: 12) }
-            .buttonStyle(.yab(attach.menu ? .secondary : .quiet, .small, icon: .round))
+            .buttonStyle(.yab(attach.menu || toolsOpen ? .secondary : .quiet, .small, icon: .round))
             .background(ClickZone(away: attach.away))
-        .keyTip("Add a tab, a screenshot or a file")
+        .accessibilityLabel(development == nil ? "Add attachment" : "Add context")
+        .keyTip(development == nil ? "Add a tab, a screenshot or a file" : "Add context")
         .focusable(false)
     }
 

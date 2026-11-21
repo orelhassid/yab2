@@ -3800,6 +3800,8 @@ struct SidebarTabButton<Mark: View>: View {
     let prefs: Preferences
     var inTabStrip = false
     var showsDisclosure = false
+    var badge: (title: String, tint: FolderTint)?
+    @Environment(\.colorScheme) private var badgeScheme
     let action: () -> Void
     @ViewBuilder var mark: () -> Mark
     @Environment(\.tabTitleSize) private var titleSize
@@ -3830,6 +3832,15 @@ struct SidebarTabButton<Mark: View>: View {
     @ViewBuilder private var label: some View {
         mark().frame(width: SideBar.mark, height: SideBar.mark)
         Text(title).font(.system(size: titleSize)).lineLimit(1)
+        if let badge {
+            Spacer(minLength: 4)
+            Text(badge.title)
+                .font(.caption).lineLimit(1)
+                .foregroundStyle(badge.tint.ink(dark: badgeScheme == .dark))
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(badge.tint.wash(dark: badgeScheme == .dark), in: Capsule())
+                .fixedSize()
+        }
         if showsDisclosure { Symbol("chevron.down", size: 9) }
     }
 }

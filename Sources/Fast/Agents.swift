@@ -1042,7 +1042,7 @@ final class Agents: ObservableObject {
             if let name, parent != nil { session.name = name }
             register(session)
         }
-        session.developmentWrite = cli == "codex" && development?.workspaceWrite == true
+        session.developmentWrite = cli == "codex" && development?.canWriteProject == true
         if let development {
             session.developmentFolder = cli == "codex" ? development.folder : nil
             session.model = development.choice.model

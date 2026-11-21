@@ -224,6 +224,14 @@ struct DevelopmentMention: Identifiable {
     var reference: DevelopmentReference?
     var id: String { attachment?.id ?? reference?.id ?? name }
 
+    var badge: (title: String, tint: FolderTint) {
+        if let reference {
+            return (reference.kind.rawValue, reference.kind == .skill ? .purple : .teal)
+        }
+        if attachment?.file != nil { return ("File", .orange) }
+        return ("Open tab", .blue)
+    }
+
     static func files(in folder: String) -> [URL] {
         guard !folder.isEmpty else { return [] }
         let root = URL(fileURLWithPath: folder, isDirectory: true)
@@ -249,59 +257,78 @@ struct DevelopmentProviders: View {
     @State private var browsing: String?
     @ObservedObject private var accounts = PlanAccounts.shared
     @ObservedObject private var agents = Agents.shared
+    let addProvider: () -> Void
     private var details: DevelopmentDetails { DevelopmentDirectory.shared.details(project) }
-    private var plan: AgentPlan { AgentPlan.of(browsing ?? details.cli) ?? .codex }
+    private var active: [AgentPlan] { AgentPlan.all.filter { ProviderConsent.shared.allows($0.cli) } }
+    private var currentPlan: AgentPlan? {
+        active.first { $0.cli == (browsing ?? details.cli) } ?? active.first
+    }
     private var busy: Bool { agents.session(details.selectedChatID)?.state.live == true }
-    private var connected: Bool { ProviderConsent.shared.allows(plan.cli) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
-                ForEach(AgentPlan.all, id: \.cli) { provider in
-                    SidebarTabButton(title: provider.cli == "codex" ? provider.tool : provider.name,
-                                     selected: provider.cli == plan.cli, prefs: browser.prefs, inTabStrip: true,
-                                     action: { browsing = provider.cli }) { EmptyView() }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(active, id: \.cli) { provider in
+                            SidebarTabButton(title: provider.cli == "codex" ? provider.tool : provider.name,
+                                             selected: provider.cli == currentPlan?.cli, prefs: browser.prefs, inTabStrip: true,
+                                             action: { browsing = provider.cli }) { Symbol(provider.mark, size: 13) }
+                        }
+                    }
                 }
+                Button(action: addProvider) { Symbol("plus", size: 13) }
+                    .buttonStyle(.yab(.quiet, .small, icon: .round)).accessibilityLabel("Add AI provider")
             }
-            if !connected {
-                SettingsRow("Disconnected") {
-                    Button("Connect") { browser.openSettings(.agents) }.buttonStyle(.yab(.secondary, .small))
+            if let plan = currentPlan {
+                let selectedModel = AgentModels.find(plan.cli, details.choice.model)
+                let efforts = selectedModel?.efforts ?? (details.choice.model == nil ? plan.models.first?.efforts : nil) ?? []
+                if details.cli == plan.cli, !efforts.isEmpty {
+                    let steps = [""] + efforts
+                    HStack {
+                        Text("Thinking")
+                        Spacer()
+                        Text(details.choice.effort.map(AgentModels.effortTitle) ?? "Default").foregroundStyle(.secondary)
+                    }
+                    Slider(value: Binding(get: { Double(steps.firstIndex(of: details.choice.effort ?? "") ?? 0) },
+                                          set: { value in
+                        let level = steps[Int(value.rounded())]
+                        set(selectedModel, effort: level.isEmpty ? nil : level, plan: plan)
+                    }), in: 0...Double(steps.count - 1), step: 1)
+                    .disabled(busy).accessibilityLabel("Thinking effort")
+                    .accessibilityValue(details.choice.effort.map(AgentModels.effortTitle) ?? "Default")
+                    LibrarySeparator()
                 }
-            }
-            if query.isEmpty || "Default".localizedCaseInsensitiveContains(query) { modelRow(nil) }
-            ForEach(plan.models.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }) { model in
-                modelRow(model)
-            }
-            if details.cli == plan.cli, let model = AgentModels.find(plan.cli, details.choice.model), !model.efforts.isEmpty {
-                LibrarySeparator()
-                Picker("Reasoning effort", selection: Binding(get: { details.choice.effort ?? "" }, set: { set(model, effort: $0.isEmpty ? nil : $0) })) {
-                    Text("Default").tag("")
-                    ForEach(model.efforts, id: \.self) { Text(AgentModels.effortTitle($0)).tag($0) }
-                }.disabled(busy || !connected)
+                ScrollView {
+                    VStack(spacing: 2) {
+                        if query.isEmpty || "Default".localizedCaseInsensitiveContains(query) { modelRow(nil, plan: plan) }
+                        ForEach(plan.models.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }) { model in
+                            modelRow(model, plan: plan)
+                        }
+                    }
+                }
+            } else {
+                Text("No connected providers").foregroundStyle(.secondary)
             }
         }
-        .task(id: plan.cli) {
-            guard connected else { return }
+        .task(id: currentPlan?.cli) {
+            guard let plan = currentPlan else { return }
             let found = await Shell.find()
             await accounts.ask([plan.cli], found: found, refreshBlocked: true)
         }
     }
 
-    private func modelRow(_ model: AgentModel?) -> some View {
+    private func modelRow(_ model: AgentModel?, plan: AgentPlan) -> some View {
         let selected = details.cli == plan.cli && details.choice.model == model?.model
-        return Button { set(model, effort: selected ? details.choice.effort : nil) } label: {
-            HStack {
-                Text(model?.name ?? "Default").lineLimit(1)
-                Spacer()
-                if selected { Symbol("checkmark", size: 12) }
-            }.contentShape(Rectangle())
+        return SidebarTabButton(title: model?.name ?? "Default", selected: selected, prefs: browser.prefs,
+                                action: { set(model, effort: selected ? details.choice.effort : nil, plan: plan) }) {
+            Symbol(selected ? "checkmark" : plan.mark, size: 13)
         }
-        .buttonStyle(.yab(selected ? .secondary : .quiet, .small))
-        .disabled(!connected || busy)
+        .disabled(busy)
     }
 
-    private func set(_ model: AgentModel?, effort: String?) {
-        guard connected, !busy else { return }
+    private func set(_ model: AgentModel?, effort: String?, plan: AgentPlan) {
+        guard ProviderConsent.shared.allows(plan.cli), !busy else { return }
         var next = details
         next.provider = plan.cli
         var choices = next.modelChoices ?? [:]
@@ -320,14 +347,6 @@ struct DevelopmentComposerControls: View {
     private var details: DevelopmentDetails { DevelopmentDirectory.shared.details(project) }
 
     var body: some View {
-        if details.cli == "codex" {
-            Menu {
-                Button("Read only") { setWrite(false) }
-                Button("Workspace write") { setWrite(true) }
-            } label: { Text(details.workspaceWrite == true ? "Workspace write" : "Read only") }
-            .fixedSize().disabled(live)
-            .keyTip("Codex access in this project")
-        }
         Button { search = ""; showingModels.toggle() } label: {
             let name = details.choice.model.map { AgentModels.name(details.cli, $0) }
                 ?? (details.cli == "codex" ? "Codex" : AgentSetupModel.name(details.cli))
@@ -338,7 +357,15 @@ struct DevelopmentComposerControls: View {
         .popover(isPresented: $showingModels, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 8) {
                 ThemedSearchField("Search models", text: $search)
-                ScrollView { DevelopmentProviders(project: project, browser: browser, query: search) }
+                DevelopmentProviders(project: project, browser: browser, query: search) {
+                    showingModels = false
+                    browser.openSettings(.agents)
+                }
+                if details.cli == "codex" {
+                    LibrarySeparator()
+                    Toggle("Allow project edits", isOn: Binding(get: { details.canWriteProject }, set: setWrite))
+                        .disabled(live)
+                }
             }.padding(12).frame(width: 420, height: 360)
         }
     }
