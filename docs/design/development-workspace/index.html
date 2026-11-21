@@ -29,7 +29,7 @@
     <div id="work-home" hidden><div><span data-icon="folder"></span><h1>Work</h1><button class="btn" data-space="Development">Open Development Space</button></div></div>
   <div class="body">
     <aside aria-label="Project manager chat" id="chat">
-      <div class="chat-title"><span class="manager-mark" data-icon="chat"></span><div><b>Project manager</b><small>Yab Browser</small></div><button class="mobile-close" data-action="chat" aria-label="Close chat" data-icon="close"></button></div>
+      <div class="chat-title"><button class="sidebar-door" data-action="sidebar" aria-label="Show sidebar" data-icon="sidebar"></button><span id="chat-mark"></span><b id="project-title"></b><button class="mobile-close" data-action="chat" aria-label="Close chat" data-icon="close"></button></div>
       <div class="messages" id="messages">
         <div class="day">Today</div>
         <p class="bubble you">Can we show download progress on the Dock icon?</p>
@@ -47,7 +47,8 @@
     </aside>
     <main aria-label="Project tools panel">
       <nav aria-label="Project tools">
-        <button data-route="overview">Overview</button><button data-route="feature">Product</button><button disabled title="Outside this design review">Tasks</button><button disabled title="Outside this design review">Agents</button><button data-route="review">Code</button>
+        <button class="phone-door" data-action="sidebar" aria-label="Show sidebar" data-icon="sidebar"></button><button class="phone-door" data-action="chat" aria-label="Show manager chat" data-icon="chat"></button>
+        <button data-route="overview">Overview</button><button data-route="feature">Product</button><button disabled title="Outside this design review">Tasks</button><button disabled title="Outside this design review">Agents</button><button data-route="review">Code</button><button data-route="preview">Preview</button><button data-route="terminal">Terminal</button>
       </nav>
       <div id="content" tabindex="-1"></div>
     </main>

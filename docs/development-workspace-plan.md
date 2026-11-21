@@ -30,12 +30,12 @@ Checked against the Mac source at `d641485`. Checked items have an implementatio
 
 ## Screens and components
 
-Use five fixed destinations across the right pane. Roadmap, a document, and a code diff each open inside their destination, with Back restoring the previous selection and scroll. Keep the left conversation and its draft in place while navigating. At narrow widths, let the user switch between chat and the current tool, preserving both. Use the existing Yab palette, type, frames, buttons, focus treatment, and motion.
+Use a single compact header. The project icon and name align with seven tool tabs. Shared navigation owns project selection, active tool, keyboard focus, and narrow-window overflow. Each screen supplies the content below the strip. Roadmap, a document, and a code diff each open inside their destination, with Back restoring the previous selection and scroll. Keep the left conversation and its draft in place while navigating. At narrow widths, let the user switch between chat and the current tool, preserving both. Use the existing Yab palette, type, frames, buttons, focus treatment, and motion.
 
 Illustrative Overview with a project already underway:
 
 ```text
- Development ▾  │ Project manager       │ Overview   Product   Tasks   Agents   Code
+ Development ▾  │ Project manager       │ Overview   Product   Tasks   Agents   Code   Preview   Terminal
                 │ Yab Browser           │
  Projects       │                       │ Yab Browser
  › Yab Browser  │ Dock progress is      │ Needs your review
@@ -61,6 +61,8 @@ Illustrative Overview with a project already underway:
 | Tasks | Three views. **Tasks** shows actionable work grouped by feature, including owner, status, and blockers. **Activity** records starts, decisions, edits, and checks in time order. **Changelog** groups accepted product changes and distinguishes released work when release evidence exists. Open any entry to reach the feature, run, or diff. |
 | Agents / Team | Show the manager and workers, provider/model, assignment, status, and controls to inspect, steer, or stop. **Active Tools** shows each skill, plugin, or MCP connection, its source, and whether it is available to the selected runner. Team initially means the developer and their agents. |
 | Code / Files | Repository tree and file preview, branch, changed files, diff, and check output. Open here from a task with its changes already selected. **Ask about selection** returns a path and line range to the manager. Provide **Open in editor** for manual edits. |
+| Preview | Open the project's configured app URL in a browser tab. Each project keeps its own address. |
+| Terminal | A project-scoped shell pane. The design prototype simulates command input and keeps a separate history for each project. |
 
 Implement a small shared set of components. The Space Switcher, project sidebar, and project tool tab bar each handle a different level of navigation. A context chip, proposal card, run summary, and review card connect chat with project records. A feature card and dependency row serve Roadmap. A document outline and revision diff serve Spec and Deck. Task rows, event rows, and a changed-file list serve Overview and the detail screens. A card in chat and its counterpart on the roadmap should call the same action with the same record ID.
 

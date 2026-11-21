@@ -59,9 +59,7 @@ aside { display: flex; flex-direction: column; min-height: 0; min-width: 0; padd
 .chat-title { display: flex; align-items: center; gap: 10px; padding: 13px 6px 15px; border-bottom: 1px solid #ffffff13 }
 .chat-title b { font-size: 15px; letter-spacing: -.25px }
 small { display: block; color: var(--faint); font-size: 12px; font-weight: 400 }
-.manager-mark,.well { display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--wash); border: 1px solid #ffffff0f }
-.manager-mark { color: #d7e8ff; background: radial-gradient(at 18% 0%,#5377a2,#314560 72%); border-radius: 50% }
-.manager-mark svg { width: 20px; height: 20px }
+.well { display: inline-grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--wash); border: 1px solid #ffffff0f }
 .messages { min-height: 0; overflow: auto; flex: 1; padding: 0 2px 22px; scrollbar-width: thin }
 .day { padding: 18px 0 17px; text-align: center; font-size: 11px; color: var(--faint); font-weight: 550 }
 .bubble { width: fit-content; max-width: 88%; padding: 9px 13px; margin: 0 0 12px; font-size: 14px; line-height: 1.45; border-radius: 18px }
@@ -207,3 +205,23 @@ p { margin-bottom: 0 }
   nav { gap: 2px; padding-inline: 12px }
   nav button { padding-inline: 10px }
 }
+
+/* One shared strip aligns project identity with every tool destination. */
+.tab-frame { --tool-strip: 42px }
+.tab-frame:has(.body:not([hidden])) .compact-bar { display:none }
+.chat-title, nav { height:var(--tool-strip); min-height:var(--tool-strip); padding:0 10px; flex:none; border-bottom:1px solid var(--line) }
+.chat-title { margin:0 -13px; padding-inline:16px; gap:8px }
+.chat-title b { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px }
+#chat-mark img { width:20px; height:20px; display:block }
+nav { gap:2px; scrollbar-width:thin }
+nav button { padding:4px 9px; border-radius:8px; flex:none }
+.sidebar-door,.phone-door { display:none }
+.rail-closed .sidebar-door { display:block }
+.tool-form,.terminal-surface { padding:16px }
+.tool-form label { display:block; font-weight:550; margin-bottom:8px }
+.tool-form div,.terminal-surface form { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.tool-form input,.terminal-surface input { min-width:100px; flex:1; color:var(--ink); background:var(--stage); border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit }
+.terminal-surface pre { white-space:pre-wrap; overflow-wrap:anywhere }
+.terminal-surface input { border:0; background:none; font:13px ui-monospace,monospace }
+@media(max-width:920px){.sidebar-door{display:block}}
+@media(max-width:720px){.phone-door{display:block}}

@@ -27,7 +27,7 @@ function icon(name) {
 }
 for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = icon(el.dataset.icon);
 const appMark = '../../../Icon/Mark.png';
-const views = ['overview','feature','review'];
+const views = ['overview','feature','review','preview','terminal'];
 const content = document.querySelector('#content');
 const draft = document.querySelector('#draft');
 let selectedFile = 0;
@@ -68,7 +68,8 @@ function restoreChat(id) {
   send.disabled = !draft.value.trim();
   context.innerHTML = previous?.context ?? '';
   context.hidden = previous?.hidden ?? true;
-  document.querySelector('.chat-title small').textContent = item.name;
+  document.querySelector('#project-title').textContent = item.name;
+  document.querySelector('#chat-mark').innerHTML = projectMark(id);
 }
 function projectMark(id) {
   if (id === 'yab') return '<img src="'+appMark+'" alt="">';
@@ -187,6 +188,47 @@ function review() {
     <div class="diff-footer">${action(icon('chat')+' Discuss change','data-action="discuss-file"')}</div></section></div>
     <section class="block"><div class="section-heading"><h2>Verification</h2></div><details class="checks-box panel" open><summary><span class="success-text">${icon('checked')}</span> 2 checks passed</summary><ul><li>Another download in progress keeps its bar.</li><li>Canceling the last download clears the Dock tile.</li></ul></details></section></section>`;
 }
+const previewURLs = new Map();
+const terminalHistory = new Map();
+function toolSurface(title, body) {
+  return '<section class="page"><header class="head"><h1>'+title+'</h1></header>'+body+'</section>';
+}
+function preview() {
+  return toolSurface('Preview','<form id="preview-form" class="panel tool-form"><label for="app-url">App URL</label><div><input id="app-url" type="url" required placeholder="http://localhost:3000"><button class="btn primary">Open in browser ↗</button></div></form>');
+}
+function terminal() {
+  const history = terminalHistory.get(project) ?? [];
+  return toolSurface('Terminal','<div class="panel terminal-surface"><small>'+projects[project].name+' · Demo shell</small><pre>'+escapeHTML(history.join('\n'))+'</pre><form id="terminal-form"><label for="command">❯</label><input id="command" aria-label="Demo terminal command" autocomplete="off" placeholder="Type help"></form></div>');
+}
+document.addEventListener('submit', event => {
+  event.preventDefault();
+  if (event.target.id === 'preview-form') {
+    const input = document.querySelector('#app-url');
+    const url = new URL(input.value);
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      input.setCustomValidity('Enter an HTTP or HTTPS address.');
+      input.reportValidity();
+      return;
+    }
+    previewURLs.set(project,url.href);
+    window.open(url.href,'_blank','noopener,noreferrer');
+  }
+  if (event.target.id === 'terminal-form') {
+    const command = document.querySelector('#command').value.trim();
+    if (!command) return;
+    const history = terminalHistory.get(project) ?? [];
+    const result = command === 'help' ? 'help   pwd   clear' : command === 'pwd' ? '~/Projects/'+projects[project].name : 'Demo shell: type help for available commands.';
+    terminalHistory.set(project,command === 'clear' ? [] : [...history,'❯ '+command,result]);
+    render();
+    document.querySelector('#command').focus();
+  }
+});
+document.addEventListener('input', event => {
+  if (event.target.id === 'app-url') {
+    event.target.setCustomValidity('');
+    previewURLs.set(project,event.target.value);
+  }
+});
 const renderers = {overview,feature,review};
 function render() {
   const parts = location.hash.slice(1).split('/');
@@ -213,13 +255,17 @@ function render() {
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
+  if (screen === 'preview') {
+    content.innerHTML = preview();
+    document.querySelector('#app-url').value = previewURLs.get(project) ?? '';
+  } else if (screen === 'terminal') content.innerHTML = terminal();
+  else content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
   document.querySelectorAll('nav [data-route]').forEach(b=>{
     if (b.dataset.route===screen) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
   content.scrollTop = scroll[pathFor(project,screen)] || 0;
-  document.title = ({overview:'Project overview',feature:'Roadmap feature detail',review:'Code review'})[screen]+' · '+projects[id].name;
+  document.title = ({overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen]+' · '+projects[id].name;
 }
 function go(route) {
   document.body.classList.remove('chat-open');
