@@ -26,7 +26,7 @@ function icon(name) {
   return '<svg class="i" aria-hidden="true" viewBox="0 0 24 24">' + iconPaths[name] + '</svg>';
 }
 for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = icon(el.dataset.icon);
-const appMark = '../../../Icon/Mark.png';
+const appMark = document.documentElement.hasAttribute('data-native-space') ? 'Mark.png' : '../../../Icon/Mark.png';
 const views = ['overview','roadmap','specs','pitch','tasks','feature','review','preview','terminal'];
 const content = document.querySelector('#content');
 const draft = document.querySelector('#draft');

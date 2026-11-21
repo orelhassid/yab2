@@ -297,7 +297,7 @@ struct SideBar: View {
             // The rows on AppKit (ColumnKit): each space's a page of its
             // own, under the head, the pins, the name and the foot, as
             // SideBar's own rows were.
-            if ColumnKit.on && !browser.showingAllTabs {
+            if ColumnKit.on && !browser.showingAllTabs && !browser.inDevelopment {
                 ColumnPagesHost(browser: browser, lead: lead, footRoom: pagesFootRoom, top: max(0, lead - SideBar.margin),
                                 foot: pagesFootRoom > 0, grain: tone == nil ? 0 : prefs.grain)
                     .opacity(browser.inMail ? 0 : 1)
@@ -345,6 +345,9 @@ struct SideBar: View {
                 .padding(.bottom, browser.sidePlated || browser.inMail ? 0 : -SidePlate.lift)
 
                 // The address, when nothing over the page has it.
+                if browser.inDevelopment {
+                    DevelopmentProjects(browser: browser)
+                } else {
                 if browser.sidePlated, !ColumnKit.cut.contains("plate") {
                     Group {
                         if let tab = plateTab {
@@ -462,6 +465,7 @@ struct SideBar: View {
                         .padding(.top, 4)
                         .modifier(SpaceTurn(id: browser.spaceID, step: browser.spaceStep))
                 }
+                }
                 // Clear of the foot, which sits over the column's bottom,
                 // and of the band over it while something plays elsewhere.
                 Spacer(minLength: SideBar.footHeight)
@@ -488,7 +492,7 @@ struct SideBar: View {
                 Spacer()
                 // Agents in One Row (experimental): what agents do out of
                 // the list, over the note and the foot.
-                if prefs.agentRow, !browser.inMail {
+                if prefs.agentRow, !browser.inMail, !browser.inDevelopment {
                     AgentRowView(browser: browser)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { agentRoom = $0 }
                         .onDisappear { agentRoom = 0 }
@@ -582,7 +586,7 @@ struct SideBar: View {
     /// The space's menu, made at the press (SpaceMenu); none in mail's
     /// space, whose column is mail's own.
     private var roomMenu: (@MainActor () -> NSMenu)? {
-        guard !browser.inMail else { return nil }
+        guard !browser.inMail, !browser.inDevelopment else { return nil }
         let browser = browser
         return { NSHostingMenu(rootView: SpaceMenu(browser: browser, space: browser.sidebarSpace)) }
     }
@@ -2048,7 +2052,7 @@ struct SideBar: View {
 
     /// The toolbar at the header's page edge, or New Mail over mail's page.
     @ViewBuilder private var headDoors: some View {
-        if helmRow {
+        if !browser.inDevelopment && helmRow {
             let size = helmSize
             let folded = headFit == .fold
             HStack(spacing: size.gap) {
@@ -2057,7 +2061,7 @@ struct SideBar: View {
             }
             .environment(\.doorSize, size)
         }
-        if mailNew {
+        if !browser.inDevelopment && mailNew {
             MailNewButton()
         }
     }

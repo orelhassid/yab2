@@ -760,6 +760,7 @@ extension Browser {
     /// `washed`: the fingers already have the new color over the window
     /// (SpacePull), and hand it over themselves.
     func switchSpace(to id: UUID, washed: Bool = false, keepingHome: Bool = false, preservingAllTabs: Bool = false) {
+        inDevelopment = false
         if id == Space.allTabs.id { showAllTabs(); return }
         if !preservingAllTabs { allTabsSelected = false }
         guard windowPurpose == .normal else { return }

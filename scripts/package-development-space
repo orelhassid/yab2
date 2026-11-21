@@ -1,0 +1,9 @@
+#!/bin/bash
+# Bundle the project pane and its assets for the native Development Space.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+out="$1/Development"
+mkdir -p "$out"
+src=docs/design/development-workspace
+cp "$src"/*.js "$src"/workspace.css Icon/Mark.png Resources/HomeBackgrounds/eclipse.webp "$out/"
+sed 's/<html lang="en">/<html lang="en" data-native-space>/' "$src/index.html" > "$out/index.html"

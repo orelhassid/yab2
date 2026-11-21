@@ -283,3 +283,9 @@ nav button { padding:4px 9px; border-radius:8px; flex:none }
 .collection-table table { width:100%; border-collapse:collapse; text-align:left; font-size:13px }
 .collection-table td,.collection-table th { padding:10px; border-bottom:1px solid var(--line) }
 .collection-table th { font-size:11px; color:var(--muted) }
+
+/* In Daily the Space Switcher and project rows belong to the native sidebar. */
+[data-native-space] .window { display:flex; padding:0; border:0; border-radius:0; background:var(--ground) }
+[data-native-space] .tab-frame { flex:1; border:0; box-shadow:none }
+[data-native-space] .space-sidebar,[data-native-space] .sidebar-door,[data-native-space] [data-action="sidebar"],[data-native-space] .compact-bar { display:none }
+[data-native-space] .dock-scene { background-image:linear-gradient(#0a111a27,#0a122047),url('eclipse.webp') }

@@ -49,6 +49,24 @@ struct SpaceLandingTests {
         try body(browser, home, away.id, source, destination)
     }
 
+    @Test func developmentIsAWindowSpaceWithNoTabOrNumberedShortcut() throws {
+        try world { browser, home, _, source, _ in
+            let sidebar = browser.prefs.sidebar
+            let shut = browser.prefs.sideShut
+            defer { browser.prefs.sidebar = sidebar; browser.prefs.sideShut = shut }
+            browser.enterDevelopment()
+            #expect(browser.sidebarSpaceID == Space.development.id)
+            #expect(browser.tabs.map(\.id) == source.map(\.id))
+            #expect(!browser.switcherSpaces.contains { $0.id == Space.development.id })
+            browser.developmentProject = .sunday
+            browser.switchSpace(to: home)
+            #expect(!browser.inDevelopment)
+            #expect(browser.activeID == source[1].id)
+            browser.enterDevelopment()
+            #expect(browser.developmentProject == .sunday)
+        }
+    }
+
     /// Hovering another space with a tab in hand opens nothing there: the
     /// page stays, the field stays away, and what that space had in front
     /// is still in front on a real visit afterwards.

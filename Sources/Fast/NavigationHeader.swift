@@ -94,12 +94,12 @@ struct NavigationHeader: View {
     }
 
     private var spaces: some View {
-        let order = browser.switcherSpaces
+        let order = browser.switcherSpaces + (browser.offersDevelopment ? [.development] : [])
         return choices(count: order.count) {
             ForEach(order) { space in
                 TrailMenuRow(title: space.name, selected: space.id == browser.sidebarSpaceID, action: {
                     switcher = nil
-                    browser.switchSpace(to: space.id)
+                    if space.id == Space.development.id { browser.enterDevelopment() } else { browser.switchSpace(to: space.id) }
                 }) {
                     SpaceMark(icon: space.icon, size: SideBar.mark)
                 }
