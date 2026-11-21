@@ -62,8 +62,8 @@ struct TabsOverview: View {
 
     @State private var filter: UUID?
     @State private var search = ""
-    @State private var showEmpty = true
-    @State private var toolsWidth: CGFloat = 400
+    @State private var previewRefresh = 0
+    @State private var toolsWidth: CGFloat = 260
     @State private var sort = OverviewSort.sidebar
     @State private var frames: [UUID: CGRect] = [:]
     @GestureState private var drag: OverviewDrag?
@@ -73,10 +73,6 @@ struct TabsOverview: View {
         return browser.turnOrder.filter {
             browser.prefs.usesSpaces || $0.id == browser.spaceID || $0.id == Space.mailID || $0.id == browser.homeSpaceID
         }
-    }
-
-    private var shownSpaces: [Space] {
-        showEmpty ? spaces : spaces.filter { !openTabs(in: $0).isEmpty }
     }
 
     private func openTabs(in space: Space) -> [Tab] {
@@ -107,7 +103,7 @@ struct TabsOverview: View {
         .background(Color.blue.opacity(0.15))
         .clipShape(RoundedRectangle(cornerRadius: Radius.window))
         .toned(tone)
-        .onChange(of: shownSpaces.map(\.id)) { if let filter, !shownSpaces.contains(where: { $0.id == filter }) { self.filter = nil } }
+        .onChange(of: spaces.map(\.id)) { if let filter, !spaces.contains(where: { $0.id == filter }) { self.filter = nil } }
         .onChange(of: browser.active?.asks.contains(where: { $0.kind == .leave }) == true) {
             if browser.active?.asks.contains(where: { $0.kind == .leave }) == true { dismiss() }
         }
@@ -122,7 +118,7 @@ struct TabsOverview: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 6) {
                         filterButton("All tabs", nil)
-                        ForEach(shownSpaces) { filterButton($0.name, $0.id) }
+                        ForEach(spaces) { filterButton($0.name, $0.id) }
                     }
                 }
                 .scrollIndicators(.hidden)
@@ -139,12 +135,15 @@ struct TabsOverview: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            Symbol("arrow.up.arrow.down", size: 11)
-                            Text(sort.rawValue)
-                        }
-                    }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    Toggle("Show empty", isOn: $showEmpty).toggleStyle(.switch).controlSize(.small).fixedSize()
+                        Symbol("arrow.up.arrow.down", size: 12)
+                            .frame(width: Door.side, height: Door.side)
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .accessibilityLabel("Sort tabs")
+                    .accessibilityValue(sort.rawValue)
+                    .keyTip("Sort tabs: " + sort.rawValue)
+                    Door(icon: "arrow.clockwise", help: "Refresh tab previews") { previewRefresh += 1 }
+                        .accessibilityLabel("Refresh tab previews")
                     Door(icon: "xmark", help: "Close overview", act: dismiss)
                         .accessibilityLabel("Close overview")
                 }
@@ -162,9 +161,9 @@ struct TabsOverview: View {
     }
 
     private var groups: some View {
-        let sections = shownSpaces.filter { filter == nil || filter == $0.id }
+        let sections = spaces.filter { filter == nil || filter == $0.id }
             .map { ($0, tabs(in: $0)) }
-            .filter { !$0.1.isEmpty || (showEmpty && search.isEmpty) }
+            .filter { !$0.1.isEmpty || search.isEmpty }
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: LibraryPageLayout.sectionGap) {
                 ForEach(sections, id: \.0.id) { space, tabs in
@@ -223,7 +222,7 @@ struct TabsOverview: View {
             browser.prefs.usesSpaces && space.id != Space.mailID && $0.id != space.id && $0.id != Space.mailID &&
             browser.sendable(tab) && !browser.pinnedAlready(tab, in: $0.id)
         }
-        return OverviewCard(tab: tab, open: open, close: close)
+        return OverviewCard(tab: tab, refresh: previewRefresh, open: open, close: close)
             .opacity(drag?.source == tab.id ? 0.6 : 1)
             .overlay(alignment: .leading) {
                 if let drag, drag.source != tab.id, frames[tab.id]?.contains(drag.point) == true {
@@ -311,6 +310,8 @@ private struct OverviewFrames: PreferenceKey {
 
 private struct OverviewCard: View {
     @ObservedObject var tab: Tab
+    let refresh: Int
+
     let open: () -> Void
     let close: () -> Void
     @State private var preview: NSImage?
@@ -349,10 +350,13 @@ private struct OverviewCard: View {
             }
         }
         .onHover { hovered = $0 }
-        .task(id: tab.pending ?? tab.address) {
-            preview = nil
-            let image = await withCheckedContinuation { reply in tab.glance(width: 560) { reply.resume(returning: $0) } }
-            if !Task.isCancelled { preview = image }
+        .task(id: PreviewRequest(url: tab.pending ?? tab.address, refresh: refresh)) {
+            let request = PreviewRequest(url: tab.pending ?? tab.address, refresh: refresh)
+            preview = OverviewPreviews.cached(for: tab)
+            let image = await withCheckedContinuation { reply in
+                OverviewPreviews.picture(for: tab) { reply.resume(returning: $0) }
+            }
+            if !Task.isCancelled, request.url == (tab.pending ?? tab.address) { preview = image }
         }
     }
 
@@ -361,6 +365,64 @@ private struct OverviewCard: View {
             Image(nsImage: icon).resizable().scaledToFit().frame(width: size, height: size)
         } else {
             Image(systemName: tab.libraryPage?.icon ?? "globe").font(.system(size: size)).foregroundStyle(Palette.muted)
+        }
+    }
+}
+
+private struct PreviewRequest: Equatable {
+    let url: URL?
+    let refresh: Int
+}
+
+@MainActor enum OverviewPreviews {
+    private final class Entry {
+        let document: Int
+        let url: URL
+        let image: NSImage
+
+        init(document: Int, url: URL, image: NSImage) {
+            self.document = document
+            self.url = url
+            self.image = image
+        }
+    }
+
+    private static let images: NSCache<NSUUID, Entry> = {
+        let cache = NSCache<NSUUID, Entry>()
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
+
+    static func cached(for tab: Tab) -> NSImage? {
+        guard !tab.shy, let kept = images.object(forKey: tab.id as NSUUID),
+              kept.document == tab.devDocument, kept.url == (tab.pending ?? tab.address) else { return nil }
+        return kept.image
+    }
+
+    static func remember(_ tab: Tab) {
+        guard !tab.shy, !tab.loading, tab.drawn, tab.libraryPage == nil, let url = tab.address,
+              let page = tab.builtPage, page.window != nil, !page.isHiddenOrHasHiddenAncestor,
+              page.bounds.width > 0, page.bounds.height > 0 else { return }
+        let document = tab.devDocument
+        page.snapshot(PageShot(width: 280, afterUpdates: false)) { [weak tab] image, _ in
+            guard let tab, let image, !tab.gone, tab.devDocument == document, tab.address == url else { return }
+            let cost = image.representations.reduce(0) { $0 + $1.pixelsWide * $1.pixelsHigh * 4 }
+            images.setObject(Entry(document: document, url: url, image: image), forKey: tab.id as NSUUID, cost: cost)
+        }
+    }
+
+    static func picture(for tab: Tab, done: @escaping @MainActor (NSImage?) -> Void) {
+        if let page = tab.builtPage, page.window != nil, !page.isHiddenOrHasHiddenAncestor {
+            tab.glance(width: 560) { done($0 ?? cached(for: tab)) }
+        } else if let image = cached(for: tab) {
+            done(image)
+        } else {
+            let document = tab.devDocument
+            PageStills.shared.picture(of: tab.id, width: 560) { image in
+                guard tab.devDocument == document else { return done(nil) }
+                if let image { done(image) }
+                else { tab.glance(width: 560, done) }
+            }
         }
     }
 }

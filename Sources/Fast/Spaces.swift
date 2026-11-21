@@ -833,6 +833,7 @@ extension Browser {
         // it once you are there (feedback #1878). A video out stays out
         // too, its tab parked in the space it is in, as Arc's does; one
         // playing in front comes out as for a tab left.
+        if let active { OverviewPreviews.remember(active) }
         if floating == nil { leavingSpace() }
         let callHere = active?.onCall == true ? active : nil
         // Those that went along and no longer do go back to their own.

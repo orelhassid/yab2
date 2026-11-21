@@ -203,7 +203,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
     @ObservationIgnored var lookForMailSignInLink: () -> Void = { MailLinks.look() }
 
     var activeID: Tab.ID? {
-        willSet { relay.send(\.activeID, newValue) }
+        willSet {
+            if activeID != newValue, let active { OverviewPreviews.remember(active) }
+            relay.send(\.activeID, newValue)
+        }
         didSet {
             guard oldValue != activeID else { return }
             ChromiumTabGroups.shared.changed()
