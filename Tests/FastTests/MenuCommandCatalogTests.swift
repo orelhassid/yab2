@@ -51,6 +51,11 @@ struct MenuCommandCatalogTests {
     @Test func collectionActionsLeadTheComposedOffers() {
         withPage { browser, _ in
             browser.prefs.menuCommands = false
+            #expect(!Command.customizeRecordTemplate.available(in: browser))
+            let collection = CollectionTemplate.invoices.make(name: "Invoices")
+            browser.showRecord(OpenRecord(collection: collection.id, record: UUID(), view: collection.views[0].id, page: 0))
+            browser.replaceTyped("Customize template")
+            #expect(browser.offers.first?.kind == .command(.customizeRecordTemplate))
             for (words, command) in [("Collections", Command.openCollections), ("Create collection", .newCollection), ("New Record", .newCollectionRecord)] {
                 browser.replaceTyped(words)
                 #expect(browser.offers.first?.kind == .command(command))

@@ -47,8 +47,8 @@ struct CollectionTableView: Identifiable, Codable {
     var sortProperty: String?
     var descending: Bool?
 
-    func records(in collection: PageCollection) -> [CollectionEntry] {
-        let filtered = collection.entries.filter(matches)
+    func records(in collection: PageCollection, including current: UUID? = nil) -> [CollectionEntry] {
+        let filtered = collection.entries.filter { $0.id == current || matches($0) }
         guard let sortProperty, let property = collection.properties.first(where: { $0.id == sortProperty }) else { return filtered }
         return filtered.sorted { lhs, rhs in
             let left = lhs.values[sortProperty] ?? ""
@@ -74,11 +74,13 @@ struct PageCollection: Identifiable, Codable {
     var symbol: String
     var properties: [CollectionProperty]
     var views: [CollectionTableView]
+    var sourceTemplate: CollectionTemplate?
+    var recordTemplate: RecordTemplate?
     var selectedView: UUID?
     var entries: [CollectionEntry] = []
 }
 
-enum CollectionTemplate: String, CaseIterable {
+enum CollectionTemplate: String, CaseIterable, Codable {
     case blank = "Blank", contacts = "Contacts", projects = "Projects", tasks = "Tasks", invoices = "Invoices"
 
     var symbol: String {
@@ -106,7 +108,7 @@ enum CollectionTemplate: String, CaseIterable {
         }
         var views = [CollectionTableView(name: "All " + name.lowercased())]
         views += filtered.map { CollectionTableView(name: $0.0, filters: [CollectionFilter(property: "status", value: $0.1)]) }
-        return PageCollection(name: name, symbol: symbol, properties: properties, views: views)
+        return PageCollection(name: name, symbol: symbol, properties: properties, views: views, sourceTemplate: self)
     }
 }
 

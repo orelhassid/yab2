@@ -4,6 +4,25 @@ import Testing
 
 @Suite @MainActor
 struct CollectionPageTests {
+    @Test func recordLayoutPersistsAndFilteredNavigationIncludesTheOpenRecord() throws {
+        var collection = CollectionTemplate.invoices.make(name: "Bills")
+        collection.entries = ["Unpaid", "Paid", "Unpaid"].map { .init(values: ["status": $0]) }
+        let view = collection.views[1]
+        let current = collection.entries[1]
+        #expect(view.records(in: collection).count == 2)
+        #expect(view.records(in: collection, including: current.id).map(\.id) == collection.entries.map(\.id))
+        var layout = RecordTemplate(collection: collection)
+        layout.move(field: "client", to: layout.groups.last?.id)
+        layout.tabs.append("Notes")
+        collection.recordTemplate = layout
+        let reopened = try JSONDecoder().decode(PageCollection.self, from: JSONEncoder().encode(collection))
+        #expect(reopened.recordTemplate == layout)
+        #expect(layout.groups.last?.fields.contains("client") == true)
+        #expect(!layout.groups[0].fields.contains("client"))
+        #expect(layout.buttons.map(\.title) == ["Mark paid", "Copy invoice number"])
+        #expect(RecordTemplate(collection: CollectionTemplate.blank.make(name: "Notes")).buttons.isEmpty)
+    }
+
     @Test func savedViewSurvivesReloadWithFilteredCalculations() throws {
         let domain = "collections-test-" + UUID().uuidString
         let settings = try #require(UserDefaults(suiteName: domain))

@@ -5,7 +5,12 @@ struct CollectionPage: View {
     let prefs: Preferences
     @Binding var adding: Bool
     @State private var selection = Set<UUID>()
-    @State private var page = 0
+    let openRecord: (OpenRecord) -> Void
+    @Binding var pagesByView: [UUID: Int]
+    private var page: Int {
+        get { pagesByView[view.id] ?? 0 }
+        nonmutating set { pagesByView[view.id] = newValue }
+    }
     @State private var filtering = false
     @State private var settings = false
     @State private var namingView = false
@@ -41,7 +46,9 @@ struct CollectionPage: View {
             }
             CollectionDataGrid(properties: properties, entries: visible, start: start, total: entries.count,
                                selection: $selection, calculations: $collection.views[index].calculations,
-                               matching: entries)
+                               matching: entries) { entry in
+                openRecord(OpenRecord(collection: collection.id, record: entry.id, view: view.id, page: start / view.pageSize))
+            }
             if pages > 1 {
                 HStack {
                     Spacer()

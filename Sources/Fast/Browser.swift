@@ -124,6 +124,10 @@ final class Browser: NSObject, ObservableObject, Relaying {
     @ObservationIgnored var previousDevelopmentSidebar: (shown: Bool, shut: Bool)?
     var inDevelopment: Bool { workspaceSpace?.id == Space.development.id }
     var inCollections: Bool { workspaceSpace?.id == Space.collections.id }
+    var currentRecord: UUID?
+    var recordTabs: [OpenRecord] = []
+    var customizingRecord = false
+    var collectionPages: [UUID: Int] = [:]
     var collectionID: UUID?
     var creatingCollection = false
     var creatingCollectionRecord = false

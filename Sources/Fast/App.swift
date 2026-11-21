@@ -120,7 +120,7 @@ private struct FileItems: View {
         Button(DocumentPiP.owning(NSApp.keyWindow) != nil ? "Close Window" : selected.several ? "Close \(selected.chosenCount) Tabs" : "Close Tab") {
             if DocumentPiP.closeKeyWindow() { return }
             if let key = NSApp.keyWindow, windows.browser(for: key) == nil { key.performClose(nil); return }
-            selected.shut(selected.chosen)
+            if !selected.closeCurrentRecord() { selected.shut(selected.chosen) }
         }
             .shortcut(.closeTab)
         Button("Close Window") {
@@ -3024,7 +3024,7 @@ struct ContentView: View {
             browser.newTab(in: nest)
         case .privateTab: browser.newPrivateWindow()
         case .closeTab:
-            if !browser.cancelInstantSearch() { browser.shut(browser.chosen, byKey: true) }
+            if !browser.closeCurrentRecord(), !browser.cancelInstantSearch() { browser.shut(browser.chosen, byKey: true) }
         case .reopen: browser.reopen()
         case .nextTab: browser.step(1)
         case .previousTab: browser.step(-1)

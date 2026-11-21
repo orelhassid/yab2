@@ -143,6 +143,9 @@ struct TabWindowSwitcher<Item: Identifiable, Icon: View, RowIcon: View>: View {
     let title: String
     let prefs: Preferences
     let items: [Item]
+    var searchPrompt: String? = nil
+    @State private var search = ""
+    @FocusState private var searchFocused: Bool
     let label: (Item) -> String
     let selected: (Item) -> Bool
     let choose: (Item) -> Void
@@ -155,17 +158,28 @@ struct TabWindowSwitcher<Item: Identifiable, Icon: View, RowIcon: View>: View {
         SidebarTabButton(title: title, selected: open, prefs: prefs, inTabStrip: true,
                          showsDisclosure: true, action: { open.toggle() }, mark: icon)
             .popover(isPresented: $open, arrowEdge: .bottom) {
-                ThreadScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(items) { item in
-                            TrailMenuRow(title: label(item), selected: selected(item), action: {
-                                open = false
-                                choose(item)
-                            }) { rowIcon(item) }
+                let matches = search.isEmpty ? items : items.filter { label($0).localizedCaseInsensitiveContains(search) }
+                VStack(alignment: .leading, spacing: 4) {
+                    if let searchPrompt {
+                        ThemedSearchField(searchPrompt, text: $search)
+                            .focused($searchFocused)
+                            .onAppear { searchFocused = true }
+                    }
+                    ThreadScrollView {
+                        LazyVStack(spacing: 0) {
+                            if matches.isEmpty { Text("No matching records").font(CardFrame.detail) }
+                            ForEach(matches) { item in
+                                TrailMenuRow(title: label(item), selected: selected(item), action: {
+                                    open = false
+                                    choose(item)
+                                }) { rowIcon(item) }
+                            }
                         }
                     }
+                    .frame(height: CGFloat(min(8, max(1, matches.count))) * SideBar.row)
                 }
-                .frame(width: 240, height: CGFloat(min(8, max(1, items.count))) * SideBar.row)
+                .onDisappear { search = "" }
+                .frame(width: 240)
                 .padding(6)
                 .background(tone?.color ?? Palette.ground)
                 .toned(tone)

@@ -27,7 +27,7 @@ enum MenuCommands {
         .moveTabToWindow, .smallWindow, .reopenWindow, .fullScreen, .exitFullScreen, .undoBrowserAction,
         .sortAllTabsRecent, .sortAllTabsOldest, .sortAllTabsManual, .groupAllTabsSpace, .groupAllTabsDomain, .ungroupAllTabs, .collapseAllTabGroups, .expandAllTabGroups,
         .headerSpaceIcon, .headerColorDot, .headerSpaceBadge, .headerHairline,
-        .openCollections, .newCollection, .newCollectionRecord,
+        .openCollections, .newCollection, .newCollectionRecord, .customizeRecordTemplate,
         .newSpace, .switchSpace, .nextSpace, .previousSpace, .moveToSpace, .changeSpaceIcon, .deleteSpace,
         .moveToFolder, .moveOutOfFolder, .renameFolder, .newFolderInside, .ungroupFolder, .newLiveFolder,
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
@@ -192,7 +192,14 @@ enum MenuCommands {
             opens: true, when: { $0.offersDevelopment }) {
             $0.switchSpace(to: Space.collections.id)
             $0.creatingCollection = false
+            $0.currentRecord = nil
             $0.creatingCollectionRecord = true
+        }
+        add(.customizeRecordTemplate, "Customize Record Template", ["customize template", "record page template"],
+            symbol: "slider.horizontal.3", opens: true,
+            when: { $0.offersDevelopment && $0.currentRecord != nil && !$0.creatingCollection }) {
+            $0.switchSpace(to: Space.collections.id)
+            $0.customizingRecord = true
         }
         add(.newSpace, "New Space…", ["create space", "new space"], symbol: "plus.rectangle.on.rectangle",
             opens: true, when: spaces) { SpaceTray.open($0) }

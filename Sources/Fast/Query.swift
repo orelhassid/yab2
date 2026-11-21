@@ -255,7 +255,7 @@ enum Command: String, CaseIterable {
     case aiOff, aiOn, aiWhenAsked, hideAIRows, showAIRows
 
     /// Existing menu actions share their metadata and routes in MenuCommands.
-    case openCollections, newCollection, newCollectionRecord
+    case openCollections, newCollection, newCollectionRecord, customizeRecordTemplate
     case sharePage
     case back, forward, stopLoading, closeWindow, pasteAndGo, findNext, findPrevious
     case nextTab, previousTab, moveTabLeft, moveTabRight, renameTab, pickAllTabs, moveTabToWindow
@@ -953,6 +953,7 @@ enum Command: String, CaseIterable {
         case .floatVideo: browser.toggleFloat()
         case .hide: browser.toggleHiding()
         case .closeTab:
+            if browser.closeCurrentRecord() { return }
             if browser.closesWindowOnCloseTab { browser.shut([]) }
             else if let tab = browser.active { browser.shut(tab) }
         case .reload: browser.reload()

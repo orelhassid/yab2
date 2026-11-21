@@ -50,6 +50,8 @@ Check split, chat-only and full view when changing that boundary.
 
 The Collections window header shows the collection switcher. Keep saved-view tabs inside `CollectionPage`, above active filters and the data grid. In `CollectionDataGrid`, size the selection and row-number columns to their contents.
 
+Record pages reuse the shared window switcher, themed search, card fields, dropdowns and Yab buttons. Use these components for inputs in place of stock form controls.
+
 ## Shared local preview
 
 All chats working in this checkout share `build/Yab Sidebar Preview.app` and its `spaces-preview` profile. Reuse the running instance for interactive review. When an update is needed, build from the shared checkout and refresh that same app after checking for another session's active build or UI test. Keep isolated automated tests in their own test profiles and close any temporary test app when the run ends.

@@ -8,6 +8,7 @@ struct CollectionDataGrid: View {
     @Binding var selection: Set<UUID>
     @Binding var calculations: [String: CollectionCalculation]
     let matching: [CollectionEntry]
+    let openRecord: (CollectionEntry) -> Void
 
     private var pageIDs: Set<UUID> { Set(entries.map(\.id)) }
 
@@ -42,9 +43,12 @@ struct CollectionDataGrid: View {
                                 .labelsHidden().fixedSize()
                                 Text(String(start + offset + 1)).monospacedDigit().foregroundStyle(.secondary)
                                 ForEach(properties) { property in
-                                    Text(entry.values[property.id] ?? "")
-                                        .lineLimit(1)
-                                        .frame(maxWidth: .infinity, alignment: property.numeric ? .trailing : .leading)
+                                    Button { openRecord(entry) } label: {
+                                        Text(entry.values[property.id] ?? "")
+                                            .lineLimit(1)
+                                            .frame(maxWidth: .infinity, alignment: property.numeric ? .trailing : .leading)
+                                            .contentShape(Rectangle())
+                                    }.buttonStyle(.plain)
                                 }
                             }
                             .padding(.vertical, 6)
