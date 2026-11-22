@@ -217,7 +217,7 @@ enum SpaceAnchors {
     /// (SpaceSlot): where a tab or a folder let go there goes.
     static func slot(at point: NSPoint, in window: NSWindow) -> UUID? {
         for mark in marks.allObjects {
-            guard case .slot(let id) = mark.kind, mark.window === window, !mark.isHiddenOrHasHiddenAncestor else { continue }
+            guard case .slot(let id) = mark.kind, id != Space.privateID, mark.window === window, !mark.isHiddenOrHasHiddenAncestor else { continue }
             if mark.convert(mark.bounds, to: nil).contains(point) { return id }
         }
         return nil
@@ -272,7 +272,7 @@ struct SpaceAnchor: NSViewRepresentable {
 /// The active Space's palette for floating Space controls.
 enum SpaceSurface {
     @MainActor static func tone(in browser: Browser) -> Tone? {
-        if browser.windowPurpose == .privateOnly { return tone(for: ContentView.privateBackdrop) }
+        if browser.privateShell { return tone(for: ContentView.privateBackdrop) }
         let prefs = browser.prefs
         let look = browser.developmentLook
             ?? (browser.showingAllTabs ? browser.sidebarSpace.paint : nil)
@@ -325,7 +325,10 @@ final class SpaceTray: NSView {
     var mailRoom: CGFloat { CGFloat(specials.count) * (Self.spaceRow + Self.spaceGap) }
     /// Mail's lines over the list, in the order two fingers go.
     var specials: [Space] {
-        let existing = browser.switcherSpaces.filter { $0.id == Space.mailID || $0.id == Space.allTabs.id }
+        let existing = browser.switcherSpaces.filter {
+            $0.id == Space.mailID || $0.id == Space.allTabs.id ||
+                ($0.id == Space.privateID && !draft.taking && draft.carrying.isEmpty)
+        }
         return browser.offersDevelopment && !draft.taking && draft.carrying.isEmpty ? existing + [.development, .collections] : existing
     }
     /// Where the tray is, for the bench.
@@ -1545,6 +1548,8 @@ struct SpaceLine: View {
                     }
                     if space.id == Space.mailID {
                         shortcut(.mail)
+                    } else if space.id == Space.privateID {
+                        shortcut(.privateTab)
                     } else if !space.isWorkspace, let place = browser?.switcherSpaces.firstIndex(where: { $0.id == space.id }) ?? Optional(index), place < 9 {
                         // Counted as ⌃1 to ⌃9 count: Mail in its place among them.
                         if let action = Shortcut.numbered("space", place + 1) {
@@ -1671,6 +1676,19 @@ struct SpaceMenu: View {
     var fromHome = false
 
     var body: some View {
+        if space.id == Space.privateID {
+            if browser.inPrivateSpace {
+                Button(Command.clearPrivateSession.title, mark: "trash") { browser.confirmClearPrivateSession() }
+                Button(Command.leavePrivateSpace.title, mark: "rectangle.portrait.and.arrow.right") { browser.leavePrivateSpace() }
+            } else {
+                Button(Command.privateTab.title, mark: Space.privateSpace.icon) { browser.openPrivateSpace() }
+            }
+        } else {
+            regularActions
+        }
+    }
+
+    @ViewBuilder private var regularActions: some View {
         // Mail keeps its name, its sign-ins and has no Delete of its own:
         // its emoji and its look are yours, and its settings are Settings ›
         // Mail.

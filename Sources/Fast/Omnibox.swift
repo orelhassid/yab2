@@ -67,9 +67,9 @@ struct Omnibox: View {
         self.homePageMargins = homePageMargins
         self.homePageCorner = homePageCorner
         self.refusals = browser.refusals
-        self.shy = browser.windowPurpose.isPrivate(active: (browser.fieldGuest ?? browser.active)?.shy)
+        self.shy = browser.privateShell || (browser.fieldGuest ?? browser.active)?.shy == true
         self.hushedAt = (browser.fieldGuest ?? browser.active)?.hushedAt
-        self.stealth = shy && browser.windowPurpose == .normal
+        self.stealth = shy && !browser.privateShell
         self._retainedRows = StateObject(wrappedValue: RetainedFieldRows(browser: browser))
     }
 

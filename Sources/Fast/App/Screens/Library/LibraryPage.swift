@@ -308,7 +308,7 @@ extension Browser {
             select(existing)
             return
         }
-        for space in turnOrder where space.id != spaceID {
+        for space in turnOrder where !inPrivateSpace && space.id != spaceID {
             guard let row = parked[space.id], let tab = row.tabs.first(where: matches),
                   tab.pin == nil, !tab.kept, tab.nest == nil, !row.pairs.contains(where: { $0.contains(tab.id) }),
                   detachParked(tab, from: space.id) else { continue }

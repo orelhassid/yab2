@@ -701,7 +701,7 @@ enum Shortcut {
             Item(.openCommandField, "Open Command Field", "opens the command field", k("k", [.control, .command])),
             // Dia's: the folder the tab in front is in.
             Item(.newTabInFolder, "New tab in this tab’s folder", "opens a new tab in the folder", k("t", [.option, .command])),
-            Item(.privateTab, "New private tab", "opens a private tab", k("n", [.shift, .command])),
+            Item(.privateTab, "Open Private Space", "opens Private in the current window", k("n", [.shift, .command])),
             Item(.closeTab, "Close tab", "closes the tab", k("w")),
             Item(.reopen, "Reopen closed tab", "reopens a closed tab", k("t", [.shift, .command])),
             Item(.recentTab, "Last tab, hold the key to pick another", "goes to the last tab", k("⇥", .control)),
@@ -1059,7 +1059,7 @@ enum Shortcut {
     /// Each action's menu item, by its title, the name System Settings'
     /// App Shortcuts knows it by (see Hotkeys).
     private static let fixedTitles: [Action: String] = [
-        .newWindow: "New Window", .blankWindow: "Blank Window", .closeWindow: "Close Window", .newTab: "New Tab", .openCommandField: "Open Command Field", .privateTab: "New Private Window", .closeTab: "Close Tab", .reopen: "Reopen Closed Tab",
+        .newWindow: "New Window", .blankWindow: "Blank Window", .closeWindow: "Close Window", .newTab: "New Tab", .openCommandField: "Open Command Field", .privateTab: "Open Private Space", .closeTab: "Close Tab", .reopen: "Reopen Closed Tab",
         .nextTab: "Next Tab", .previousTab: "Previous Tab", .duplicate: "Duplicate Tab", .mute: "Mute Tab",
         .openAddress: "Open Address…", .copyAddress: "Copy URL", .copyMarkdownLink: "Copy Markdown Link", .sharePage: "Share Page\u{2026}", .pasteAndGo: "Paste and Go", .pasteAndMatchStyle: "Paste and Match Style", .keepTab: "Keep Tab", .folderWithTabs: "New Folder with Tabs", .newTabInFolder: "New Tab in Folder", .bookmark: "Add This Page",
         .back: "Back", .forward: "Forward", .reload: "Reload Page", .stopLoading: "Stop Loading", .hardReload: "Reload Without Cache",

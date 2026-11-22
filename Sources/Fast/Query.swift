@@ -198,7 +198,7 @@ final class Query: ObservableObject {
 /// The things the app can do, found by name in the field, so "private",
 /// "history" or "settings" is a place to go like any other.
 enum Command: String, CaseIterable {
-    case newWindow, newTab, openCommandField, privateTab, reopen
+    case newWindow, newTab, openCommandField, privateTab, clearPrivateSession, leavePrivateSpace, reopen
     /// A window whose tabs are its own, in no space (BlankWindow.swift).
     case blankWindow
     case tabOverview, history, downloads, bookmarks, passwords, autofill, settings, manageProfiles
@@ -284,7 +284,9 @@ enum Command: String, CaseIterable {
         case .newWindow: return "New Window"
         case .newTab: return "New Tab"
         case .mail: return "Open Mail"
-        case .privateTab: return "New Private Window"
+        case .privateTab: return "Open Private Space"
+        case .clearPrivateSession: return "Clear Session…"
+        case .leavePrivateSpace: return "Leave Private Space"
         case .blankWindow: return "Blank Window"
         case .reopen: return "Reopen Closed Tab"
         case .history: return "History"
@@ -416,6 +418,9 @@ enum Command: String, CaseIterable {
     /// any of these names it as surely as its title does.
     private var phrases: [String] {
         switch self {
+        case .privateTab: return ["private space", "new private space", "new private window", "private browsing", "incognito"]
+        case .clearPrivateSession: return ["clear session", "clear private session", "reset private browsing"]
+        case .leavePrivateSpace: return ["exit private space"]
         case .customizeSite: return ["customize", "customize site", "customize…", "site appearance", "edit site look", "boost editor"]
         case .customizationOn: return ["enable customization", "turn on customization", "customization", "site customization"]
         case .customizationOff: return ["disable customization", "turn off customization", "customization", "site customization"]
@@ -510,7 +515,6 @@ enum Command: String, CaseIterable {
         case .newWindow: return "normal regular browsing open"
         case .newTab: return "blank open empty"
         case .mail: return "messages letters gmail inbox"
-        case .privateTab: return "shy secret window"
         case .blankWindow: return "empty window apart tabs of its own"
         case .reopen: return "undo closed restore back"
         case .history: return "visited recent past pages"
@@ -613,7 +617,9 @@ enum Command: String, CaseIterable {
         case .newWindow: return "yab.window.plus"
         case .newTab: return "yab.tab.plus"
         case .mail: return "yab.mail"
-        case .privateTab: return "incognito"
+        case .privateTab: return Space.privateSpace.icon
+        case .clearPrivateSession: return "trash"
+        case .leavePrivateSpace: return "rectangle.portrait.and.arrow.right"
         case .blankWindow: return "yab.window"
         case .reopen: return "yab.tab.undo"
         case .history: return "yab.clock"
@@ -814,6 +820,9 @@ enum Command: String, CaseIterable {
         }
         let page = browser.active.map { !$0.isBlank } ?? false
         switch self {
+        case .privateTab: return browser.canOpenPrivateSpace && browser.fieldGuest == nil
+        case .clearPrivateSession: return browser.inPrivateSpace && browser.fieldGuest == nil
+        case .leavePrivateSpace: return browser.inPrivateSpace && browser.fieldGuest == nil
         case .pasteAndMatchStyle: return browser.query.pasteStyleTarget.canPaste(restoring: true)
         case .importYabPasswords: return browser.passwordImportRoute.available
         case .manageProfiles: return browser.canManageProfiles
@@ -827,6 +836,7 @@ enum Command: String, CaseIterable {
         case .bookmarkPage, .reader, .find, .print, .capture, .floatVideo, .hide,
              .reload, .hardReload, .clearCookies, .zoomIn, .zoomOut, .actualSize, .inspector, .console:
             return page
+        case .reopen: return !browser.inPrivateSpace
         case .closeTab:
             // The same Close Tab action closes an empty normal/private window.
             return browser.fieldGuest == nil && (page || browser.closesWindowOnCloseTab)
@@ -919,7 +929,9 @@ enum Command: String, CaseIterable {
         case .newTab:
             if browser.tabs.isEmpty { browser.pressNewTab() } else { browser.newTab() }
         case .mail: browser.toggleMail()
-        case .privateTab: browser.newPrivateWindow()
+        case .privateTab: browser.openPrivateSpace()
+        case .clearPrivateSession: browser.confirmClearPrivateSession()
+        case .leavePrivateSpace: browser.leavePrivateSpace()
         case .blankWindow: browser.newBlankWindow()
         case .reopen: browser.reopen()
         // The box's own places, gone into where the command was typed.
@@ -1092,7 +1104,12 @@ enum Command: String, CaseIterable {
     /// Exact names and the fuller wording: the half everyone has, and the
     /// whole catalog once the experiment is on.
     @MainActor private func expanded(in browser: Browser) -> Bool {
-        self == .manageProfiles || browser.prefs.menuCommands || MenuCommands.everyone.contains(self) || ChatProjectCommands.commands.contains(self)
+        switch self {
+        case .manageProfiles, .privateTab, .clearPrivateSession, .leavePrivateSpace:
+            return true
+        default:
+            return browser.prefs.menuCommands || MenuCommands.everyone.contains(self) || ChatProjectCommands.commands.contains(self)
+        }
     }
 
     private static let exactNames: [Command: Set<String>] = Dictionary(uniqueKeysWithValues:

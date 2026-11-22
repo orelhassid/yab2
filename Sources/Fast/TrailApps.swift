@@ -190,7 +190,7 @@ extension Browser {
 
     var sidebarGridPins: [Tab] { sidebarTabs(tabs).filter { $0.pin != nil && !pinTucked($0) } }
 
-    var sidebarAppsShown: Bool { prefs.sidebar && spaceRailWidth == 0 && windowPurpose == .normal && !blank && !inMail }
+    var sidebarAppsShown: Bool { prefs.sidebar && spaceRailWidth == 0 && !privateShell && !blank && !inMail }
     var sidebarAppsHeight: CGFloat {
         guard sidebarAppsShown, !TrailApps.shared.apps.isEmpty else { return 0 }
         return ColumnLayout.pinBlock(count: TrailApps.shared.apps.count, width: sidebarContentWidth)

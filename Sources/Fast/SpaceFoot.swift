@@ -312,25 +312,27 @@ struct TrailLibraryControls: View {
             HoardButton(hoard: browser.hoard, place: .side, inRail: true, preview: { preview.pin(.downloads) })
                 .modifier(TrailLibraryPopover(page: .downloads, browser: browser, state: preview, vertical: vertical))
                 .background(ClickZone(away: browser.fieldAway))
-            ForEach([LibraryPage.bookmarks, .history, .extensions], id: \.self) { page in
-                RailButton(page.title, icon: page.icon, selected: preview.page == page || browser.active?.libraryPage == page) {
-                    preview.pin(page)
+            if !browser.inPrivateSpace {
+                ForEach([LibraryPage.bookmarks, .history, .extensions], id: \.self) { page in
+                    RailButton(page.title, icon: page.icon, selected: preview.page == page || browser.active?.libraryPage == page) {
+                        preview.pin(page)
+                    }
+                    .modifier(TrailLibraryPopover(page: page, browser: browser, state: preview, vertical: vertical))
+                    .background(ClickZone(away: browser.fieldAway))
                 }
-                .modifier(TrailLibraryPopover(page: page, browser: browser, state: preview, vertical: vertical))
-                .background(ClickZone(away: browser.fieldAway))
+                if !vertical {
+                    Spacer(minLength: SideBar.gap)
+                }
+                RailButton("Profile", selected: profilePopover.shown, keyboard: true, action: {
+                    profilePopover.toggle(in: browser, preferred: vertical
+                        ? (browser.trailFlank == .right ? .trailing : .leading) : .bottom)
+                }) {
+                    ProfilePicture(profile: browser.currentProfileSpace.profileID, size: SideBar.mark + 3)
+                }
+                .accessibilityValue(browser.activeProfileName)
+                .background(ProfilePopoverAnchor(popover: profilePopover).allowsHitTesting(false))
+                .onDisappear { profilePopover.close(restoreFocus: false) }
             }
-            if !vertical {
-                Spacer(minLength: SideBar.gap)
-            }
-            RailButton("Profile", selected: profilePopover.shown, keyboard: true, action: {
-                profilePopover.toggle(in: browser, preferred: vertical
-                    ? (browser.trailFlank == .right ? .trailing : .leading) : .bottom)
-            }) {
-                ProfilePicture(profile: browser.currentProfileSpace.profileID, size: SideBar.mark + 3)
-            }
-            .accessibilityValue(browser.activeProfileName)
-            .background(ProfilePopoverAnchor(popover: profilePopover).allowsHitTesting(false))
-            .onDisappear { profilePopover.close(restoreFocus: false) }
         }
 
         .frame(maxWidth: vertical ? nil : .infinity)
@@ -362,7 +364,7 @@ struct SpaceRail: View {
             ScrollViewReader { reader in
                 ThreadScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: SideBar.margin) {
-                        if !pinned.apps.isEmpty || drop.trailOwner == ObjectIdentifier(browser) {
+                        if !browser.inPrivateSpace, !pinned.apps.isEmpty || drop.trailOwner == ObjectIdentifier(browser) {
                             RailGroup {
                                 ForEach(pinned.apps) { app in TrailAppButton(app: app, browser: browser) }
                                 if drop.trailOwner == ObjectIdentifier(browser) {
@@ -479,8 +481,9 @@ struct SpaceRow: View {
         let order = browser.switcherSpaces
         if vertical {
             let plan = SpaceRowPlan(room: SideBar.row * CGFloat(order.count), count: order.count, dots: browser.prefs.spaceDots)
-            let visible = Array(order.prefix(max(1, limit)))
-            let hidden = order.dropFirst(visible.count)
+            let regular = order.filter { $0.id != Space.privateID }
+            let visible = Array(regular.prefix(max(1, limit)))
+            let hidden = regular.dropFirst(visible.count)
             RailGroup {
                 slots(visible, plan)
                 if !hidden.isEmpty {
@@ -509,6 +512,7 @@ struct SpaceRow: View {
                         }.padding(6).frame(width: 240)
                     }
                 }
+                slots(order.filter { $0.id == Space.privateID }, plan)
             }
         } else {
             GeometryReader { room in
@@ -566,6 +570,7 @@ struct SpaceRow: View {
     private func drag(_ space: Space, order: [Space], plan: SpaceRowPlan) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { drag in
+                guard space.id != Space.privateID else { return }
                 lifted = space.id
                 lift = vertical ? drag.translation.height : drag.translation.width
             }
@@ -605,7 +610,7 @@ struct SpaceSlot: View {
     @Environment(\.colorScheme) private var scheme
 
     @ViewBuilder private func mark(held: Bool, size markSize: CGFloat) -> some View {
-        if hovering || held || (plan.activeIcon && on) {
+        if space.id == Space.privateID || hovering || held || (plan.activeIcon && on) {
             SpaceMark(icon: space.icon, size: markSize).fixedSize()
                 .foregroundStyle(Palette.ink)
         } else if plan.icons, !Spaces.isEmoji(space.icon) {
@@ -702,6 +707,7 @@ struct SpaceSlot: View {
     /// ⌃1 to ⌃9, as they are set now; Mail's own ⇧⌘I for Mail, whose
     /// number by its place works too.
     private var keys: String? {
+        if space.id == Space.privateID { return Keymap.shared.text(.privateTab) }
         if space.id == Space.mailID {
             let text = Keymap.shared.text(.mail)
             return text.isEmpty ? nil : text

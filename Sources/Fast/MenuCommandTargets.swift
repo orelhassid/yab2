@@ -84,7 +84,8 @@ extension MenuCommands {
             }
         }
         if browser.spacesShown && !browser.privateBrowsing {
-            for (index, space) in browser.switcherSpaces.enumerated() where space.id != browser.sidebarSpaceID {
+            for (index, space) in browser.switcherSpaces.enumerated()
+                where space.id != browser.sidebarSpaceID && space.id != Space.privateID {
                 let id = space.id.uuidString
                 var aliases = ["focus on \(space.name)", "go to space \(space.name)"]
                 if space.id == Space.allTabs.id { aliases += ["All Tabs", space.name] }

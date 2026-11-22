@@ -313,7 +313,7 @@ final class BrowserWindows: ObservableObject {
     @discardableResult
     func newWindow(from source: Browser? = nil, frame: NSRect? = nil, space asked: UUID? = nil, blank: Bool = false) -> Browser {
         let id = UUID()
-        let space = asked ?? source?.spaceID ?? activeBrowser?.spaceID ?? Space.firstID
+        let space = asked ?? source?.spaceForNewWindow.id ?? activeBrowser?.spaceForNewWindow.id ?? Space.firstID
         Store.settings.set(space.uuidString, forKey: "window.\(id.uuidString).space")
         if blank { Store.settings.set(true, forKey: BlankWindow.key(id)) }
         return open(id: id, restoring: false, frame: frame, near: source.flatMap(window(for:)))
@@ -428,6 +428,7 @@ final class BrowserWindows: ObservableObject {
         entry.browser.dropSpare()
         // A tab ⌘W left under the field goes with the window.
         entry.browser.settleUnder()
+        entry.browser.endPrivateSession()
         entry.browser.flushSession()
         if id != Self.primaryID {
             shown.open.removeAll { $0 == id }
@@ -645,7 +646,9 @@ final class BrowserWindows: ObservableObject {
     private func retitle(_ id: UUID) {
         guard let entry = entries[id] else { return }
         let title: String
-        if entry.browser.privateBrowsing {
+        if entry.browser.inPrivateSpace {
+            title = Space.privateSpace.name
+        } else if entry.browser.privateBrowsing {
             title = "Private Window"
         } else if let tab = entry.browser.active, !tab.isBlank {
             title = tab.label
@@ -664,6 +667,7 @@ final class BrowserWindows: ObservableObject {
 
     private func title(for entry: Entry) -> String {
         let name: String
+        if entry.browser.inPrivateSpace { return Space.privateSpace.name }
         // A private window names no space of yours (register 1015).
         if entry.browser.windowPurpose == .privateOnly { return "Private Window" }
         if entry.browser.privateBrowsing {

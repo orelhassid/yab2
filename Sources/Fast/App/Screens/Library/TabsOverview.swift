@@ -69,7 +69,7 @@ struct TabsOverview: View {
     @GestureState private var drag: OverviewDrag?
 
     private var spaces: [Space] {
-        if browser.blank || browser.windowPurpose != .normal { return [browser.space] }
+        if browser.blank || browser.privateShell { return [browser.space] }
         return browser.turnOrder.filter {
             browser.prefs.usesSpaces || $0.id == browser.spaceID || $0.id == Space.mailID || $0.id == browser.homeSpaceID
         }

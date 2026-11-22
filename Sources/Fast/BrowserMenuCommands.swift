@@ -133,11 +133,16 @@ struct SpacesMenuCommands: Commands {
 
     var body: some Commands {
         CommandMenu("Spaces") {
-            if browser.spacesShown {
+            if browser.inPrivateSpace {
+                Button(Command.clearPrivateSession.title) { browser.confirmClearPrivateSession() }
+                Button(Command.leavePrivateSpace.title) { browser.leavePrivateSpace() }
+                Divider()
+            }
+            if browser.spacesShown || browser.inPrivateSpace {
                 ForEach(Array(browser.switcherSpaces.enumerated()), id: \.element.id) { entry in
                     SpaceMenuButton(browser: browser, space: entry.element, number: entry.offset + 1)
                         // A Blank Window stays in its space, as Arc's.
-                        .disabled(browser.blank)
+                        .disabled(browser.blank && !browser.inPrivateSpace && entry.element.id != Space.privateID)
                 }
                 Divider()
                 Button("Next Space") { browser.stepSpace(1) }

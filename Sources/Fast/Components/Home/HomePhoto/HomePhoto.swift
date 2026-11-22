@@ -50,7 +50,7 @@ struct WorkspaceThemeReader<Content: View>: View {
     @ViewBuilder var content: (WorkspaceTheme) -> Content
 
     var body: some View {
-        StoredWorkspaceTheme(space: browser.spaceID, projectLook: browser.developmentLook, privateWindow: browser.windowPurpose == .privateOnly, content: content)
+        StoredWorkspaceTheme(space: browser.spaceID, projectLook: browser.developmentLook, privateWindow: browser.privateShell, content: content)
     }
 }
 

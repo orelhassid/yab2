@@ -36,18 +36,22 @@ final class Browser: NSObject, ObservableObject, Relaying {
     let windowID: UUID?
     /// Fixed before restoration, never inferred from whichever tab is active.
     let windowPurpose: BrowserWindowPurpose
-    var privateBrowsing: Bool { windowPurpose.isPrivate(active: active?.shy) }
+    var inPrivateSpace: Bool { spaceID == Space.privateID }
+    var privateShell: Bool { inPrivateSpace || windowPurpose == .privateOnly }
+    var privateBrowsing: Bool { privateShell || active?.shy == true }
+    @ObservationIgnored var privateReturnSpace: UUID?
+    @ObservationIgnored var privateStore: WKWebsiteDataStore?
     /// A Blank Window, Arc's File › Blank Window (BlankWindow.swift): its
     /// tabs are its own, in no space's sidebar and in no other window, made
     /// with the sign-ins of the space it was opened from.
     let blank: Bool
 
     func blankTab() -> Tab {
-        Tab(shy: windowPurpose == .privateOnly, configuration: windowPurpose == .privateOnly ? Web.configuration(shy: true) : Web.configuration(store: Spaces.store(for: spaceID)))
+        Tab(shy: privateShell, configuration: privateShell ? Web.configuration(shy: true, store: inPrivateSpace ? privateBrowsingStore() : nil) : Web.configuration(store: Spaces.store(for: spaceID)))
     }
 
     func configuration(for url: URL) -> WKWebViewConfiguration {
-        if windowPurpose == .privateOnly { return Web.configuration(shy: true) }
+        if privateShell { return Web.configuration(shy: true, store: inPrivateSpace ? privateBrowsingStore() : nil) }
         // An agent's published page: Yab's copy, in a view with no cookies (ArtifactPages).
         if ArtifactPages.isPage(url) { return ArtifactPages.configuration() }
         return Browser.extensionConfiguration(for: url, space: spaceID) ?? Web.configuration(store: Spaces.store(for: spaceID))
@@ -3101,7 +3105,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
                         let profiles = self.spaces.filter { old in fresh.contains { $0.id == old.id && $0.profileID != old.profileID } }
                         self.spaces = fresh
                         for old in profiles { self.reloadSpaceProfile(old.id, previouslyShared: !old.ownSignIns) }
-                        if self.spaceID != Space.mailID, !fresh.contains(where: { $0.id == self.spaceID }) {
+                        if !self.inPrivateSpace, !self.inMail, !fresh.contains(where: { $0.id == self.spaceID }) {
                             let enabled = self.prefs.usesSpaces
                             self.prefs.usesSpaces = true
                             self.switchSpace(to: self.homeSpaceID)
@@ -3409,7 +3413,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// that space's sign-ins, and its pairs side by side. The shared pins'
     /// row is one file for every window (SharedPins.swift).
     func loadRow(_ space: UUID) -> Parked {
-        guard windowPurpose == .normal else { return Parked(tabs: [], active: nil) }
+        guard windowPurpose == .normal, space != Space.privateID else { return Parked(tabs: [], active: nil) }
         let shared = space == Space.pinsID
         var saved = Session.read(space: space, window: shared ? nil : windowID)
         if shared { SharedPins.known = SharedPins.marks(saved.tabs, pairs: saved.pairs ?? []) }
@@ -3734,6 +3738,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     }
 
     func writeSession(now: Bool = false) {
+        guard !inPrivateSpace else { return }
         if windowID == nil { writtenShape = rowShape }
         // One in from another space with you (a call, an agent at work in
         // it) is written in its own space's row, never this one's, where it
@@ -3766,7 +3771,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// (SharedPins.swift); a row left on one of them says so by a place
     /// below zero.
     func writeRow(_ tabs: [Tab], active activeID: Tab.ID?, space: UUID, pairs: [Pair], now: Bool = false) {
-        guard windowPurpose == .normal else { return }
+        guard windowPurpose == .normal, space != Space.privateID else { return }
         MainBudget.chunk("session.row") { writeRowNow(tabs, active: activeID, space: space, pairs: pairs, now: now) }
     }
 
@@ -3946,18 +3951,18 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // one that keeps everything is how a private search ends up in the
         // history. A private window's ⌘T is everyone's: the field over the
         // page, and whatever it opens is private there anyway.
-        if privateBrowsing, windowPurpose == .normal {
+        if privateBrowsing, !privateShell {
             newShyTab()
             return
         }
         // An extension's new tab page, if one asked and you said yes; never
         // in a private window, whose new tab is the field alone.
-        if #available(macOS 15.4, *), windowPurpose == .normal, let page = Extensions.of(self).newTabPage {
+        if #available(macOS 15.4, *), !privateShell, let page = Extensions.of(self).newTabPage {
             open(page, foreground: true)
             rememberSession()
             return
         }
-        let destination = query.returnPlace
+        let destination = inPrivateSpace ? nil : query.returnPlace
         if active != nil { openFresh() } else { askNew() }
         if let destination {
             enterPlace(destination.place, filter: destination.filter)
@@ -3965,7 +3970,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // Asked once, the first time an extension wants the new tab: on
         // yes, its page comes in place of the field, if the field still
         // has nothing in it.
-        if #available(macOS 15.4, *), windowPurpose == .normal {
+        if #available(macOS 15.4, *), !privateShell {
             Extensions.of(self).offerNewTabPage { [weak self] page in
                 guard let self, fieldShowing, typed.isEmpty else { return }
                 guard fresh else { return }
@@ -4101,12 +4106,6 @@ final class Browser: NSObject, ObservableObject, Relaying {
         if let opening { opening(self) } else { BrowserWindows.shared.newWindow(from: self) }
     }
 
-    /// A separate private window, seeded before it can be shown or restored.
-    func newPrivateWindow() {
-        if NSApp.currentEvent?.type == .keyDown, NSApp.currentEvent?.isARepeat == true { return }
-        BrowserWindows.shared.newPrivateWindow(from: self)
-    }
-
     /// The field, empty, asking where to go, with no tab in front: over
     /// what stands under it (`under`), or on the window's own ground.
     func askNew() {
@@ -4150,7 +4149,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// A spare tab's web view, a moment after a window opens with nothing
     /// in it (see `spare`).
     private func warmSpare() {
-        guard windowPurpose == .normal else { return }
+        guard !privateShell else { return }
         guard spare == nil else { return }
         let tab = blankTab()
         prepare(tab)
@@ -4164,7 +4163,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// The spare tab, for a page going into this space's own store, or for
     /// something that needs a tab while none is in front.
     private func takeSpare(for url: URL? = nil) -> Tab? {
-        guard let tab = spare, tab.store === Spaces.store(for: spaceID), tab.spareFits(url),
+        guard !inPrivateSpace, let tab = spare, tab.store === Spaces.store(for: spaceID), tab.spareFits(url),
               url.map({ Browser.extensionConfiguration(for: $0) == nil && !ArtifactPages.isPage($0) }) ?? true else { return nil }
         spare = nil
         if #available(macOS 15.4, *) { ContentWarm.release(tab.webKitOnly("WebKit native page lifecycle", build: false)) }
@@ -4218,7 +4217,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// default mode only). One a window, in the store of the space on
     /// screen; one of another space's store is let go for it.
     func keepSpare(in seconds: TimeInterval? = nil) {
-        guard windowPurpose == .normal else { return }
+        guard !privateShell else { return }
         guard Browser.keepsSpare else { return }
         spareTimer?.invalidate()
         // A Chromium endpoint and its document-start scripts take about
@@ -4434,7 +4433,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// coming to the front instead (evals/tab-tearoff/active.py).
     @ObservationIgnored private var waitingRow: (tab: Tab.ID, put: () -> Void)?
 
-    private func putWaitingRow() {
+    func putWaitingRow() {
         let row = waitingRow?.put
         waitingRow = nil
         row?()
@@ -5051,11 +5050,11 @@ final class Browser: NSObject, ObservableObject, Relaying {
             // single Duplicate does, including a private artifact page.
             let tab: Tab
             if ArtifactPages.isPage(url) {
-                tab = Tab(shy: windowPurpose == .privateOnly || source.shy, configuration: ArtifactPages.configuration())
+                tab = Tab(shy: privateShell || source.shy, configuration: ArtifactPages.configuration())
             } else if source.shy {
                 tab = Tab(shy: true, configuration: Web.configuration(shy: true, store: source.store))
             } else {
-                tab = Tab(shy: windowPurpose == .privateOnly, configuration: configuration(for: url))
+                tab = Tab(shy: privateShell, configuration: configuration(for: url))
             }
             prepare(tab)
             return tab
@@ -5257,6 +5256,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     }
 
     func reopen() {
+        guard !inPrivateSpace else { return }
         // A window closed since the last tab was: the window, as
         // ⇧⌘T brings back whatever was closed last.
         if reopensWindow {
@@ -5270,12 +5270,13 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// ⇧⌘T would bring back a window: one was closed after this window's
     /// last tab was.
     var reopensWindow: Bool {
-        guard let closed = BrowserWindows.shared.lastClosedAt else { return false }
+        guard !inPrivateSpace, let closed = BrowserWindows.shared.lastClosedAt else { return false }
         return closed > (ghosts.last?.at ?? .distantPast)
     }
 
     /// A ghost back, with the tabs closed together with it.
     func reopen(from ghost: Ghost) {
+        guard !inPrivateSpace else { return }
         if let batch = ghost.batch, tidied.contains(batch) {
             untidy(batch)
             return
@@ -5316,6 +5317,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// One of them by name, from the History menu.
     func reopen(_ ghost: Ghost) {
+        guard !inPrivateSpace else { return }
         let empty = active == nil
         ghosts.removeAll { $0.id == ghost.id }
         let tab = Tab(configuration: configuration(for: ghost.url))
@@ -5610,7 +5612,9 @@ final class Browser: NSObject, ObservableObject, Relaying {
         let tab: Tab
         if ArtifactPages.isPage(url) {
             // An agent's published page, in a view of its own kind, private or not.
-            tab = Tab(shy: windowPurpose == .privateOnly || source?.shy == true || shy, configuration: ArtifactPages.configuration())
+            tab = Tab(shy: privateShell || source?.shy == true || shy, configuration: ArtifactPages.configuration())
+        } else if inPrivateSpace {
+            tab = blankTab()
         } else if let source, source.shy {
             tab = Tab(shy: true, configuration: Web.configuration(shy: true, store: source.store))
         } else if shy || windowPurpose == .privateOnly {
@@ -5656,7 +5660,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // (tabs.getCurrent), and a tab outside the row has no place in its
         // window to be told; OneTab's list, opened in front, never got past
         // its spinner (feedback #156).
-        let lateRow = foreground && Narrow.openFirst && Narrow.openLateRow && !editing && stagePair == nil
+        let lateRow = !inPrivateSpace && foreground && Narrow.openFirst && Narrow.openLateRow && !editing && stagePair == nil
             && active?.builtPage?.superview is StageView && Browser.extensionConfiguration(for: url) == nil && !rowNow
         // One opened in front a moment ago and still waiting for its row:
         // its row first, so the rows stand in the order they were asked for.
@@ -5752,8 +5756,8 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // The test-only browserWindow route may select a private window.
         // Its lifetime purpose wins over the default argument, before a
         // normal website store or tab can be constructed.
-        let privately = windowPurpose.isPrivate(active: shy)
-        let tab = Tab(shy: privately, bench: true, configuration: privately ? nil
+        let privately = privateShell || shy
+        let tab = Tab(shy: privately, bench: true, configuration: inPrivateSpace ? configuration(for: url) : privately ? nil
                       : Browser.extensionConfiguration(for: url, space: space ?? spaceID)
                         ?? Web.configuration(store: Spaces.store(for: space ?? spaceID)))
         prepare(tab)
@@ -5857,7 +5861,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// ⌘⇧N. A tab that keeps nothing, its own cookies, its own sign-ins, no
     /// history, and no place in tomorrow's session.
     func newShyTab() {
-        let tab = Tab(shy: true)
+        let tab = inPrivateSpace ? blankTab() : Tab(shy: true)
         // Going private from a tab that kept things is the moment; from
         // another private tab the page is already dark, and nothing changes.
         if !privateBrowsing { tab.hushedAt = Date() }
@@ -7976,7 +7980,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     /// destination, nor let history jump above genuinely named saved pages.
     private func openPageMatches(matching typed: String) -> (rows: [Suggestion], named: Bool) {
         let needle = typed.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return ([], false) }
+        guard !needle.isEmpty, !inPrivateSpace else { return ([], false) }
         let windows = BrowserWindows.shared.browsers
         var seen = Set<Tab.ID>()
         // A kept tab or a pin is in every window of its space: this
@@ -8537,6 +8541,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     func submitInstant() -> Bool {
         guard windowPurpose == .normal else { return false }
         guard let words = instantWords else { return false }
+        guard !inPrivateSpace else { return false }
         let requests = InstantLinks.requests(words)
         guard !requests.isEmpty else { return false }
         let origin = activeID
@@ -8852,7 +8857,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // Mail's own address goes to its space, as `send` sends it, from a
         // row of Now as from the field, and from inside mail too: a tab made
         // for it would sit loose and pull you back to mail later.
-        if windowPurpose == .normal, MailPage.isMail(url), prefs.usesMail {
+        if !privateShell, MailPage.isMail(url), prefs.usesMail {
             enterMail(url)
             return
         }
@@ -9124,6 +9129,26 @@ extension Browser {
         // space. Peek shares outside storage with Small Window, but is
         // not one: its links must not acquire a separate little window.
         // Scripted popups still take their window and keep their opener.
+        if let parent, spaceHolding(parent) == Space.privateID {
+            // A popup belongs to the session that opened it, even when that
+            // session is parked. Keep the engine-owned opener relationship.
+            guard let tab = page.webKitPopupTab(request.id, shy: true) else { reply(nil); return }
+            tab.popup = popup
+            tab.opener = parent.id
+            tab.from = parent.id
+            tab.scripted = scripted
+            if let url = action.request.url { tab.setAddressOptimistically(url) }
+            if inPrivateSpace {
+                adopt(tab)
+                if activeID == parent.id, menuForeground ?? modifiedForeground ?? true { select(tab) }
+            } else {
+                prepare(tab)
+                parked[Space.privateID]?.tabs.append(tab)
+            }
+            reply(tab.id)
+            return
+        }
+        guard !inPrivateSpace else { reply(nil); return }
         let peekLink = parent != nil && parent === peeking && action.kind == .linkActivated && !popup
         // A plain target=_blank link stays in Small Window, as Little
         // Arc does, so Back uses that window's own history. Explicit new
@@ -9412,7 +9437,7 @@ extension Browser {
     /// asleep, whose place it takes, in this window's folder
     /// (KeptEverywhere.swift).
     func moveIn(_ tab: Tab, selecting: Bool = true, replacing mine: Tab? = nil) {
-        guard windowPurpose == .normal || tab.shy else { return }
+        guard !inPrivateSpace, windowPurpose == .normal || tab.shy else { return }
         if mine == nil, tabs.count == 1, tabs[0].isBlank, let empty = tabs.first, selecting {
             tabs = []
             empty.close()
@@ -9446,6 +9471,7 @@ extension Browser {
     func letGo() {
         fullscreenDeparture.stop()
         for tab in tabs + parkedTabs + outside { tab.close() }
+        releasePrivateStore()
     }
 
     /// A small window's page, closed without being kept.

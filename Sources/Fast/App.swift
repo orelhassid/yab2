@@ -101,11 +101,12 @@ private struct FileItems: View {
         Button("New Tab in Folder") { selected.newTab(in: selected.folderHere) }
             .shortcut(.newTabInFolder)
             .disabled(selected.folderHere == nil)
-        Button("New Private Window") { selected.newPrivateWindow() }
+        Button(Command.privateTab.title) { selected.openPrivateSpace() }
             .shortcut(.privateTab)
+            .disabled(!selected.canOpenPrivateSpace)
         Button(selected.reopensWindow ? "Reopen Closed Window" : "Reopen Closed Tab") { selected.reopen() }
             .shortcut(.reopen)
-            .disabled(selected.ghosts.isEmpty && !selected.reopensWindow)
+            .disabled(selected.inPrivateSpace || selected.ghosts.isEmpty && !selected.reopensWindow)
         Divider()
         Button("Open Address…") { selected.pressOpenAddress() }
             .shortcut(.openAddress)
@@ -1422,7 +1423,7 @@ struct ContentView: View {
     /// in either Appearance, no glass, no colors turning, no drawings, so
     /// it is told apart from every other window at a glance (LookModeScheme
     /// makes it dark).
-    private var privateWindow: Bool { browser.windowPurpose == .privateOnly }
+    private var privateWindow: Bool { browser.privateShell }
     static let privateBackdrop = NSColor(white: 0.12, alpha: 1)
 
     /// The space's look is on glass: its color a tint on the window's
@@ -2917,7 +2918,7 @@ struct ContentView: View {
         case .newTabInFolder:
             guard let nest = browser.folderHere else { return false }
             browser.newTab(in: nest)
-        case .privateTab: browser.newPrivateWindow()
+        case .privateTab: browser.openPrivateSpace()
         case .closeTab:
             if !browser.closeCurrentRecord(), !browser.cancelInstantSearch() { browser.shut(browser.chosen, byKey: true) }
         case .reopen: browser.reopen()

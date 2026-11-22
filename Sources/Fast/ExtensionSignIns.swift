@@ -46,7 +46,7 @@ extension Extensions {
     /// The sign-in a space's pages are kept in: nil for the shared one,
     /// else the space's own id (`Spaces.store(for:)`).
     static func signIn(of space: UUID) -> UUID? {
-        if space == Space.mailID || space == Space.pinsID || Spaces.sharing.contains(space) { return nil }
+        if space == Space.privateID || space == Space.mailID || space == Space.pinsID || Spaces.sharing.contains(space) { return nil }
         let profile = Spaces.signIn(of: space)
         return profile == Space.firstID ? nil : profile
     }

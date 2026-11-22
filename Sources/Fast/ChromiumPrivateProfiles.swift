@@ -11,6 +11,7 @@ enum ChromiumPrivateProfiles {
         let profile = "private-" + UUID().uuidString
         var owners: [UUID: Owner] = [:]
     }
+    private static let sessions = NSHashTable<WKWebsiteDataStore>.weakObjects()
     private static let stores = NSMapTable<WKWebsiteDataStore, Identity>.weakToStrongObjects()
 
     /// The space profile a private profile is the off-the-record side of,
@@ -39,7 +40,7 @@ enum ChromiumPrivateProfiles {
         precondition(tab.shy || !store.isPersistent)
         let known = stores.object(forKey: store)
         let value = known ?? Identity()
-        if known == nil, extensionsAllowed, let browser = tab.delegate as? Browser {
+        if known == nil, !sessions.contains(store), extensionsAllowed, let browser = tab.delegate as? Browser {
             let id = browser.spaceHolding(tab) ?? browser.spaceID
             let space = Spaces.store(for: id)
             if space.isPersistent {
@@ -105,12 +106,27 @@ enum ChromiumPrivateProfiles {
         stores.object(forKey: store)?.profile
     }
 
+    static func retainSession(_ store: WKWebsiteDataStore) {
+        sessions.add(store)
+    }
+
+    static func releaseSession(_ store: WKWebsiteDataStore) {
+        sessions.remove(store)
+        retireIfUnused(store)
+    }
+
     static func release(_ tab: Tab) {
-        guard tab.shy || !tab.pageStore.isPersistent, let value = stores.object(forKey: tab.pageStore) else { return }
+        let store = tab.pageStore
+        guard tab.shy || !store.isPersistent, let value = stores.object(forKey: store) else { return }
         if value.owners[tab.id]?.tab === tab { value.owners[tab.id] = nil }
+        retireIfUnused(store)
+    }
+
+    private static func retireIfUnused(_ store: WKWebsiteDataStore) {
+        guard !sessions.contains(store), let value = stores.object(forKey: store) else { return }
         value.owners = value.owners.filter { $0.value.tab?.gone == false }
         guard value.owners.isEmpty else { return }
-        stores.removeObject(forKey: tab.pageStore)
+        stores.removeObject(forKey: store)
         spaces[value.profile] = nil
         sided.remove(value.profile)
         lastOpen[value.profile] = nil

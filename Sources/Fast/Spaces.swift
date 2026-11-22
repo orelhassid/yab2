@@ -91,6 +91,9 @@ struct Space: Codable, Identifiable, Equatable {
     static let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     var isFirst: Bool { id == Space.firstID }
 
+    static let privateID = UUID(uuidString: "00000000-0000-0000-0000-00000000000F")!
+    static let privateSpace = Space(id: privateID, name: "Private", icon: "lock.shield", ownSignIns: true)
+
     /// Stable logical profile identity; its Space may have been deleted.
     var profileID: UUID { ownSignIns ? signInWith ?? id : Self.firstID }
 
@@ -525,6 +528,7 @@ enum Spaces {
     static var madeStores: [UUID: WKWebsiteDataStore] { stores }
 
     static func store(for id: UUID) -> WKWebsiteDataStore {
+        if id == Space.privateID { return .nonPersistent() }
         if id == Space.mailID || id == Space.pinsID || sharing.contains(id) { return Store.websites }
         let id = signIn(of: id)
         if id == Space.firstID { return Store.websites }
@@ -637,11 +641,15 @@ extension Browser {
     /// spacesShown alone, ⌃1 in Mail did nothing with spaces off
     /// (feedback #1657).
     var turnsSpaces: Bool {
-        spacesShown || (windowPurpose == .normal
+        inPrivateSpace || spacesShown || (windowPurpose == .normal
                         && (spaceID == Space.mailID || turnOrder.contains { $0.id == Space.mailID }))
     }
 
-    var space: Space { spaceID == Space.mailID ? .mail : spaces.first { $0.id == spaceID } ?? spaces[0] }
+    var space: Space {
+        if inPrivateSpace { return .privateSpace }
+        if inMail { return .mail }
+        return spaces.first { $0.id == spaceID } ?? spaces[0]
+    }
 
     /// The original shared space while it exists, otherwise the first kept
     /// one. Never return the identifier of a deleted Personal space.
@@ -708,7 +716,7 @@ extension Browser {
     /// What moveTabs sends: a movable tab, a call's too (row 1149), the
     /// same live tab.
     func sendable(_ tab: Tab) -> Bool {
-        Browser.movable(tab)
+        !inPrivateSpace && Browser.movable(tab)
     }
 
     /// A tab that went along with you (an agent at work in it) and
@@ -760,6 +768,9 @@ extension Browser {
     /// `washed`: the fingers already have the new color over the window
     /// (SpacePull), and hand it over themselves.
     func switchSpace(to id: UUID, washed: Bool = false, keepingHome: Bool = false, preservingAllTabs: Bool = false) {
+        if inPrivateSpace, [Space.collections.id, Space.development.id, Space.allTabs.id].contains(id) {
+            leavePrivateSpace()
+        }
         if id == Space.collections.id { enterWorkspace(.collections); return }
         if id == Space.development.id { enterDevelopment(); return }
         if workspaceSpace != nil && id == Space.allTabs.id {
@@ -770,12 +781,20 @@ extension Browser {
         if id == Space.allTabs.id { showAllTabs(); return }
         if !preservingAllTabs { allTabsSelected = false }
         guard windowPurpose == .normal else { return }
-        // Mail's space is gone in and out of with spaces off too (MailSpace).
+        let intoPrivate = id == Space.privateID
+        let privateTurn = intoPrivate || inPrivateSpace
         let mail = id == Space.mailID || spaceID == Space.mailID
-        // A Blank Window stays in the space it signs in as, unless that
-        // space is gone (Arc's Spaces menu is off there).
-        guard !blank || !spaces.contains(where: { $0.id == spaceID }) else { return }
-        guard prefs.usesSpaces || mail, id != spaceID, mail || spaces.contains(where: { $0.id == id }) else { return }
+        guard id != spaceID, intoPrivate || (id == Space.mailID && prefs.usesMail) || spaces.contains(where: { $0.id == id }),
+              !blank || !inPrivateSpace || id == spaceForNewWindow.id,
+              privateTurn || (!blank || !spaces.contains(where: { $0.id == spaceID })) && (prefs.usesSpaces || mail)
+        else { return }
+        if intoPrivate {
+            dropSpare()
+            privateReturnSpace = spaceID
+            _ = privateBrowsingStore()
+        }
+        putWaitingRow()
+        if privateTurn { land() }
         ColumnSpaceCarry.of(self)?.willPage()
         defer { ColumnSpaceCarry.of(self)?.switched() }
         if !washed { SpacePull.shared.interrupt(in: self) }
@@ -785,16 +804,16 @@ extension Browser {
         settleNow()
         // Across the top, the strip as it is now, pictured for its turn
         // (StripView); and how far two fingers had taken it.
-        let strip = prefs.spaceTransition != .slide || prefs.sidebar || id == Space.mailID || spaceID == Space.mailID ? nil : StripView.of(self)
+        let strip = privateTurn || prefs.spaceTransition != .slide || prefs.sidebar || id == Space.mailID || spaceID == Space.mailID ? nil : StripView.of(self)
         let stripBefore = strip?.prepare()
         let spaceBefore = space
         let turnStart = SpaceShown.shared.handoff
-        let order = turnOrder.map(\.id)
+        let order = switcherSpaces.map(\.id)
         let forward = (order.firstIndex(of: id) ?? 0) > (order.firstIndex(of: spaceID) ?? 0)
         // The page in front there on screen now, from its last frame,
         // before anything of the switch is written for SwiftUI (PageStills).
-        let visit = carryHome.map { $0 != id && id != Space.mailID } ?? false
-        if !visit, !keepingHome, let row = parked[id], let front = row.tabs.first(where: { $0.id == row.active }),
+        let visit = !privateTurn && (carryHome.map { $0 != id && id != Space.mailID } ?? false)
+        if !privateTurn, !visit, !keepingHome, let row = parked[id], let front = row.tabs.first(where: { $0.id == row.active }),
            !row.pairs.contains(where: { $0.contains(front.id) }) {
             showEarly(front)
         }
@@ -810,7 +829,7 @@ extension Browser {
         guard !intoMail || prefs.usesMail else { return }
         // The column's spaces slide as one row, the one on screen pictured
         // before anything changes (SpacePager).
-        let paging = SpacePager.shared.turn(self, to: id)
+        let paging = !privateTurn && SpacePager.shared.turn(self, to: id)
         SwitchMeter.mark("turn")
         // The row of spaces and the window's color set off now, sent to the
         // render server before anything else of the switch is done: the
@@ -827,7 +846,7 @@ extension Browser {
         // The page you were on, to stand under the field if the space you
         // go to has nothing in it (`Under`): this row's, or the one already
         // standing there from a space before, in the space it lives in.
-        let page = active.flatMap { $0.isBlank || $0.shy ? nil : $0 } ?? underTab
+        let page = privateTurn ? nil : active.flatMap { $0.isBlank || $0.shy ? nil : $0 } ?? underTab
         var pageSpace = spaceID
         if case .space(_, let from) = under { pageSpace = from }
         // A call stays in its space, live, its tab parked there: one out in
@@ -835,9 +854,9 @@ extension Browser {
         // it once you are there (feedback #1878). A video out stays out
         // too, its tab parked in the space it is in, as Arc's does; one
         // playing in front comes out as for a tab left.
-        if let active { OverviewPreviews.remember(active) }
-        if floating == nil { leavingSpace() }
-        let callHere = active?.onCall == true ? active : nil
+        if !privateTurn, let active { OverviewPreviews.remember(active) }
+        if !privateTurn, floating == nil { leavingSpace() }
+        let callHere = !privateTurn && active?.onCall == true ? active : nil
         // Those that went along and no longer do go back to their own.
         sendHomeAll()
         // The shared pins go along between two spaces that show them, one
@@ -850,7 +869,7 @@ extension Browser {
         quietly {
             spaceStep = forward ? 1 : -1
             pinsStayed = fromShowing && toShowing
-            let along = { (tab: Tab) in self.travels(tab) || tab.everywhere != nil && fromShowing && toShowing }
+            let along = { (tab: Tab) in !privateTurn && (self.travels(tab) || tab.everywhere != nil && fromShowing && toShowing) }
             let staying = tabs.filter(along)
             // Each knows the space it came from, its folder's and kept
             // place's (`home`), and is back at home there.
@@ -883,10 +902,12 @@ extension Browser {
             keepPaint()
             rowTurning = true
             spaceID = id
-            if windowID == nil { Spaces.current = id }
-            // Mail is left for the space you were in at the next launch.
-            let currentKey = windowID.map { "window.\($0.uuidString).space" } ?? "space.current"
-            if id != Space.mailID { Store.settings.set(id.uuidString, forKey: currentKey) }
+            if !intoPrivate {
+                if windowID == nil { Spaces.current = id }
+                // Mail restores the last regular space.
+                let currentKey = windowID.map { "window.\($0.uuidString).space" } ?? "space.current"
+                if id != Space.mailID { Store.settings.set(id.uuidString, forKey: currentKey) }
+            }
             // The window's color and grain in the same beat as the rows and the
             // wash (P9): the space is the room. Worn at once, under the old one,
             // which clears in the render server (SpaceWash).
@@ -896,7 +917,7 @@ extension Browser {
                 wash.turning = true
                 quietly { paint.wear(prefs) }
                 // On the row's own spring when the column slides.
-                if !washed, !washedEarly, animatesSpaceChanges, let old {
+                if !privateTurn, !washed, !washedEarly, animatesSpaceChanges, let old {
                     // Across the top, on the turn's spring, with the capsule (StripTurn).
                     if !prefs.sidebar, !paging {
                         spaceWash.clearOnStrip(old, from: washFrom, base: SpaceWash.grounded(in: self))
@@ -916,6 +937,10 @@ extension Browser {
             if visit {
                 if let front = back.active { visitFronts[id] = front }
                 back.active = nil
+            }
+            if privateTurn {
+                settleUnder()
+                query.returnPlace = nil
             }
             present(back, staying: toShowing ? staying.filter { $0.everywhere == nil } : staying)
             // The new row's folders and line worked out now, in this
@@ -1012,12 +1037,13 @@ extension Browser {
     /// The next space along, or the one before, round the ends, Mail's
     /// among them (turnOrder).
     func stepSpace(_ by: Int) {
+        if inPrivateSpace { leavePrivateSpace(); return }
+        let order = switcherSpaces.filter { $0.id != Space.privateID }
         if workspaceSpace != nil {
-            let neighbor = by < 0 ? switcherSpaces.last : switcherSpaces.first
+            let neighbor = by < 0 ? order.last : order.first
             if let neighbor { switchSpace(to: neighbor.id) }
             return
         }
-        let order = switcherSpaces
         guard turnsSpaces, let here = order.firstIndex(where: { $0.id == sidebarSpaceID }),
               let there = StripTurn.step(from: here, count: order.count, by: by) else { return }
         switchSpace(to: order[there].id)
@@ -1303,6 +1329,7 @@ extension Browser {
     /// included (turnOrder): any of them goes anywhere, as in Arc. ⌃1 to
     /// ⌃9 follow.
     func moveInOrder(_ id: UUID, to index: Int) {
+        guard id != Space.privateID else { return }
         let order = turnOrder
         guard let from = order.firstIndex(where: { $0.id == id }), index != from, order.indices.contains(index) else { return }
         var moved = order
@@ -1422,6 +1449,7 @@ extension Browser {
     /// `top`: today's tabs at the top of the other's today's, as a folder
     /// of today's lands in Arc.
     func moveTabs(_ picked: [Tab], to target: UUID, say: Bool = true, step own: Bool = true, top: Bool = false, before anchor: Tab.ID? = nil) -> SpaceMove? {
+        guard !inPrivateSpace else { return nil }
         // Out of a Blank Window into the space, in a window of yours.
         if blank { moveOutOfBlank(picked, to: target, say: say); return nil }
         guard prefs.usesSpaces, target != spaceID, let to = spaces.first(where: { $0.id == target }) else { return nil }
@@ -1837,7 +1865,7 @@ extension Browser {
     /// Spaces turned off: back to the first one. The others are kept, in
     /// case they are turned on again.
     func leaveSpaces() {
-        guard windowPurpose == .normal else { return }
+        guard windowPurpose == .normal, !inPrivateSpace else { return }
         let home = homeSpaceID
         guard spaceID != home else { return }
         let was = prefs.usesSpaces
@@ -1847,11 +1875,11 @@ extension Browser {
         switchSpace(to: home)
         prefs.usesSpaces = was
         Spaces.leaving = false
-        for (space, row) in parked {
+        for (space, row) in parked where space != Space.privateID {
             writeRow(row.tabs, active: row.active, space: space, pairs: row.pairs, now: true)
             row.tabs.forEach { $0.close() }
         }
-        parked = [:]
+        parked = parked.filter { $0.key == Space.privateID }
     }
 }
 

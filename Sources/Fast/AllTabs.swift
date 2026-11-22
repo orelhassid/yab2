@@ -153,7 +153,15 @@ extension Browser {
     var showingAllTabs: Bool { allTabsSelected && offersAllTabs }
     var sidebarSpace: Space { workspaceSpace ?? (showingAllTabs ? AllTabsConfiguration.shared.space : space) }
     var sidebarSpaceID: UUID { sidebarSpace.id }
-    var switcherSpaces: [Space] { offersAllTabs ? turnOrder + [AllTabsConfiguration.shared.space] : turnOrder }
+    var switcherSpaces: [Space] {
+        guard windowPurpose == .normal else { return turnOrder }
+        let ordinary = offersAllTabs ? turnOrder + [AllTabsConfiguration.shared.space] : turnOrder
+        if blank { return inPrivateSpace ? [spaceForNewWindow, .privateSpace] : ordinary }
+        if inPrivateSpace, !prefs.usesSpaces {
+            return ordinary.filter { $0.id == homeSpaceID || $0.id == privateReturnSpace || $0.id == Space.mailID } + [.privateSpace]
+        }
+        return spacesShown ? ordinary + [.privateSpace] : ordinary
+    }
 
     func isPinnedInSidebar(_ tab: Tab) -> Bool {
         if showingAllTabs { return AllTabsConfiguration.shared.order.contains(tab.allTabsKey) }

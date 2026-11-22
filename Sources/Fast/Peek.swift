@@ -152,7 +152,7 @@ struct Column: View {
         // the way between alike, as Arc's sidebar always wears its theme.
         let ground = tone == nil ? card : Self.ground(floating: floating, tone: tone)
         let paint = ground.map { ground in
-            workspaceTheme.look.map(SpaceWash.painted) ?? Self.paint(ground, prefs: prefs, privateWindow: browser.windowPurpose == .privateOnly)
+            workspaceTheme.look.map(SpaceWash.painted) ?? Self.paint(ground, prefs: prefs, privateWindow: browser.privateShell)
         }
         // What the card's own hairline and the island at its foot are
         // drawn on: the window's backdrop, or edge to edge the column's.
@@ -915,7 +915,7 @@ struct ColumnRoot: View {
     @ObservedObject var browser: Browser
     @ObservedObject var prefs: Preferences
     @Environment(\.colorScheme) private var scheme
-    private var privateWindow: Bool { browser.windowPurpose == .privateOnly }
+    private var privateWindow: Bool { browser.privateShell }
 
     var body: some View {
         // The window's own dresser (Browser.dresser): with two halves on

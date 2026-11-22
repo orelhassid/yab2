@@ -520,7 +520,7 @@ final class Links: NSObject, NSApplicationDelegate {
             item.target = self
             item.representedObject = space.id
         }
-        menu.addItem(withTitle: "New Private Window", action: #selector(dockPrivateTab), keyEquivalent: "").target = self
+        menu.addItem(withTitle: Command.privateTab.title, action: #selector(dockPrivateTab), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Change App Icon…", action: #selector(dockChangeAppIcon), keyEquivalent: "").target = self
         return menu
@@ -546,7 +546,7 @@ final class Links: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
             Headless.show(.person)
             guard let target = BrowserWindows.shared.activeBrowser ?? Links.browser else { return }
-            target.newPrivateWindow()
+            target.openPrivateSpace()
             NSApp.activate()
         }
     }

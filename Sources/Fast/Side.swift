@@ -3181,7 +3181,7 @@ struct SpaceName: View {
     private var shut: Bool { browser.map { folders.isShut(space.id, in: $0) } ?? false }
 
     var body: some View {
-        if browser?.blank == true {
+        if browser?.blank == true && space.id != Space.privateID {
             BlankHeading()
         } else {
             named
@@ -3238,8 +3238,8 @@ struct SpaceName: View {
                     dots(browser)
                 }
                 .padding(.trailing, Self.dotsInset)
-                .opacity(space.id == Space.allTabs.id || hovering || onDots || onStep != nil ? 1 : 0)
-                .allowsHitTesting(space.id == Space.allTabs.id || hovering || onDots || onStep != nil)
+                .opacity(space.id == Space.privateID || space.id == Space.allTabs.id || hovering || onDots || onStep != nil ? 1 : 0)
+                .allowsHitTesting(space.id == Space.privateID || space.id == Space.allTabs.id || hovering || onDots || onStep != nil)
             }
         }
         .background {
@@ -3335,14 +3335,14 @@ extension Browser {
     /// there, spaces on or off. Hide Space Name in a space's menu takes
     /// every space's off (Preferences.spaceNames), and with them the
     /// folding under the name.
-    var namesSpaces: Bool { blank || spacesShown && prefs.spaceNames }
+    var namesSpaces: Bool { inPrivateSpace || blank || spacesShown && prefs.spaceNames }
 
     /// The foot's row of spaces: with spaces on, one space alone too, as
     /// Arc's (feedback #270); with them off, Mail's and the first's while
     /// Mail is in the order.
     /// None in a Blank Window: it stays in its space, as Arc's has no
     /// spaces at its foot.
-    var footShowsSpaces: Bool { windowPurpose == .normal && !blank && (prefs.usesSpaces || turnOrder.count > 1) }
+    var footShowsSpaces: Bool { inPrivateSpace || windowPurpose == .normal && !blank && (prefs.usesSpaces || turnOrder.count > 1) }
 
     /// New Tab's row wears the live tab's plate, and the tab under the
     /// field none, while the field asks for the tab that row makes: ⌘T's,

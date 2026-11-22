@@ -88,7 +88,7 @@ struct SpaceLandingTests {
             browser.enterDevelopment()
             #expect(browser.developmentProject == .sunday)
             let first = browser.switcherSpaces.first?.id
-            let last = browser.switcherSpaces.last?.id
+            let last = browser.switcherSpaces.last(where: { $0.id != Space.privateID })?.id
             browser.stepSpace(-1)
             #expect(browser.sidebarSpaceID == last)
             browser.enterDevelopment()

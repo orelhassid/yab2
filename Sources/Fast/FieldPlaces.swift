@@ -806,8 +806,8 @@ extension Browser {
         // private tab in a normal window keeps its empty field. The large
         // field in a private window uses the usual Favorites, Recent Tabs,
         // Frequent and Quick Actions below; its visits still are not saved.
-        if privateBrowsing && (prefs.compactField || windowPurpose != .privateOnly) {
-            guard windowPurpose == .privateOnly else { return [] }
+        if inPrivateSpace || privateBrowsing && (prefs.compactField || !privateShell) {
+            guard privateShell else { return [] }
             var seen = Set<URL>()
             return tabs.filter { $0.id != activeID && !$0.isBlank && $0.address != nil }
                 .sorted { $0.touched > $1.touched }
