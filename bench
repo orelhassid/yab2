@@ -625,7 +625,7 @@ def main(argv):
     elif verb == "ui":
         if len(args) != 2: sys.exit("usage: bench ui KEY VALUE")
         key, value = args
-        request[key] = value if key in ("question", "look", "typed", "backdrop", "shelf", "swatch", "page", "search", "pick", "extension", "adding", "update", "ask", "scope", "sitecard", "quick", "agents", "memory", "skill", "space", "devside", "task", "flank", "glyph") else value in ("on", "true", "1", "yes")
+        request[key] = value if key in ("question", "look", "typed", "backdrop", "pageLayout", "shelf", "swatch", "page", "search", "pick", "extension", "adding", "update", "ask", "scope", "sitecard", "quick", "agents", "memory", "skill", "space", "devside", "task", "flank", "glyph") else value in ("on", "true", "1", "yes")
     elif verb in ("ext-add", "ext-folder"):
         # give=KEY,KEY: what it may ask for later, ticked (--yes runs, where no box is shown)
         gives = [a for a in args if a.startswith("give=")]

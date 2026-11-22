@@ -8562,7 +8562,13 @@ final class Bench {
             }
             // ⇧⌘C, as the menu does it: the bar's link answers, or the corner.
             if request["copy"] as? Bool == true { browser.copyAddress() }
-            if let mode = (request["backdrop"] as? String).flatMap(Backdrop.init) { browser.prefs.backdrop = mode }
+            if let mode = (request["backdrop"] as? String).flatMap(Backdrop.init) {
+                browser.prefs.backdrop = mode.windowMode
+                if request["pageLayout"] == nil {
+                    browser.prefs.pageLayout = PageLayout.restored(nil, backdrop: mode)
+                }
+            }
+            if let layout = (request["pageLayout"] as? String).flatMap(PageLayout.init) { browser.prefs.pageLayout = layout }
             if let swatch = (request["swatch"] as? String).flatMap(Swatch.init) { browser.prefs.swatch = swatch }
             if let hex = (request["custom"] as? String).flatMap(NSColor.init(hex:)) { browser.prefs.backdropColor = hex }
             if let amount = request["grain"] as? Double { browser.prefs.grain = min(1, max(0, amount)) }

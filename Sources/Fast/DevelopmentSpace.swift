@@ -217,6 +217,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     private(set) var ready = false
     private var sentEntries: [String: DevelopmentDetails]?
     private var sentColors: [String: String]?
+    private var pageFrame: [String: String] = [:]
     private var selected: DevelopmentProject?
 
     func updateColors() {
@@ -232,6 +233,20 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
         view.callAsyncJavaScript("for (const [key, value] of Object.entries(colors)) document.documentElement.style.setProperty(key, value)",
                                  arguments: ["colors": colors], in: nil, in: .page, completionHandler: nil)
     }
+    func updatePageFrame(margins: EdgeInsets, corner: CGFloat) {
+        let frame = ["--page-top": "\(margins.top)px", "--page-leading": "\(margins.leading)px",
+                     "--page-bottom": "\(margins.bottom)px", "--page-trailing": "\(margins.trailing)px",
+                     "--page-corner": "\(corner)px"]
+        guard frame != pageFrame else { return }
+        pageFrame = frame
+        if ready { applyPageFrame() }
+    }
+
+    private func applyPageFrame() {
+        view.callAsyncJavaScript("for (const [key, value] of Object.entries(frame)) document.documentElement.style.setProperty(key, value)",
+                                 arguments: ["frame": pageFrame], in: nil, in: .page, completionHandler: nil)
+    }
+
     lazy var view: WKWebView = {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(toolbar, name: "toolbar")
@@ -291,6 +306,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
         selected = nil
         sentColors = nil
         updateColors()
+        applyPageFrame()
         sentEntries = nil
         updateDirectory()
         if let browser { select(browser.developmentProject) }
@@ -368,6 +384,8 @@ struct DevelopmentPane: View {
     let browser: Browser
     let project: DevelopmentProject
     let entries: [String: DevelopmentDetails]
+    var pageMargins = EdgeInsets()
+    var pageCorner: CGFloat = 0
     private let tabs = [
         ("overview", "Overview", "rectangle.grid.2x2"), ("roadmap", "Roadmap", "point.3.connected.trianglepath.dotted"),
         ("specs", "Spec", "doc.text"), ("pitch", "Pitch board", "rectangle.3.group"),
@@ -424,7 +442,7 @@ struct DevelopmentPane: View {
                     .frame(height: NavigationHeader.height(topInset: 0))
             }
             ZStack {
-                DevelopmentWebPane(browser: browser, project: project, entries: entries)
+                DevelopmentWebPane(browser: browser, project: project, pageMargins: pageMargins, pageCorner: pageCorner)
                     .overlay(alignment: .topLeading) {
                         if ["settings", "terminal"].contains(state.active), state.reportedProject == project.rawValue,
                            !state.toolFrame.isEmpty, state.mode != "chat" {
@@ -458,16 +476,14 @@ struct DevelopmentPane: View {
                     .accessibilityHidden(state.environmentSelected)
                 if state.environmentSelected {
                     DevelopmentEnvironmentSettings(browser: browser, state: state)
+                        .background(Color(nsColor: SpaceSurface.tone(for: paint.color).page))
+                        .clipShape(RoundedRectangle(cornerRadius: pageCorner))
+                        .padding(pageMargins)
                 }
             }
             .background { RadialMenuSurface { RadialMenuInput.shared.registerTabBody($0) } }
         }
         .toned(SpaceSurface.tone(for: paint.color))
-        .background {
-            CardGround(paint: paint, step: look.shift ? browser.lookStep : 0)
-                .environment(browser)
-                .background(Color(nsColor: paint.color))
-        }
     }
 
     @ViewBuilder private func projectIcon(_ item: DevelopmentProject) -> some View {
@@ -489,7 +505,8 @@ struct DevelopmentPane: View {
 private struct DevelopmentWebPane: NSViewRepresentable {
     let browser: Browser
     let project: DevelopmentProject
-    var entries: [String: DevelopmentDetails]
+    let pageMargins: EdgeInsets
+    let pageCorner: CGFloat
     func makeNSView(context: Context) -> WKWebView {
         browser.developmentContent.browser = browser
         return browser.developmentContent.view
@@ -497,6 +514,7 @@ private struct DevelopmentWebPane: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         view.appearance = NSAppearance(named: context.environment.colorScheme == .dark ? .darkAqua : .aqua)
         browser.developmentContent.updateColors()
+        browser.developmentContent.updatePageFrame(margins: pageMargins, corner: pageCorner)
         browser.developmentContent.updateDirectory()
         browser.developmentContent.select(project)
     }

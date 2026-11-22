@@ -74,11 +74,7 @@ struct CollectionWorkspace: View {
             .toned(SpaceSurface.tone(for: paint.color))
         }
         .toned(SpaceSurface.tone(for: paint.color))
-        .background {
-            CardGround(paint: paint, step: look.shift ? browser.lookStep : 0)
-                .environment(browser)
-                .background(Color(nsColor: paint.color))
-        }
+        .background(Color(nsColor: SpaceSurface.tone(for: paint.color).page))
     }
 }
 

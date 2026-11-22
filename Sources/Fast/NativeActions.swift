@@ -25,7 +25,7 @@ struct NativeSetting {
             return .string(enabled ? flank.rawValue : PanelPosition.off.rawValue)
         }
         let keys = ["space-transition": SpaceTransition.key, "trail-position": Preferences.trailPositionKey, "trail-space-limit": TrailSpaceLimit.key, "settings-presentation": SettingsPresentation.key, "theme": "look", "sidebar": "sidebar", "tab-icons": "tabs.glyph", "density": Density.key, "address-bar": "addressbar",
-                    "full-url": "addressbar.full-url", "space-pages": "appearance.spacePages", "peek-address": "peek.address", "bookmarks-bar": "bookmarks.bar", "window": "backdrop",
+                    "full-url": "addressbar.full-url", "space-pages": "appearance.spacePages", "peek-address": "peek.address", "bookmarks-bar": "bookmarks.bar", "window": "backdrop", "page-layout": "page.layout",
                     "page-zoom": "pages.zoom", "warn-quit": "quit.warn", "sleep": "tabs.sleep",
                     "pins-every-space": SharedPins.key, "peek": "peek", "site-learn": "scopes.learn", "site-recent": "scopes.recent", "ask-where": "downloads.ask", "upload-finder": "uploads.finder",
                     "small-links": LinkWindow.key, "mail-motion": "mail.motion", "player": "player.shown", "agents-ask-opens": "agents.askOpens", "agents-cleanup": AgentTabsAfter.key,
@@ -283,7 +283,8 @@ struct NativeSetting {
         boolean("peek-address", "Show address bar in Peek", \.peekAddress),
         choice("bookmarks-bar", "Bookmarks bar", \.bookmarkBar, values: BookmarkBarMode.allCases.map(\.rawValue)),
         choice("bookmarks-style", "Bookmarks show", \.bookmarkStyle, values: BookmarkStyle.allCases.map(\.rawValue)),
-        choice("window", "Window background", \.backdrop, values: Backdrop.allCases.map(\.rawValue)),
+        choice("window", "Window background", \.backdrop, values: Backdrop.windowChoices.map(\.rawValue)),
+        choice("page-layout", "Page layout", \.pageLayout, values: PageLayout.allCases.map(\.rawValue)),
         choice("color", "Background color", \.swatch, values: Swatch.allCases.map(\.rawValue)),
         number("transparency", "Background transparency", \.backdropTransparency, range: 0...1),
         boolean("glass", "Glass window", \.lookGlass),

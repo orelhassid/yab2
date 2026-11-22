@@ -932,7 +932,7 @@ struct ColumnRoot: View {
             // the page as a card it paints the site's color itself.
             let docked = !prefs.sideShut
             WorkspaceThemeReader(browser: browser) { theme in
-                let workspaceTone = theme.active ? SpaceSurface.tone(for: SpaceWash.painted(theme.look ?? SpacePaint(prefs)).color) : nil
+                let workspaceTone = theme.tone
                 Column(browser: browser, prefs: prefs, peek: browser.peek, docked: docked,
                        tone: workspaceTone ?? (docked ? ink ?? tone : tone), card: card,
                        carried: true, ink: docked || workspaceTone != nil ? nil : ink)

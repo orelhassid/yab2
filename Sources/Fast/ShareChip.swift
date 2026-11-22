@@ -18,7 +18,7 @@ extension Browser {
     }
 
     /// The page runs to the screen's edge: no card, no corners (ContentView.laid).
-    var pageSquare: Bool { fullScreen && tabsAway && !pageShared }
+    var pageSquare: Bool { prefs.pageLayout == .edgeToEdge || (fullScreen && tabsAway && !pageShared) }
 }
 
 /// One share, as a place in the window says it.

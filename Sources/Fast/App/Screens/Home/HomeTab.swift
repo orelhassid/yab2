@@ -373,10 +373,12 @@ private struct SpacePageLook<Content: View>: View {
 
 struct SpacePageSurface: ViewModifier {
     let browser: Browser
-    @Environment(\.workspaceTheme) private var theme
     var library = false
     var themedControls = false
     var active = true
+    var frame = EdgeInsets()
+    var corner: CGFloat = 0
+    @Environment(\.workspaceTheme) private var theme
     @Environment(\.colorScheme) private var scheme
     @AppStorage("appearance.spacePages", store: Store.settings) private var share = true
 
@@ -384,19 +386,21 @@ struct SpacePageSurface: ViewModifier {
         if active {
             SpacePageLook(browser: browser) { binding, custom, _ in
                 let look = binding.wrappedValue
-                let paint = (!library || share) && (custom || browser.prefs.backdrop != .site) ? SpaceWash.painted(look) : nil
+                let paint = (!library || share) && (custom || browser.prefs.backdrop != .site)
+                    ? SpaceWash.painted(look) : nil
+                let tone = paint.map { SpaceSurface.tone(for: $0.color) }
                 content.background {
                     ZStack {
-                        if theme.active { Color.clear }
-                        else if let paint {
-                            Color(nsColor: paint.color)
-                            CardGround(paint: paint, step: look.shift ? browser.lookStep : 0)
-                                .environment(browser)
-                        } else { Palette.stage }
-                    }.allowsHitTesting(false)
+                        if let tone { Color(nsColor: tone.page) }
+                        else { Palette.stage }
+                        if !library && theme.hasPhoto { HomePhoto(space: browser.spaceID) }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                    .padding(frame)
+                    .allowsHitTesting(false)
                 }
-                .environment(\.tone, themedControls ? paint.map { SpaceSurface.tone(for: $0.color) } : nil)
-                .environment(\.colorScheme, paint != nil ? LookMode(rawValue: look.mode)?.scheme ?? scheme : scheme)
+                .environment(\.tone, themedControls ? tone : nil)
+                .environment(\.colorScheme, tone?.scheme ?? scheme)
             }
         } else {
             content

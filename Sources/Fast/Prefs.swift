@@ -325,11 +325,20 @@ final class Preferences: ObservableObject, Relaying {
             }
         }
     }
-    /// How the page sits in the window: edge to edge, on a color, or on
-    /// the site's own.
+    /// The window's background source. Older profiles can still store none.
     var backdrop: Backdrop {
         willSet { relay.send(\.backdrop, newValue) }
         didSet { store.set(backdrop.rawValue, forKey: "backdrop") }
+    }
+    var pageLayout: PageLayout {
+        willSet { relay.send(\.pageLayout, newValue) }
+        didSet {
+            store.set(pageLayout.rawValue, forKey: "page.layout")
+            guard pageLayout != oldValue else { return }
+            for browser in BrowserWindows.shared.browsers where browser.prefs !== self && browser.prefs.pageLayout != pageLayout {
+                browser.prefs.pageLayout = pageLayout
+            }
+        }
     }
     /// The color the window is painted in, or, on the site's color, the
     /// one for pages that won't say. A quiet gray unless another is picked.
@@ -1196,9 +1205,12 @@ final class Preferences: ObservableObject, Relaying {
         let painted = Self.american(store.string(forKey: "backdrop.swatch")).flatMap(Swatch.init)
             ?? kept.flatMap(Swatch.init) ?? .gray
         // Written again in today's spelling, once read.
-        store.set(mode.rawValue, forKey: "backdrop")
+        let layout = PageLayout.restored(store.string(forKey: "page.layout"), backdrop: mode)
+        store.set(layout.rawValue, forKey: "page.layout")
+        store.set(mode.windowMode.rawValue, forKey: "backdrop")
+        pageLayout = layout
+        backdrop = mode.windowMode
         store.set(painted.rawValue, forKey: "backdrop.swatch")
-        backdrop = mode
         swatch = painted
         backdropTransparency = BackdropTransparency.clamp(store.double(forKey: "backdrop.transparency"))
         backdropColor = store.string(forKey: "backdrop.color").flatMap(NSColor.init(hex:))

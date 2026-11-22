@@ -25,6 +25,9 @@ struct Omnibox: View {
     let pageBottom: CGFloat
     let homeHeaderTop: CGFloat?
     let homeHeaderInset: CGFloat
+    let homePageTop: CGFloat
+    let homePageMargins: EdgeInsets
+    let homePageCorner: CGFloat
     /// Taken as a value, not read off the browser in the body: the browser
     /// is the same object before and after, so a refusal would otherwise
     /// give this view nothing to notice and the field would never shiver.
@@ -50,7 +53,8 @@ struct Omnibox: View {
     @StateObject private var retainedRows: RetainedFieldRows
 
     init(browser: Browser, inset: CGFloat, trail: CGFloat = 0, pageTop: CGFloat = 0, pageBottom: CGFloat = 0,
-         homeHeaderTop: CGFloat? = nil, homeHeaderInset: CGFloat = 0) {
+         homeHeaderTop: CGFloat? = nil, homeHeaderInset: CGFloat = 0,
+         homePageTop: CGFloat = 0, homePageMargins: EdgeInsets = EdgeInsets(), homePageCorner: CGFloat = 0) {
         self.browser = browser
         self.query = browser.query
         self.inset = inset
@@ -59,6 +63,9 @@ struct Omnibox: View {
         self.pageBottom = pageBottom
         self.homeHeaderTop = homeHeaderTop
         self.homeHeaderInset = homeHeaderInset
+        self.homePageTop = homePageTop
+        self.homePageMargins = homePageMargins
+        self.homePageCorner = homePageCorner
         self.refusals = browser.refusals
         self.shy = browser.windowPurpose.isPrivate(active: (browser.fieldGuest ?? browser.active)?.shy)
         self.hushedAt = (browser.fieldGuest ?? browser.active)?.hushedAt
@@ -263,7 +270,10 @@ struct Omnibox: View {
                     .padding(.top, homeHeaderTop)
             }
         }
-        .modifier(SpacePageSurface(browser: browser, themedControls: true, active: homeField))
+        .modifier(SpacePageSurface(browser: browser, themedControls: true, active: homeField,
+                                   frame: EdgeInsets(top: homePageTop, leading: homePageMargins.leading,
+                                                     bottom: homePageMargins.bottom, trailing: homePageMargins.trailing),
+                                   corner: homePageCorner))
     }
 
     /// The field's width in a space this wide: its own, or, where the page

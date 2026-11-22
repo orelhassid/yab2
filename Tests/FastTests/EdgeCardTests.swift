@@ -7,6 +7,33 @@ import Testing
 /// page wears its space's theme, and the same paint as on a color.
 @Suite(.serialized)
 struct EdgeCardTests {
+    @Test func pageLayoutRestoresTheLegacyFrameAndHonorsAnExplicitChoice() {
+        #expect(PageLayout.restored(nil, backdrop: .none) == .edgeToEdge)
+        #expect(PageLayout.restored(nil, backdrop: .color) == .card)
+        #expect(PageLayout.restored(nil, backdrop: .site) == .card)
+        #expect(PageLayout.restored(PageLayout.edgeToEdge.rawValue, backdrop: .site) == .edgeToEdge)
+        #expect(PageLayout.restored(PageLayout.card.rawValue, backdrop: .none) == .card)
+    }
+
+    @MainActor @Test func pageFrameDoesNotChangeTheWindowPaint() throws {
+        try #require(Store.testing)
+        let prefs = Preferences()
+        let savedLayout = prefs.pageLayout
+        let savedMode = prefs.backdrop
+        defer {
+            prefs.pageLayout = savedLayout
+            prefs.backdrop = savedMode
+        }
+        prefs.backdrop = .color
+        prefs.pageLayout = .card
+        let paint = try #require(SpaceWash.worn(prefs))
+
+        prefs.pageLayout = .edgeToEdge
+        #expect(prefs.backdrop == .color)
+        #expect(SpaceWash.worn(prefs) == paint)
+        #expect(Preferences().pageLayout == .edgeToEdge)
+    }
+
     @MainActor @Test func edgeToEdgeCardWearsTheSpacesLookAsOnAColor() throws {
         try #require(Store.testing)
         let prefs = Preferences()

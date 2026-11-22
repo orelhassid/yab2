@@ -269,6 +269,9 @@ struct AppearancePage: View {
                 .onReceive(NotificationCenter.default.publisher(for: WindowMenu.lookAsked)) { note in
                     if note.object as? Preferences === prefs { lookAsked = true }
                 }
+            ChoiceRow(title: "Page layout", options: PageLayout.allCases.map { ($0.title, $0) },
+                      selection: $prefs.pageLayout)
+                .settingsAnchor("page-layout")
             // ⌘T's two ways, a menu of pictures as Window's is.
             FieldMenu(prefs: prefs)
                 .settingsAnchor("field-size")

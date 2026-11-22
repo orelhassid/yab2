@@ -793,11 +793,9 @@ final class Browser: NSObject, ObservableObject, Relaying {
 
     /// How far the island stands in from the column's side and bottom
     /// (Band.edge). In full screen the window has no corners to hug, and
-    /// the column in its place stands beside the page laid as a card: the
-    /// island takes the page's inset, its bottom level with the page's and
-    /// its ends with the foot's row over it.
+    /// the docked column uses the smaller window inset.
     var bandEdge: CGFloat {
-        fullScreen && prefs.backdrop != .none && !prefs.sideShut ? Backdrop.inset : Band.edge
+        fullScreen && !prefs.sideShut ? Backdrop.inset : Band.edge
     }
 
     /// ⌘S's menu item as it reads now: the sidebar's, or with the tabs

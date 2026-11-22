@@ -365,7 +365,14 @@ input:focus, textarea:focus, select:focus { outline: 0; box-shadow: inset 0 0 0 
   --line: color-mix(in srgb, CanvasText 18%, transparent);
   --blue: var(--ink);
 }
-[data-native-space] :is(body,.window,.tab-frame,main,.body aside) { background: transparent }
+[data-native-space] :is(body,.window,.tab-frame,.body aside) { background: transparent }
+[data-native-space] .body main {
+  background: var(--stage);
+  margin-block: var(--page-top, 0) var(--page-bottom, 0);
+  margin-inline: var(--page-leading, 0) var(--page-trailing, 0);
+  border-radius: var(--page-corner, 0);
+  overflow: hidden;
+}
 [data-native-space] :is(.composer,.panel,.list,.feature-hero,.run-card,.file[aria-pressed=true],#context) { background: var(--wash); border-color: var(--line) }
 [data-native-space] .composer-tools, [data-native-space] textarea::placeholder { color: var(--muted) }
 [data-native-space] .btn:not(.primary) { background: var(--wash); border-color: var(--line); color:var(--ink) }

@@ -543,10 +543,11 @@ private struct ChatColumnRoot: View {
     @ObservedObject private var chromiumPanels = ChromiumSidePanel.shared
 
     var body: some View {
+        WorkspaceThemeReader(browser: browser) { _ in
         ZStack {
             if browser.homeSettingsInColumn {
                 HomeSettingsPanel(browser: browser, width: look.width, close: browser.hideChat)
-                    .modifier(ChatColumnFrame(browser: browser, width: look.width, solid: true))
+                    .modifier(ChatColumnFrame(browser: browser, width: look.width))
                     .modifier(ChatColumnScheme(browser: browser))
             } else {
                 ChatColumn(browser: browser, corner: look.corner, width: look.width, feed: feed)
@@ -575,6 +576,7 @@ private struct ChatColumnRoot: View {
             // safe area: with the tabs in the sidebar the column's top is
             // under the title bar, and it came down from the page's top.
             .ignoresSafeArea()
+        }
     }
 }
 
@@ -2476,14 +2478,14 @@ private struct ChatHistory: View {
 private struct ChatColumnScheme: ViewModifier {
     let browser: Browser
     @Environment(\.colorScheme) private var window
+    @Environment(\.workspaceTheme) private var workspaceTheme
 
     func body(content: Content) -> some View {
-        content.environment(\.colorScheme, scheme ?? window)
+        content.environment(\.colorScheme, workspaceTheme.tone?.scheme ?? scheme ?? window)
     }
 
     private var scheme: ColorScheme? {
         let prefs = browser.prefs
-        guard prefs.backdrop != .none else { return nil }
         let dark = window == .dark
         let swatch = Tone(prefs.swatch.color(dark: dark, custom: prefs.backdropColor), lifted: true, glass: prefs.wearsGlass)
         guard prefs.backdrop == .site, !prefs.wearsGlass else { return swatch.scheme }
@@ -2495,40 +2497,22 @@ private struct ChatColumnScheme: ViewModifier {
 private struct ChatColumnFrame: ViewModifier {
     let browser: Browser
     let width: CGFloat
-    var solid = false
 
     func body(content: Content) -> some View {
         content
             .foregroundStyle(Palette.ink)
             .frame(width: width, alignment: .top)
             .clipShape(RoundedRectangle(cornerRadius: Radius.surface, style: .continuous))
-            .background { ChatColumnGround(browser: browser, solid: solid) }
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
+                    .strokeBorder(Palette.hairline, lineWidth: 1) // design: a divider around the shared window ground
+                    .allowsHitTesting(false)
+            }
             // Its edge, in the air between it and the page: dragged as a split's.
             .overlay(alignment: browser.chatLeads ? .trailing : .leading) {
                 ChatEdge(browser: browser)
                     .offset(x: browser.chatLeads ? Backdrop.inset : -Backdrop.inset)
             }
-    }
-}
-
-/// The column's ground. On a space's look it lets the look through, its
-/// color, grain and drawings, under a veil of the page's ground deep enough
-/// for the words: on the page's own plate it was a gray slab beside a
-/// column in the space's colors. With no look it is the page's plate.
-private struct ChatColumnGround: View {
-    let browser: Browser
-    let solid: Bool
-    /// How much of the page's ground lies over the look.
-    static let veil: CGFloat = 0.55
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
-        if solid || browser.prefs.backdrop != .none {
-            shape.fill(Palette.ground.opacity(solid ? 1 : Self.veil))
-                .overlay(shape.strokeBorder(Palette.hairline, lineWidth: 1)) // design: the column is a see-through surface on the look, not a card
-        } else {
-            HUD.plate(Radius.surface, surface: .page)
-        }
     }
 }
 

@@ -824,24 +824,6 @@ struct GroundFill<S: Shape>: View {
     }
 }
 
-/// The ground under the row of tabs edge to edge: the page's own color, or
-/// black while the page has the screen. `away` is the window's own word on
-/// that (ContentView.frontImmersed), handed in as a value. Read off the tab
-/// inside the closure handed to Toned, it was read again only when Toned's
-/// body ran for a new tone: the ground went black with a tone read while the
-/// page had the screen and stayed black after it came back, the tab no
-/// longer immersed, until another tab was chosen (register 2669, 0.47.0).
-private struct PageGround: View {
-    @ObservedObject var tab: Tab
-    let away: Bool
-
-    var body: some View {
-        let tone = tab.tone.map { Tone($0) }
-        (away ? Color.black : tone?.color ?? Palette.ground)
-            .animation(Motion.quick, value: tone)
-    }
-}
-
 /// The color of the tab in front as the window wears it (Browser.worn).
 struct WornSite: Equatable {
     var color: NSColor?
@@ -949,55 +931,27 @@ struct ContentView: View {
     private var window_: some View {
         let _ = BodyAudit.note("window")
         return ZStack(alignment: .top) {
-            // Black while a page has the screen, so the frame of our own window
-            // that survives the transition is not a white band across the top.
-            // Otherwise the page's own color, so the strip over it reads as
-            // the top of the page rather than a band of ours across it, in
-            // the row of tabs only; the column is a room of its own.
-            //
-            // With a backdrop, the backdrop, under everything, the page laid
-            // on it, and the window can be moved by any of it that shows.
-            // On the site's color it is the page's own, when the page has
-            // one: the card then sits on its site's color, and the strip or
-            // the column reads as that site's bar. The swatch is for pages
-            // that won't say.
+            // The Space or project owns the ground beneath the window chrome.
             leaf { ZStack(alignment: .top) {
-            if workspaceTheme.active {
-                let look = workspaceTheme.look ?? SpacePaint(browser.prefs)
+            if let look = workspaceTheme.look {
                 let paint = SpaceWash.painted(look)
                 ZStack {
                     Color(nsColor: paint.color)
                     CardGround(paint: paint, step: look.shift ? browser.lookStep : 0).environment(browser)
-                    if workspaceTheme.hasPhoto { HomePhoto(space: browser.spaceID) }
                 }.allowsHitTesting(false)
-            } else if let backdrop = backdrop ?? edgeBackdrop {
-                Worn(browser: browser, mode: privateWindow ? .color : browser.prefs.backdrop, swatch: Tone(backdrop, lifted: true, glass: glassActive), glassActive: glassActive) { tone in
-                    // The look card's switches and drawings (LookCard): the
-                    // site's color in one of yours, the colors' turn.
+            } else {
+                Worn(browser: browser, mode: windowMode, swatch: backdropTone, glassActive: glassActive) { tone in
                     LookWorn(browser: browser) { site, step in
                         WindowBackdrop(color: tone?.color ?? Color(nsColor: backdrop), grain: browser.prefs.grain,
-                                     transparency: glassActive ? WindowGlassPolicy.transparency(for: tone?.page ?? backdrop) : privateWindow ? 0 : browser.prefs.backdropTransparency,
-                                     colors: browser.prefs.backdrop != .site && !privateWindow
-                                        ? LookCard.colors(SpacePaint(browser.prefs), dark: scheme == .dark, site: site).map { Color(nsColor: $0) } : [],
-                                     glass: glassActive,
-                                     drawings: browser.prefs.backdrop != .site && !privateWindow ? LookDrawings.Set(rawValue: browser.prefs.lookDrawings) : nil,
-                                     drawingsStrength: browser.prefs.lookDrawingsStrength, step: step).environment(browser)
+                                       transparency: glassActive ? WindowGlassPolicy.transparency(for: tone?.page ?? backdrop) : privateWindow ? 0 : browser.prefs.backdropTransparency,
+                                       colors: windowMode == .color && !privateWindow
+                                          ? LookCard.colors(SpacePaint(browser.prefs), dark: scheme == .dark, site: site).map { Color(nsColor: $0) } : [],
+                                       glass: glassActive,
+                                       drawings: windowMode == .color && !privateWindow ? LookDrawings.Set(rawValue: browser.prefs.lookDrawings) : nil,
+                                       drawingsStrength: browser.prefs.lookDrawingsStrength, step: step).environment(browser)
                     }
                 }
-                // A space's color going or coming over it (SpaceWash).
                 SpaceWashLayer().environment(browser)
-                if !carded {
-                    // Edge to edge the backdrop is the column's alone: the
-                    // rest of the window keeps the plain ground the page
-                    // lies on, as it does with no backdrop at all.
-                    Palette.ground
-                        .padding(.leading, browser.leadingSidebarRoom) // design: reserve the rail independently of the tab column on either side
-                        .padding(.trailing, browser.trailingSidebarRoom) // design: reserve the rail independently of the tab column on either side
-                }
-            } else if let tab = browser.dresser, !browser.prefs.sidebar {
-                PageGround(tab: tab, away: frontImmersed)
-            } else {
-                Palette.ground
             }
             if browser.leadingSidebarRoom > 0 || browser.trailingSidebarRoom > 0 {
                 let shade = SpaceSurface.navigationShade(for: SpaceSurface.tone(in: browser)?.page ?? NSColor(Palette.ground))
@@ -1007,7 +961,7 @@ struct ContentView: View {
                     shade.frame(width: browser.trailingSidebarRoom)
                 }.allowsHitTesting(false)
             }
-            if carded {
+            if laid {
                 // Not under the tabs: a real view takes a click before
                 // anything SwiftUI draws over it, and over the whole window
                 // it had every drag on a tab moving the window instead. The
@@ -1068,16 +1022,8 @@ struct ContentView: View {
                             .clipShape(RoundedRectangle(cornerRadius: corner))
                             .padding(margins)
                     } else if browser.inDevelopment {
-                        DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries)
-                            .clipShape(RoundedRectangle(cornerRadius: corner))
-                            .background {
-                                if laid {
-                                    RoomPaper(preview: browser.splitPreview, corner: corner, dark: scheme == .dark,
-                                              band: nil, moving: browser.reshaping && !browser.trackingSize)
-                                        .padding(-1)
-                                }
-                            }
-                            .padding(margins)
+                        DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries,
+                                        pageMargins: margins, pageCorner: corner)
                     } else if let tab = browser.active {
                         // Developer Tools (DevTools.swift): a card of its own
                         // on the backdrop, under the page's card or beside
@@ -1086,7 +1032,7 @@ struct ContentView: View {
                         // reads the page's address, and the window's body
                         // ran again at every navigation for it.
                         let devHere = (!Narrow.dev || browser.devOpen || browser.devMoving) && browser.toolsFront != nil
-                        let devRim = DevRoom.Rim(card: laid)
+                        let devRim = panelRim
                         // A chat in full on the right, the page making room
                         // as it does for the sheet (ChatColumn.swift).
                         sharedColumn {
@@ -1100,11 +1046,12 @@ struct ContentView: View {
                                 }
                             }
                             if browser.splitShown {
-                                SplitDivider(browser: browser, drag: browser.splitDrag, flat: !laid)
+                                SplitDivider(browser: browser, drag: browser.splitDrag)
                                     .layoutValue(key: SplitLayout.Place.self, value: .gap)
                                     .zIndex(2)
                             }
                         }
+                        .padding(margins)
                             if devHere && !browser.devDetached && (browser.devOpen || browser.devMoving) {
                                 DevSheet(browser: browser, tab: tab, log: tab.devLog, pane: browser.devPane, panels: browser.devPanels, filter: browser.issueFilter, side: browser.devSide,
                                          shown: browser.devOpen, corner: devRim.corner)
@@ -1118,7 +1065,6 @@ struct ContentView: View {
                         }
                             // Where Open in Chat lands (ChatFlight).
                             .background(FlightMark(kind: .room, inset: devRim.inset))
-                            .padding(margins)
                             .overlay(alignment: .topTrailing) {
                                 // Its width measured here, where the find bar
                                 // is drawn: the half in front's corner follows
@@ -1162,33 +1108,16 @@ struct ContentView: View {
                     } else {
                         sharedColumn {
                         Group {
-                            if let under = browser.underTab, !carded || browser.spaceVisiting {
+                            if let under = browser.underTab, browser.spaceVisiting {
                                 // No tab in front: the page you were on as
                                 // a space with nothing in it came up, under
                                 // the field (Browser.Under). A click on it
                                 // is Escape: back to that space.
                                 Page(tab: under, corner: corner)
-                                    .overlay { if !browser.spaceVisiting { scrim(corner: corner) } }
-                            } else if carded {
-                                // Nothing to show, or a space with nothing
-                                // in it: the page's card kept empty, as Arc
-                                // keeps it, not the page you came from
-                                // under it. What is behind the window, under
-                                // the space's look, read by the backdrop's
-                                // light or dark, not the system's.
-                                let dark = (backdropTone?.scheme ?? scheme) == .dark
-                                EmptyCard(corner: corner, dark: dark, tint: backdrop ?? .windowBackgroundColor,
-                                          colors: browser.prefs.backdrop == .color
-                                            ? LookCard.colors(SpacePaint(browser.prefs), dark: scheme == .dark, site: nil) : [])
-                                    .allowsHitTesting(false)
-                                    // A click on it is still Escape: back
-                                    // to the space you came from.
-                                    .overlay { scrim(corner: corner) }
                             } else {
-                                // Nor a backdrop to show: the room a page
-                                // takes, in the page's own ground.
                                 Palette.ground
                                     .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                                    .overlay { scrim(corner: corner) }
                             }
                         }
                         .overlay(alignment: .top) {
@@ -1196,8 +1125,8 @@ struct ContentView: View {
                                 NavigationHeader(browser: browser, tab: nil, corner: corner, topInset: margins.top, emptyTone: backdropTone)
                             }
                         }
-                        }
                         .padding(margins)
+                        }
                         .overlay(alignment: .topTrailing) {
                             notices(top: Metrics.rim)
                                 .padding(.top, margins.top + navigationHeaderHeight)
@@ -1257,12 +1186,8 @@ struct ContentView: View {
                 Group {
                     // In the column's ink, on the same backdrop: the title
                     // as quiet as the column's own words, never lost on it.
-                    if carded {
-                        Worn(browser: browser, mode: browser.prefs.backdrop, swatch: backdropTone, glassActive: glassActive) { tone in
-                            HeadBand(browser: browser).toned(tone)
-                        }
-                    } else {
-                        HeadBand(browser: browser)
+                    Worn(browser: browser, mode: windowMode, swatch: backdropTone, glassActive: glassActive) { tone in
+                        HeadBand(browser: browser).toned(tone)
                     }
                 }
                     .padding(.trailing, browser.trailingSidebarRoom)
@@ -1282,25 +1207,12 @@ struct ContentView: View {
                     // Core Animation, on screen ahead of the window's own pass
                     // (StripView); its ground stays outside, under the turn.
                     Group {
-                        if carded {
-                            Worn(browser: browser, mode: browser.prefs.backdrop, swatch: backdropTone, glassActive: glassActive) { tone in
-                                StripHost(browser: browser) {
-                                    TabBar(browser: browser).background(ChorusInk(chorus: browser.chorus)).toned(tone).modifier(SidebarTypography())
-                                }
-                                .toned(tone)
-                                .background { stripGround(tone, lifted: lifted) }
+                        Worn(browser: browser, mode: windowMode, swatch: backdropTone, glassActive: glassActive) { tone in
+                            StripHost(browser: browser) {
+                                TabBar(browser: browser).background(ChorusInk(chorus: browser.chorus)).toned(tone).modifier(SidebarTypography())
                             }
-                        } else if let tab = browser.dresser {
-                            Toned(tab: tab) { tone in
-                                StripHost(browser: browser) {
-                                    TabBar(browser: browser).background(ChorusInk(chorus: browser.chorus)).toned(tone).modifier(SidebarTypography())
-                                }
-                                .toned(tone)
-                                .background { stripGround(tone, lifted: lifted) }
-                            }
-                        } else {
-                            StripHost(browser: browser) { TabBar(browser: browser).modifier(SidebarTypography()) }
-                                .background { stripGround(nil, lifted: lifted) }
+                            .toned(tone)
+                            .background { stripGround(tone, lifted: lifted) }
                         }
                     }
                     // Only a hint of the way out when the tabs change sides
@@ -1348,7 +1260,7 @@ struct ContentView: View {
                     let worn = barTone(tab, tone)
                     AddressBar(
                         browser: browser, tab: tab, peek: browser.peek, strip: !browser.prefs.sidebar,
-                        height: AddressBar.height(sidebar: browser.prefs.sidebar, carded: laid), corner: corner,
+                        height: AddressBar.height(sidebar: browser.prefs.sidebar), corner: corner,
                         half: split, doors: side != .left,
                         columnDoor: side != .right, leadingInset: margins.leading,
                         leave: split ? { [browser, id = tab.id] in browser.leaveSplit(id) } : nil
@@ -1456,16 +1368,16 @@ struct ContentView: View {
     /// where the notices and the find bar would otherwise stand over it
     /// rather than the page (DevMode.swift).
     private var devTrail: CGFloat {
-        let rim = DevRoom.Rim(card: laid)
+        let rim = panelRim
         let chat = browser.chatOpen && !browser.chatLeads ? ChatRoom.room(rim, width: chatShown) : 0
         guard browser.devOpen, browser.toolsFront != nil, browser.devSide == .right else { return chat }
         return chat + DevLook.width(in: browser.devRoomWidth, wanted: devSize.width) + rim.gap + rim.inset
     }
 
     private func sharedColumn<Page: View>(@ViewBuilder page: () -> Page) -> some View {
-        let rim = DevRoom.Rim(card: laid)
+        let rim = panelRim
         return ChatRoom(open: browser.chatOpen, rim: rim, width: chatShown, leading: browser.chatLeads) {
-            page().opacity(workspaceTheme.active && browser.showsHomeField ? 0 : 1)
+            page().opacity(browser.showsHomeField ? 0 : 1)
             if browser.chatOpen || browser.chatMoving || !Extensions.all.allSatisfy({ $0.panelPages(in: browser).isEmpty }) {
                 ChatColumnHost(browser: browser, shown: browser.chatOpen, corner: rim.corner, width: chatShown, leading: browser.chatLeads)
                     .padding(browser.chatLeads ? .trailing : .leading, -Backdrop.inset)
@@ -1496,12 +1408,9 @@ struct ContentView: View {
 
     // MARK: - the backdrop
 
-    /// What the window is painted in behind the page, for a window of this
-    /// brightness, or nil, and the page is the window's ground edge to edge.
-    /// Kept while WebKit lends the page to its fullscreen window: tearing
-    /// down the material leaves our source window bare during the handoff.
-    private var backdrop: NSColor? {
-        guard browser.prefs.backdrop != .none else { return nil }
+    private var windowMode: Backdrop { privateWindow ? .color : browser.prefs.backdrop.windowMode }
+
+    private var backdrop: NSColor {
         if privateWindow { return Self.privateBackdrop }
         return browser.prefs.swatch.color(dark: scheme == .dark, custom: browser.prefs.backdropColor)
     }
@@ -1513,27 +1422,16 @@ struct ContentView: View {
     private var privateWindow: Bool { browser.windowPurpose == .privateOnly }
     static let privateBackdrop = NSColor(white: 0.12, alpha: 1)
 
-    /// Edge to edge with the column docked, the space's color the window
-    /// wears under the column alone (Preferences.edgeBackdrop): the same
-    /// backdrop, glass and all, as on a color, the page still edge to edge
-    /// and not laid on it as a card (#256).
-    private var edgeBackdrop: NSColor? {
-        guard browser.prefs.edgeBackdrop else { return nil }
-        if privateWindow { return Self.privateBackdrop }
-        return browser.prefs.swatch.color(dark: scheme == .dark, custom: browser.prefs.backdropColor)
-    }
-
     /// The space's look is on glass: its color a tint on the window's
     /// Liquid Glass, its words the glass's own (Tone.glass).
     private var glassActive: Bool { browser.prefs.wearsGlass && !privateWindow }
 
     /// The backdrop as the chrome on it wears it: its brightness decides the
     /// ink, and the live tab is a chip lifted off it.
-    private var backdropTone: Tone? {
-        backdrop.map { Tone($0, lifted: true, glass: glassActive) }
-    }
+    private var backdropTone: Tone { Tone(backdrop, lifted: true, glass: glassActive) }
 
-    private var carded: Bool { backdrop != nil }
+    private var carded: Bool { browser.prefs.pageLayout == .card }
+    private var panelRim: DevRoom.Rim { DevRoom.Rim(card: true) }
 
     /// The source page keeps its card while WebKit lends its view to a
     /// separate fullscreen window. Its placeholder and return geometry
@@ -1543,7 +1441,7 @@ struct ContentView: View {
     /// developer tools are out, or two halves share the room: then it is a
     /// card beside theirs, in by the same inset, rather than a square edge
     /// against them (Browser.pageShared).
-    private var laid: Bool { carded && !(browser.fullScreen && browser.tabsAway && !browser.pageShared) }
+    private var laid: Bool { !browser.pageSquare }
 
     /// The page's corners: a card's, or none, edge to edge.
     private var corner: CGFloat { laid ? Backdrop.corner : 0 }
@@ -1573,7 +1471,7 @@ struct ContentView: View {
     /// corner.
     @ViewBuilder
     private func pagePaper(_ tab: Tab) -> some View {
-        if carded && !(workspaceTheme.active && tab.showsLibrary) {
+        if !tab.showsLibrary {
             Shaded(tab: tab) { shade in
                 // Under a hand on the divider the paper follows it as laid
                 // out, with nothing drawn from where it was.
@@ -1591,7 +1489,7 @@ struct ContentView: View {
     /// look while two are on screen (Browser.dresser), not turning with the
     /// front. Nil, the ground.
     private func barTone(_ tab: Tab, _ tone: Tone?) -> Tone? {
-        (tab.isDev ? backdrop.map { Tone($0) } : nil)
+        (tab.isDev ? Tone(backdrop) : nil)
             ?? tone ?? (tab.shy ? Tone(NSColor(white: 0.085, alpha: 1)) : nil)
     }
 
@@ -1600,7 +1498,7 @@ struct ContentView: View {
     private func paperBand(_ tab: Tab) -> PaperBand? {
         let tone = tab.tone.map { Tone($0) }
         let address = browser.barShown || browser.side(of: tab.id) != .whole
-        let height = address ? AddressBar.height(sidebar: browser.prefs.sidebar, carded: laid)
+        let height = address ? AddressBar.height(sidebar: browser.prefs.sidebar)
             : tab.id == browser.activeID && !tab.showsLibrary ? navigationHeaderHeight : 0
         guard height > 0 else { return nil }
         let worn = address ? barTone(tab, tone) : tone
@@ -1680,13 +1578,14 @@ struct ContentView: View {
             let (lead, trail) = fieldRoom(in: space.width)
             let top = band + shelfRoom + margins.top
             let homeHeaderTop = navigationHeaderHeight > 0 ? top : nil
-            let column = browser.showsHomeField && browser.chatOpen ? ChatRoom.room(DevRoom.Rim(card: laid), width: chatShown) : 0
+            let column = browser.showsHomeField && browser.chatOpen ? ChatRoom.room(panelRim, width: chatShown) : 0
             let homeLead = browser.leadingSidebarRoom + (browser.chatLeads ? column : 0)
             let homeTrail = browser.trailingSidebarRoom + (browser.chatLeads ? 0 : column)
             Omnibox(browser: browser, inset: browser.showsHomeField ? max(lead, homeLead) : lead,
                     trail: browser.showsHomeField ? max(trail, homeTrail) : trail,
                     pageTop: top + navigationHeaderHeight + barHeight, pageBottom: margins.bottom,
-                    homeHeaderTop: homeHeaderTop, homeHeaderInset: margins.top)
+                    homeHeaderTop: homeHeaderTop, homeHeaderInset: margins.top,
+                    homePageTop: top, homePageMargins: margins, homePageCorner: corner)
                 // Keep the native editor and glass prepared with the window.
                 // Mounting them on Cmd-L put their first layout and render
                 // setup in the opening frame. Hidden fields cannot take
@@ -1953,14 +1852,12 @@ struct ContentView: View {
         let over = lifted || browser.menuOut || browser.fullScreen
         if browser.stripAway || browser.stripMoving || browser.menuOut || browser.fullScreen {
             ZStack(alignment: .bottom) {
-                if carded, let tone {
+                if let tone {
                     CardGround(paint: Column.paint(tone, prefs: browser.prefs)).environment(browser)
                 } else {
                     tone?.color ?? Palette.ground
                 }
-                if carded {
-                    Rectangle().fill(Palette.ink.opacity(0.1)).frame(height: 1).toned(tone)
-                }
+                Rectangle().fill(Palette.ink.opacity(0.1)).frame(height: 1).toned(tone)
             }
             .compositingGroup()
             .shadow(color: .black.opacity(Double(Shadow.card.opacity)), radius: Shadow.card.radius, y: Shadow.card.y) // design: the column card's shadow, Shadow.card; a see-through backdrop can't cast it from a black shape
@@ -2037,14 +1934,8 @@ struct ContentView: View {
     private var shelf: some View {
         if browser.shelfShown || browser.shelfLeaving {
             Group {
-                if laid {
-                    Worn(browser: browser, mode: browser.prefs.backdrop, swatch: backdropTone, glassActive: glassActive) { tone in
-                        shelfRow.toned(tone)
-                    }
-                } else if !sidebar, let tab = browser.dresser {
-                    Toned(tab: tab) { tone in shelfRow.toned(tone) }
-                } else {
-                    shelfRow
+                Worn(browser: browser, mode: windowMode, swatch: backdropTone, glassActive: glassActive) { tone in
+                    shelfRow.toned(tone)
                 }
             }
             .allowsHitTesting(browser.shelfShown)
@@ -2056,8 +1947,8 @@ struct ContentView: View {
             browser: browser, bookmarks: browser.bookmarks,
             height: shelfHeight,
             top: shelfHeight == BookmarkBar.besideLights ? Metrics.strip / 2 - BookmarkBar.row / 2 : (shelfHeight - BookmarkBar.row) / 2,
-            lead: laid ? margins.leading : AddressBar.shelfRim,
-            trail: laid ? margins.trailing : AddressBar.shelfRim,
+            lead: AddressBar.shelfRim,
+            trail: AddressBar.shelfRim,
             style: browser.prefs.bookmarkStyle
         )
     }
@@ -2071,7 +1962,7 @@ struct ContentView: View {
 
     /// The address bar's height, or nothing while there is none.
     private var barHeight: CGFloat {
-        browser.barShown ? AddressBar.height(sidebar: browser.prefs.sidebar, carded: laid) : 0
+        browser.barShown ? AddressBar.height(sidebar: browser.prefs.sidebar) : 0
     }
 
     /// The column has its own corner for the lights, so the page beside it
@@ -3279,63 +3170,5 @@ struct RecentlyVisited: View {
                 }
             }
         }
-    }
-}
-
-/// The page's card with nothing on it (an empty space on a backdrop): a
-/// window onto what is behind the window, blurred, as Arc's empty card
-/// shows the desktop through even an opaque space, the space's look over
-/// it at 0.7, picked from three strengths on the user's own screen. The
-/// look as the window wears it: its colors' gradient when it has colors,
-/// not the one color picked by hand before them (a pink, brown in dark,
-/// under a blue-green window).
-private struct EmptyCard: View {
-    let corner: CGFloat
-    let dark: Bool
-    let tint: NSColor
-    /// The look's colors after `tint`, as WindowBackdrop's gradient lays
-    /// them, top leading to bottom trailing; none for a plain color.
-    let colors: [NSColor]
-
-    var body: some View {
-        let card = RoundedRectangle(cornerRadius: corner, style: .continuous)
-        BehindWindow(corner: corner, dark: dark)
-            .overlay {
-                if colors.isEmpty {
-                    card.fill(Color(nsColor: tint).opacity(0.7))
-                } else {
-                    card.fill(LinearGradient(colors: ([tint] + colors).map { Color(nsColor: $0) },
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .opacity(0.7)
-                }
-            }
-            // Light, the color mostly washed out, as Arc's empty card on
-            // the same look: its sidebar's mint taken some 70% toward
-            // white (measured 212,250,230 → 241,253,249), still see-through.
-            .overlay { if !dark { card.fill(Color.white.opacity(0.75)) } }
-            .overlay { card.strokeBorder(Palette.ink.opacity(0.06), lineWidth: 1) }
-            .environment(\.colorScheme, dark ? .dark : .light)
-    }
-}
-
-/// AppKit's blur of what lies behind the window, cut to a rounded card.
-private struct BehindWindow: NSViewRepresentable {
-    let corner: CGFloat
-    let dark: Bool
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.blendingMode = .behindWindow
-        view.material = .underWindowBackground
-        view.state = .active
-        view.wantsLayer = true
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
-        view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        view.layer?.cornerRadius = corner
-        view.layer?.cornerCurve = .continuous
-        view.layer?.masksToBounds = true
     }
 }

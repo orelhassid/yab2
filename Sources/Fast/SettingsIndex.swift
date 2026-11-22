@@ -305,8 +305,10 @@ struct SettingsItem: Identifiable, Hashable {
         SettingsItem(id: "space-pages", page: .appearance, title: "Use Space colors on library pages", words: "theme tint tabs downloads bookmarks history extensions settings gallery"),
         SettingsItem(id: "home-photo", page: .appearance, title: "Home background image", words: "wallpaper photo desktop pictures stock computer"),
         SettingsItem(id: "window", page: .appearance, title: "Window",
-                     words: "backdrop background edge to edge card color site's match follow bar "
-                         + Backdrop.allCases.map(\.title).joined(separator: " ")),
+                     words: "backdrop background color site's match follow bar "
+                         + Backdrop.windowChoices.map(\.title).joined(separator: " ")),
+        SettingsItem(id: "page-layout", page: .appearance, title: "Page layout",
+                     words: "card inset edge to edge padding corners frame tab"),
         SettingsItem(id: "color", page: .appearance, title: "Look",
                      words: "color colour gray backdrop swatch tint wallpaper your own custom picker field dot any grain noise texture paper film dial knob amount rough fine lightness space spaces each gradient multiple colors harmony linked add remove sidebar"),
         // The wave's step past its end, in Look's editor.

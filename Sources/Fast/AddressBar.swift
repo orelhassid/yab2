@@ -300,15 +300,9 @@ struct AddressBar: View {
         max(3, ((height - Door.Size.band.side) / 2).rounded())
     }
 
-    /// The band's height: on a card, in line with the lights beside the
-    /// column, the column's top band less the card's inset above and under
-    /// it; edge to edge, the row the tabs across the top have, as the
-    /// column's whole top band left the doors 11 of air each way and read
-    /// as a title bar (2026-10-20); under the tabs, a row a little lower
-    /// than theirs.
-    static func height(sidebar: Bool, carded: Bool) -> CGFloat {
-        guard sidebar else { return 36 }
-        return carded ? Metrics.strip - 2 * Backdrop.inset : Metrics.row
+    /// The address bar has the same height in both page layouts.
+    static func height(sidebar: Bool) -> CGFloat {
+        sidebar ? Metrics.strip - 2 * Backdrop.inset : 36
     }
 }
 
@@ -323,7 +317,7 @@ struct PeekBand: View {
     let browser: Browser
     @ObservedObject var tab: Tab
 
-    static let height = AddressBar.height(sidebar: true, carded: true)
+    static let height = AddressBar.height(sidebar: true)
 
     var body: some View {
         Toned(tab: tab) { tone in

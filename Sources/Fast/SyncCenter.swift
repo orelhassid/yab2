@@ -2137,6 +2137,7 @@ extension Preferences {
         if agentsMessages != o.agentsMessages { agentsMessages = o.agentsMessages }
         if look != o.look { look = o.look }
         if backdrop != o.backdrop { backdrop = o.backdrop }
+        if pageLayout != o.pageLayout { pageLayout = o.pageLayout }
         adoptPaint(o, wearing: paint)
         if sidebar != o.sidebar { sidebar = o.sidebar }
         if glyph != o.glyph { glyph = o.glyph }

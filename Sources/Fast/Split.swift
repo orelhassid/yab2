@@ -1397,19 +1397,12 @@ struct SplitRoom<Content: View>: View {
 struct SplitDivider: View {
     @ObservedObject var browser: Browser
     @ObservedObject var drag: SplitDrag
-    /// The window's ground shows between two pages laid edge to edge.
-    let flat: Bool
 
     @State private var hovering = false
     @State private var held = false
-    @Environment(\.tone) private var tone
 
     var body: some View {
         ZStack {
-            if flat {
-                Palette.ground
-                Rectangle().fill(Palette.ink.opacity(0.06)).frame(width: 1)
-            }
             Capsule()
                 .fill(Palette.ink.opacity(held ? 0.5 : 0.28))
                 .frame(width: 3, height: 28)

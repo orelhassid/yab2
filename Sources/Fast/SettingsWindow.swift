@@ -3144,13 +3144,12 @@ struct WindowMenu: View {
     @State private var pictures = Pictures()
 
     var body: some View {
-        PictureMenu(title: "Window", options: Backdrop.allCases.map { ($0.title, $0, picture($0)) },
+        PictureMenu(title: "Window", options: Backdrop.windowChoices.map { ($0.title, $0, picture($0)) },
                     small: NSSize(width: 30, height: 19),
-                    notes: [.none: "The page fills the window",
-                            .color: "Your color around the page",
+                    notes: [.color: "Your Space color",
                             .site: "The site\u{2019}s bar runs up into the window"],
                     selection: Binding(
-                        get: { prefs.backdrop },
+                        get: { prefs.backdrop.windowMode },
                         set: { Self.pick($0, in: prefs) }
                     ))
     }

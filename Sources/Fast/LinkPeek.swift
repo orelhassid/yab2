@@ -331,9 +331,9 @@ extension Browser {
 
     /// How tall an address bar a page kept from a peek will stand under, as
     /// `barShown` will have it once the page is in front: a half always has one.
-    func barOver(kept tab: Tab, half: Bool, carded: Bool) -> CGFloat {
+    func barOver(kept tab: Tab, half: Bool) -> CGFloat {
         let shown = half || (!tab.isBlank && !tab.showsMail && (prefs.addressBar || tab.isDev))
-        return shown ? AddressBar.height(sidebar: prefs.sidebar, carded: carded) : 0
+        return shown ? AddressBar.height(sidebar: prefs.sidebar) : 0
     }
 
     /// Kept: the page, as a picture, grows from the panel to the stage, and
@@ -1396,7 +1396,7 @@ final class PeekView: NSView {
             // This view covers the page's address bar as well: the page lands
             // under the bar it will have, not over it and then a bar lower.
             let whole = sky.convert(bounds, from: self)
-            let tall = whole.height - (self.browser?.barOver(kept: tab, half: half, carded: self.corner > 0) ?? 0)
+            let tall = whole.height - (self.browser?.barOver(kept: tab, half: half) ?? 0)
             let to = half ? CGRect(x: whole.midX + 4, y: whole.minY, width: whole.width / 2 - 4, height: tall)
                 : CGRect(x: whole.minX, y: whole.minY, width: whole.width, height: tall)
             StageView.mark("peek.flight", ["top": Double(content.bounds.height - sky.convert(to, to: nil).maxY), "height": Double(to.height)])

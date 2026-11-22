@@ -30,7 +30,6 @@ struct WorkspaceTheme {
 
     var look: SpacePaint?
     var hasPhoto = false
-    var active: Bool { look != nil || hasPhoto }
     @MainActor var tone: Tone? { look.map { SpaceSurface.tone(for: SpaceWash.painted($0).color) } }
 }
 

@@ -73,17 +73,23 @@ extension Tone {
     }
 }
 
-/// How the page sits in the window.
-///
-/// Edge to edge, the page is the window's ground and the tabs wear its
-/// color. On a color, the window is painted in a swatch and the page is
-/// laid on it as a card, in from every edge by the same few points. On the
-/// site's color, the paint is whatever the site's own top bar is, so the
-/// bar reads as carried up into the window, the way Arc does it, and the
-/// swatch is kept for the pages that won't say: a new tab, a photograph, a
-/// page so white that nothing lighter would show on it.
+/// The page frame within the window.
+enum PageLayout: String, CaseIterable {
+    case card, edgeToEdge
+
+    var title: String { self == .card ? "Card" : "Edge to Edge" }
+
+    static func restored(_ value: String?, backdrop: Backdrop) -> Self {
+        value.flatMap(Self.init(rawValue:)) ?? (backdrop == .none ? .edgeToEdge : .card)
+    }
+}
+
+/// The window background source. None is the legacy edge-to-edge setting.
 enum Backdrop: String, CaseIterable, Identifiable {
     case none, color, site
+
+    static let windowChoices: [Self] = [.color, .site]
+    var windowMode: Self { self == .none ? .color : self }
 
     var id: String { rawValue }
 
