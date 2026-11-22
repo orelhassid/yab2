@@ -319,18 +319,22 @@ final class SpaceTray: NSView {
     private(set) static weak var shown: SpaceTray?
     /// The browser, for the list's rows.
     var browserForList: Browser { browser }
-    /// Mail's line over the list, once an account is in. Its place among
-    /// the spaces is moved in the column's foot (Browser.turnOrder); it is
-    /// never renamed or taken away with the others.
-    var mailRoom: CGFloat { CGFloat(specials.count) * (Self.spaceRow + Self.spaceGap) }
-    /// Mail's lines over the list, in the order two fingers go.
-    var specials: [Space] {
-        let existing = browser.switcherSpaces.filter {
-            $0.id == Space.mailID || $0.id == Space.allTabs.id ||
-                ($0.id == Space.privateID && !draft.taking && draft.carrying.isEmpty)
-        }
-        return browser.offersDevelopment && !draft.taking && draft.carrying.isEmpty ? existing + [.development, .collections] : existing
+    var utilities: [Space] {
+        guard !draft.taking, draft.carrying.isEmpty else { return [] }
+        let privateSpaces = browser.switcherSpaces.filter { $0.id == Space.privateID }
+        return browser.offersDevelopment ? privateSpaces + [.development, .collections] : privateSpaces
     }
+
+    /// Fixed rows above the scrollable list of browser Spaces.
+    var specials: [Space] {
+        utilities + browser.switcherSpaces.filter { $0.id == Space.mailID || $0.id == Space.allTabs.id }
+    }
+
+    private var listTop: CGFloat {
+        let divider = utilities.isEmpty ? 0 : SideBar.line + Self.spaceGap
+        return bodyTop(.spaces) + CGFloat(specials.count) * (Self.spaceRow + Self.spaceGap) + divider
+    }
+
     /// Where the tray is, for the bench.
     var panelFrame: CGRect { panel.frame }
     /// Where the tray is drawn right now, mid-motion, for the bench.
@@ -481,7 +485,7 @@ final class SpaceTray: NSView {
         switch step {
         case .spaces:
             let n = CGFloat(browser.spaces.count)
-            let whole = Self.head + mailRoom + n * Self.spaceRow + (n - 1) * Self.spaceGap + Self.spaceGap + Self.spaceRow + Self.edge(.spaces)
+            let whole = listTop + n * Self.spaceRow + (n - 1) * Self.spaceGap + Self.spaceGap + Self.spaceRow + Self.edge(.spaces)
             return min(whole, ceiling)
         case .start: return Self.head + (draft.tab == nil ? Self.row : 2 * Self.row + 8) + i
         case .name: return Self.head + Self.card + 10 + 30 + i + Self.foot
@@ -501,7 +505,7 @@ final class SpaceTray: NSView {
         return down ? bounds.height - origin.maxY - 8 - 60 : origin.minY - 8 - 60
     }
     /// How tall the list of spaces may be inside the tray.
-    var listHeight: CGFloat { max(Self.spaceRow, height(.spaces) - Self.head - mailRoom - Self.spaceGap - Self.spaceRow - Self.edge(.spaces)) }
+    var listHeight: CGFloat { max(Self.spaceRow, height(.spaces) - listTop - Self.spaceGap - Self.spaceRow - Self.edge(.spaces)) }
     var wheelSide: CGFloat { min(inner, 220) }
 
     /// The color step's controls laid out for the draft as it is now.
@@ -716,7 +720,7 @@ final class SpaceTray: NSView {
         panel.layer?.cornerRadius = Self.corner(draft.step)
         shade.frame = frame
         shade.shadowPath = Self.outline(frame.size, Self.corner(draft.step))
-        head.frame = CGRect(x: 0, y: 0, width: frame.width, height: Self.head)
+        placeHeader(width: frame.width)
         foot.frame = CGRect(x: 0, y: frame.height - Self.foot, width: frame.width, height: Self.foot)
         body_?.frame = bodyFrame(frame.height)
         CATransaction.commit()
@@ -727,8 +731,22 @@ final class SpaceTray: NSView {
         return step == .emoji ? max(width, Self.pickerSize.width + 2 * CardFrame.inset) : width
     }
 
+    private func hasHeader(_ step: SpaceDraft.Step) -> Bool {
+        step != .spaces || !draft.carrying.isEmpty
+    }
+
+    private func bodyTop(_ step: SpaceDraft.Step) -> CGFloat {
+        hasHeader(step) ? Self.head : Self.edge(step)
+    }
+
+    private func placeHeader(width: CGFloat) {
+        head.isHidden = !hasHeader(draft.step)
+        head.frame = CGRect(x: 0, y: 0, width: width, height: Self.head)
+    }
+
     private func bodyFrame(_ h: CGFloat) -> CGRect {
-        CGRect(x: 0, y: Self.head, width: stepWidth(draft.step), height: max(0, h - Self.head))
+        let top = bodyTop(draft.step)
+        return CGRect(x: 0, y: top, width: stepWidth(draft.step), height: max(0, h - top))
     }
 
     // MARK: coming and going
@@ -885,7 +903,7 @@ final class SpaceTray: NSView {
         let x = p.x - frame.minX, y = p.y - frame.minY
         let edge = Self.edge(.spaces)
         guard x >= edge, x <= frame.width - edge else { return .some(nil) }
-        let list = Self.head + mailRoom
+        let list = listTop
         let pitch = Self.spaceRow + Self.spaceGap
         if y >= list, y < list + listHeight {
             let at = Int(((y - list + draft.scrolled) / pitch).rounded(.down))
@@ -902,8 +920,8 @@ final class SpaceTray: NSView {
     func rowPoint(_ index: Int) -> NSPoint {
         let frame = panel.frame
         let y = index < 0
-            ? Self.head + mailRoom + listHeight + Self.spaceGap + Self.spaceRow / 2
-            : Self.head + mailRoom + CGFloat(index) * (Self.spaceRow + Self.spaceGap) - draft.scrolled + Self.spaceRow / 2
+            ? listTop + listHeight + Self.spaceGap + Self.spaceRow / 2
+            : listTop + CGFloat(index) * (Self.spaceRow + Self.spaceGap) - draft.scrolled + Self.spaceRow / 2
         return convert(NSPoint(x: frame.midX, y: frame.minY + y), to: nil)
     }
 
@@ -1051,7 +1069,7 @@ final class SpaceTray: NSView {
         if let feet { crossfade(foot, from: feet) }
         panel.frame = to
         shade.frame = to
-        head.frame.size.width = to.width
+        placeHeader(width: to.width)
         foot.frame = CGRect(x: 0, y: to.height - Self.foot, width: to.width, height: Self.foot)
         body_?.frame = bodyFrame(to.height)
         let radius = (Self.corner(was), Self.corner(step))
@@ -1099,7 +1117,7 @@ final class SpaceTray: NSView {
 
     /// A view as it is drawn now, as a layer to lay over it.
     private func picture(of view: NSView) -> CALayer? {
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        guard !view.isHidden, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
         view.cacheDisplay(in: view.bounds, to: rep)
         let image = NSImage(size: view.bounds.size)
         image.addRepresentation(rep)
@@ -1399,7 +1417,7 @@ struct TrayHead: View {
 
     private var words: (String, String) {
         switch draft.step {
-        case .spaces: return draft.carrying.isEmpty ? ("Spaces", "") : ("Move", "to")
+        case .spaces: return ("Move", "to")
         case .start: return ("New", "Space")
         // What the step sets, plainly: the space it is about is on screen,
         // in the strip at the step's top. "Your Color" read as the person's.
@@ -1844,10 +1862,15 @@ struct TrayStep: View {
         let current = browser?.sidebarSpaceID
         return VStack(spacing: SpaceTray.spaceGap) {
             if let browser, let tray {
-                ForEach(Array(tray.specials.enumerated()), id: \.element.id) { offset, special in
-                    let index = offset - tray.specials.count
+                let specials = tray.specials
+                let lastUtility = tray.utilities.last?.id
+                ForEach(Array(specials.enumerated()), id: \.element.id) { offset, special in
+                    let index = offset - specials.count
                     SpaceLine(space: special, index: index, current: current == special.id, focused: draft.focus == index, noisy: false,
                               browser: browser) { tray.pick(special.id) }
+                    if special.id == lastUtility {
+                        SidebarSectionDivider()
+                    }
                 }
             }
             ScrollViewReader { reader in
