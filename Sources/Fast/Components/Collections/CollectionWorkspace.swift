@@ -74,7 +74,6 @@ struct CollectionWorkspace: View {
             .toned(SpaceSurface.tone(for: paint.color))
         }
         .toned(SpaceSurface.tone(for: paint.color))
-        .background(Color(nsColor: SpaceSurface.tone(for: paint.color).page))
     }
 }
 

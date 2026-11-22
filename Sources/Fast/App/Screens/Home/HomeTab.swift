@@ -384,24 +384,23 @@ struct SpacePageSurface: ViewModifier {
 
     func body(content: Content) -> some View {
         if active {
-            SpacePageLook(browser: browser) { binding, custom, _ in
-                let look = binding.wrappedValue
-                let paint = (!library || share) && (custom || browser.prefs.backdrop != .site)
-                    ? SpaceWash.painted(look) : nil
-                let tone = paint.map { SpaceSurface.tone(for: $0.color) }
-                content.background {
-                    ZStack {
-                        if let tone { Color(nsColor: tone.page) }
-                        else { Palette.stage }
-                        if !library && theme.hasPhoto { HomePhoto(space: browser.spaceID) }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                    .padding(frame)
-                    .allowsHitTesting(false)
+            let sharesBackdrop = !library || share
+            let tone = sharesBackdrop ? theme.tone ?? SpaceSurface.tone(in: browser) : nil
+            let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
+            content.background {
+                ZStack {
+                    sharesBackdrop ? Color.clear : Palette.stage
+                    if !library && theme.hasPhoto { HomePhoto(space: browser.spaceID) }
                 }
-                .environment(\.tone, themedControls ? tone : nil)
-                .environment(\.colorScheme, tone?.scheme ?? scheme)
+                .clipShape(shape)
+                .overlay {
+                    if corner > 0 { shape.strokeBorder(Palette.hairline, lineWidth: 1) } // design: outline the shared window backdrop without covering it
+                }
+                .padding(frame)
+                .allowsHitTesting(false)
             }
+            .environment(\.tone, themedControls ? tone : nil)
+            .environment(\.colorScheme, tone?.scheme ?? scheme)
         } else {
             content
         }

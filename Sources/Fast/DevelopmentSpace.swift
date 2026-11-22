@@ -476,7 +476,6 @@ struct DevelopmentPane: View {
                     .accessibilityHidden(state.environmentSelected)
                 if state.environmentSelected {
                     DevelopmentEnvironmentSettings(browser: browser, state: state)
-                        .background(Color(nsColor: SpaceSurface.tone(for: paint.color).page))
                         .clipShape(RoundedRectangle(cornerRadius: pageCorner))
                         .padding(pageMargins)
                 }

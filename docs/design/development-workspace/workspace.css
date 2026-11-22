@@ -367,7 +367,7 @@ input:focus, textarea:focus, select:focus { outline: 0; box-shadow: inset 0 0 0 
 }
 [data-native-space] :is(body,.window,.tab-frame,.body aside) { background: transparent }
 [data-native-space] .body main {
-  background: var(--stage);
+  background: transparent;
   margin-block: var(--page-top, 0) var(--page-bottom, 0);
   margin-inline: var(--page-leading, 0) var(--page-trailing, 0);
   border-radius: var(--page-corner, 0);

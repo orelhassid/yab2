@@ -953,6 +953,14 @@ struct ContentView: View {
                 }
                 SpaceWashLayer().environment(browser)
             }
+            if browser.leadingSidebarRoom > 0 || browser.trailingSidebarRoom > 0 {
+                let shade = SpaceSurface.navigationShade(for: SpaceSurface.tone(in: browser)?.page ?? backdrop)
+                HStack(spacing: 0) {
+                    shade.frame(width: browser.leadingSidebarRoom)
+                    Spacer(minLength: 0)
+                    shade.frame(width: browser.trailingSidebarRoom)
+                }.allowsHitTesting(false)
+            }
             if laid {
                 // Not under the tabs: a real view takes a click before
                 // anything SwiftUI draws over it, and over the whole window
@@ -1024,7 +1032,7 @@ struct ContentView: View {
                         // reads the page's address, and the window's body
                         // ran again at every navigation for it.
                         let devHere = (!Narrow.dev || browser.devOpen || browser.devMoving) && browser.toolsFront != nil
-                        let devRim = panelRim
+                        let devRim = DevRoom.Rim(card: true)
                         // A chat in full on the right, the page making room
                         // as it does for the sheet (ChatColumn.swift).
                         sharedColumn {
@@ -1360,8 +1368,8 @@ struct ContentView: View {
     /// where the notices and the find bar would otherwise stand over it
     /// rather than the page (DevMode.swift).
     private var devTrail: CGFloat {
-        let rim = panelRim
-        let chat = browser.chatOpen && !browser.chatLeads ? ChatRoom.room(rim, width: chatShown) : 0
+        let rim = DevRoom.Rim(card: true)
+        let chat = browser.chatOpen && !browser.chatLeads ? ChatRoom.room(panelRim, width: chatShown) : 0
         guard browser.devOpen, browser.toolsFront != nil, browser.devSide == .right else { return chat }
         return chat + DevLook.width(in: browser.devRoomWidth, wanted: devSize.width) + rim.gap + rim.inset
     }
@@ -1371,7 +1379,7 @@ struct ContentView: View {
         return ChatRoom(open: browser.chatOpen, rim: rim, width: chatShown, leading: browser.chatLeads) {
             page().opacity(browser.showsHomeField ? 0 : 1)
             if browser.chatOpen || browser.chatMoving || !Extensions.all.allSatisfy({ $0.panelPages(in: browser).isEmpty }) {
-                ChatColumnHost(browser: browser, shown: browser.chatOpen, corner: rim.corner, width: chatShown, leading: browser.chatLeads)
+                ChatColumnHost(browser: browser, shown: browser.chatOpen, corner: Backdrop.corner, width: chatShown, leading: browser.chatLeads)
                     .padding(browser.chatLeads ? .trailing : .leading, -Backdrop.inset)
             }
         }
@@ -1423,7 +1431,7 @@ struct ContentView: View {
     private var backdropTone: Tone { Tone(backdrop, lifted: true, glass: glassActive) }
 
     private var carded: Bool { browser.prefs.pageLayout == .card }
-    private var panelRim: DevRoom.Rim { DevRoom.Rim(card: true) }
+    private var panelRim: DevRoom.Rim { DevRoom.Rim(card: false) }
 
     /// The source page keeps its card while WebKit lends its view to a
     /// separate fullscreen window. Its placeholder and return geometry

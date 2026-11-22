@@ -51,14 +51,14 @@ struct Page: View {
             ZStack {
                 // A blank card's face, in the page's light or dark, as the
                 // paper under it was.
-                if page == nil, !tab.shy, tab.cover == nil {
+                if page == nil, !tab.showsLibrary, !tab.shy, tab.cover == nil {
                     Palette.ground
                         .environment(\.colorScheme, (tab.isBlank ? nil : tab.shade) ?? scheme)
                         .allowsHitTesting(false)
                 }
                 // A private tab's ground, under whatever the page draws: dark
                 // while it is blank or still loading.
-                if tab.shy {
+                if tab.shy && !tab.showsLibrary {
                     Hush(since: tab.hushedAt)
                 }
                 // Device mode: the page stands on a gray ground, smaller than
@@ -114,7 +114,7 @@ struct Page: View {
                         .environment(browser.libraryControls(for: library, tab: tab))
                         .id(tab.id.uuidString + library.rawValue)
                 }
-                .modifier(SpacePageSurface(browser: browser, library: true, themedControls: true))
+                .modifier(SpacePageSurface(browser: browser, library: true, themedControls: true, corner: flatTop ? 0 : corner))
             }
 
             if let device = tab.device {
