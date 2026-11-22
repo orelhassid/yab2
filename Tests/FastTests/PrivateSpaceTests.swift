@@ -64,7 +64,8 @@ struct PrivateSpaceTests {
             #expect(!FileManager.default.fileExists(atPath: privateSessionFile.path))
             #expect(Session.read(space: Space.privateID, window: window).tabs.isEmpty)
 
-            browser.clearPrivateSession()
+            Command.clearPrivateSession.run(in: browser)
+            #expect(Questions.shared.current == nil)
             #expect(browser.inPrivateSpace && browser.privateBrowsing && browser.fieldShowing)
             #expect(browser.tabs.isEmpty && first.gone && second.gone)
             #expect(ChromiumPrivateProfiles.existing(for: first.store) == nil)
@@ -125,6 +126,9 @@ struct PrivateSpaceTests {
             for (words, command) in [("Clear Session", Command.clearPrivateSession), ("Leave Private Space", .leavePrivateSpace)] {
                 browser.replaceTyped(words)
                 #expect(browser.offers.first?.kind == .command(command))
+                if command == .clearPrivateSession {
+                    #expect(browser.query.lead.flatMap { browser.offers[$0].kind } != .command(command))
+                }
             }
         }
     }

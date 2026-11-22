@@ -134,7 +134,7 @@ struct SpacesMenuCommands: Commands {
     var body: some Commands {
         CommandMenu("Spaces") {
             if browser.inPrivateSpace {
-                Button(Command.clearPrivateSession.title) { browser.confirmClearPrivateSession() }
+                Button(Command.clearPrivateSession.title) { browser.clearPrivateSession() }
                 Button(Command.leavePrivateSpace.title) { browser.leavePrivateSpace() }
                 Divider()
             }

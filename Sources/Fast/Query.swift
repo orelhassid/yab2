@@ -285,7 +285,7 @@ enum Command: String, CaseIterable {
         case .newTab: return "New Tab"
         case .mail: return "Open Mail"
         case .privateTab: return "Open Private Space"
-        case .clearPrivateSession: return "Clear Session…"
+        case .clearPrivateSession: return "Clear Session"
         case .leavePrivateSpace: return "Leave Private Space"
         case .blankWindow: return "Blank Window"
         case .reopen: return "Reopen Closed Tab"
@@ -930,7 +930,7 @@ enum Command: String, CaseIterable {
             if browser.tabs.isEmpty { browser.pressNewTab() } else { browser.newTab() }
         case .mail: browser.toggleMail()
         case .privateTab: browser.openPrivateSpace()
-        case .clearPrivateSession: browser.confirmClearPrivateSession()
+        case .clearPrivateSession: browser.clearPrivateSession()
         case .leavePrivateSpace: browser.leavePrivateSpace()
         case .blankWindow: browser.newBlankWindow()
         case .reopen: browser.reopen()

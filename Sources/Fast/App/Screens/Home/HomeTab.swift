@@ -726,7 +726,7 @@ struct PrivateHomeHeader: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
             PageActionButton(title: Command.clearPrivateSession.title, icon: Command.clearPrivateSession.symbol,
-                             action: browser.confirmClearPrivateSession)
+                             action: browser.clearPrivateSession)
         }
     }
 }

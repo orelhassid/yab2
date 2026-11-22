@@ -7613,8 +7613,9 @@ final class Browser: NSObject, ObservableObject, Relaying {
                 // its row discoverable, but require picking it deliberately.
                 // A page's existing full-title Return behavior stays unchanged.
                 if case .command(.closeTab) = thing.0.kind, closesWindowOnCloseTab { return nil }
-                // Rank the sensitive import separately from Return's choice.
+                // These actions require picking the command explicitly.
                 if case .command(.importYabPasswords) = thing.0.kind { return nil }
+                if case .command(.clearPrivateSession) = thing.0.kind { return nil }
                 // One that acts leads only when called by its whole name,
                 // "site controls": a start of it, "clo", is not yet meant.
                 if case .command(let command) = thing.0.kind, !command.opens(in: self),

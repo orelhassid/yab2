@@ -1696,7 +1696,7 @@ struct SpaceMenu: View {
     var body: some View {
         if space.id == Space.privateID {
             if browser.inPrivateSpace {
-                Button(Command.clearPrivateSession.title, mark: "trash") { browser.confirmClearPrivateSession() }
+                Button(Command.clearPrivateSession.title, mark: "trash") { browser.clearPrivateSession() }
                 Button(Command.leavePrivateSpace.title, mark: "rectangle.portrait.and.arrow.right") { browser.leavePrivateSpace() }
             } else {
                 Button(Command.privateTab.title, mark: Space.privateSpace.icon) { browser.openPrivateSpace() }

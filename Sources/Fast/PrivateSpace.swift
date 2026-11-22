@@ -46,20 +46,9 @@ extension Browser {
         releasePrivateStore()
     }
 
-    func confirmClearPrivateSession() {
-        guard inPrivateSpace, let store = privateStore else { return }
-        SpaceTray.shown?.leave()
-        let question = Question(title: "Clear private session?", detail: "Closes private tabs and clears their cookies and site data.",
-                                glyph: "trash", yes: "Clear Session", danger: true,
-                                window: BrowserWindows.shared.window(for: self)?.windowNumber)
-        Task { @MainActor [weak self] in
-            guard await Questions.shared.ask(question), let self, inPrivateSpace, privateStore === store else { return }
-            clearPrivateSession()
-        }
-    }
-
     func clearPrivateSession() {
         guard inPrivateSpace else { return }
+        SpaceTray.shown?.leave()
         settleNow()
         land()
         hidePeek()
