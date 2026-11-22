@@ -310,8 +310,8 @@ enum MenuCommands {
         add(.undoBrowserAction, "Undo Last Browser Action", ["undo", "undo last action"], symbol: "yab.undo",
             when: { $0.canUndoClose(nativeEditor: false) }) { _ = $0.undoWindow() }
         add(.showChat, "Show Chat", ["open chat"], symbol: "yab.chat", key: .closeChat, opens: true,
-            when: { !$0.chatOpen && AIUse.chats }) { $0.moveChat(open: true) }
-        add(.hideChat, "Hide Chat", symbol: "yab.chat.x", key: .closeChat, when: { $0.chatOpen }) { $0.hideChat() }
+            when: { (!$0.chatOpen || $0.inspectorDocked) && AIUse.chats }) { $0.moveChat(open: true) }
+        add(.hideChat, "Hide Chat", symbol: "yab.chat.x", key: .closeChat, when: { $0.chatOpen && !$0.inspectorDocked }) { $0.hideChat() }
         add(.takeOverAgent, "Take Over from Agent", ["take over", "take over from agent"], symbol: "hand.raised", key: .agentTakeWheel,
             when: { canTakeOver($0) }) { if let tab = $0.active { AgentFeed.shared.drive(tab) } }
         add(.handBackAgent, "Hand Back to Agent", symbol: "arrow.uturn.backward", key: .agentHandBack,

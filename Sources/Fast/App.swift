@@ -234,7 +234,7 @@ private struct ViewItems: View {
             .shortcut(.actualSize)
         Divider()
         DeveloperMenuCommands(browser: selected)
-        if selected.chatOpen {
+        if selected.chatOpen && !selected.inspectorDocked {
             Button("Hide Chat") { selected.hideChat() }
                 .shortcut(.closeChat)
             if !selected.chatHistory, Chats.shared.chat(selected.chatID) != nil {
@@ -900,12 +900,6 @@ private struct ActiveFollow: View {
     }
 }
 
-/// The most the chat's column may take of the window's room, as last
-/// measured: read by the body, written without making it again.
-final class ChatRoomWidest {
-    var widest: CGFloat = .infinity
-}
-
 struct ContentView: View {
     @Environment(\.workspaceTheme) private var workspaceTheme
     @ObservedObject var browser: Browser
@@ -919,12 +913,6 @@ struct ContentView: View {
     /// it: Browser's copy, which changes only when that does, not the tab
     /// itself, which is another object at every switch.
     private var frontImmersed: Bool { Narrow.leaves ? browser.frontImmersed : browser.active?.immersed == true }
-    /// The most the chat's column may take of the room (ChatLook.widest).
-    /// Written only when it changes how wide the column is drawn: a State
-    /// written on every frame of a window resize made the whole window's
-    /// body again each frame. The width itself is kept in `chatRoom`.
-    @State private var chatWidest: CGFloat = .infinity
-    @State private var chatRoom = ChatRoomWidest()
     @Environment(\.colorScheme) private var scheme
 
 
@@ -1020,12 +1008,16 @@ struct ContentView: View {
                     // on the stage it was on, so it can be held and drawn to
                     // its half rather than handed to another view.
                     if browser.inCollections {
-                        CollectionWorkspace(browser: browser)
-                            .clipShape(RoundedRectangle(cornerRadius: corner))
-                            .padding(margins)
+                        sharedColumn(showsChat: false) {
+                            CollectionWorkspace(browser: browser)
+                                .clipShape(RoundedRectangle(cornerRadius: corner))
+                                .padding(margins)
+                        }
                     } else if browser.inDevelopment {
-                        DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries,
-                                        pageMargins: margins, pageCorner: corner)
+                        sharedColumn(showsChat: false) {
+                            DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries,
+                                            pageMargins: margins, pageCorner: corner)
+                        }
                     } else if let tab = browser.active {
                         // Developer Tools (DevTools.swift): a card of its own
                         // on the backdrop, under the page's card or beside
@@ -1072,6 +1064,7 @@ struct ContentView: View {
                                 // is drawn: the half in front's corner follows
                                 // the room and the share as they change.
                                 GeometryReader { room in
+                                let trail = trailingPanels(in: room.size.width)
                                 VStack(alignment: .trailing, spacing: 0) {
                                     // The half in front's: ⌘F looks through that page.
                                     if browser.finding, let tab = browser.active {
@@ -1092,7 +1085,7 @@ struct ContentView: View {
                                 // top rim is each one's own, so the notice
                                 // can be tucked away above it.
                                 .padding(.top, margins.top + barHeight + navigationHeaderHeight)
-                                .padding(.trailing, margins.trailing + Metrics.rim + devTrail + frontTrail(in: room.size.width - margins.leading - margins.trailing - devTrail))
+                                .padding(.trailing, margins.trailing + Metrics.rim + trail + frontTrail(in: room.size.width - margins.leading - margins.trailing - trail))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                                 }
                             }
@@ -1101,9 +1094,10 @@ struct ContentView: View {
                                 // sight stands at the page's bottom right,
                                 // its buttons in the corner (AskStand).
                                 GeometryReader { room in
+                                    let trail = trailingPanels(in: room.size.width)
                                     AskStandView(browser: browser)
                                         .padding(.bottom, margins.bottom + Metrics.rim)
-                                        .padding(.trailing, margins.trailing + Metrics.rim + devTrail + frontTrail(in: room.size.width - margins.leading - margins.trailing - devTrail))
+                                        .padding(.trailing, margins.trailing + Metrics.rim + trail + frontTrail(in: room.size.width - margins.leading - margins.trailing - trail))
                                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                                 }
                             }
@@ -1166,8 +1160,6 @@ struct ContentView: View {
                 // the page moves. Never stepped by SwiftUI: slid there by
                 // Core Animation, then laid out (HeadSunk).
                 .modifier(HeadSunk(peek: browser.headPeek, band: sidebar && browser.headBand, laid: laid, shelf: shelfRoom))
-
-                UIInspectorDock(browser: browser, topInset: band)
 
                 // On the right, the same room after the page.
                 if browser.trailingSidebarRoom > 0 {
@@ -1368,37 +1360,35 @@ struct ContentView: View {
             .accessibilityHidden(true)
     }
 
-    /// A local page's sheet out beside it: the room it takes on the right,
-    /// where the notices and the find bar would otherwise stand over it
-    /// rather than the page (DevMode.swift).
-    private var devTrail: CGFloat {
+    /// Room on the right of the page, which its notices and find bar avoid.
+    private func trailingPanels(in width: CGFloat) -> CGFloat {
+        let panel = browser.chatLeads ? 0 : shellPanelRoom().reservation(in: width)
+        guard browser.devOpen, browser.toolsFront != nil, browser.devSide == .right else { return panel }
         let rim = DevRoom.Rim(card: true)
-        let chat = browser.chatOpen && !browser.chatLeads ? ChatRoom.room(panelRim, width: chatShown) : 0
-        guard browser.devOpen, browser.toolsFront != nil, browser.devSide == .right else { return chat }
-        return chat + DevLook.width(in: browser.devRoomWidth, wanted: devSize.width) + rim.gap + rim.inset
+        return panel + DevLook.width(in: browser.devRoomWidth, wanted: devSize.width) + rim.gap + rim.inset
     }
 
-    private func sharedColumn<Page: View>(@ViewBuilder page: () -> Page) -> some View {
-        let rim = panelRim
-        return ChatRoom(open: browser.chatOpen, rim: rim, width: chatShown, leading: browser.chatLeads) {
-            page().opacity(browser.showsHomeField ? 0 : 1)
-            if browser.chatOpen || browser.chatMoving || !Extensions.all.allSatisfy({ $0.panelPages(in: browser).isEmpty }) {
-                ChatColumnHost(browser: browser, shown: browser.chatOpen, corner: Backdrop.corner, width: chatShown, leading: browser.chatLeads)
-                    .padding(browser.chatLeads ? .trailing : .leading, -Backdrop.inset)
+    private func shellPanelRoom(showsChat: Bool = true) -> ChatRoom {
+        ChatRoom(open: browser.inspectorDocked || (showsChat && browser.chatOpen),
+                 rim: panelRim, width: browser.chatWidth, leading: browser.chatLeads)
+    }
+
+    private func sharedColumn<Page: View>(showsChat: Bool = true, @ViewBuilder page: () -> Page) -> some View {
+        let room = shellPanelRoom(showsChat: showsChat)
+        return room {
+            page().opacity(showsChat && browser.showsHomeField ? 0 : 1)
+            if room.open || (showsChat && (browser.chatMoving || !Extensions.all.allSatisfy({ $0.panelPages(in: browser).isEmpty }))) {
+                GeometryReader { panel in
+                    ChatColumnHost(browser: browser, shown: room.open, corner: Backdrop.corner,
+                                   width: panel.size.width, leading: room.leading)
+                        .padding(room.leading ? .trailing : .leading, -Backdrop.inset)
+                }
             }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { room in
-            let widest = room - rim.gap - rim.inset - DevLook.pageBeside
-            ChatLook.widest = widest
-            let was = chatRoom.widest
-            chatRoom.widest = widest
-            if abs(min(browser.chatWidth, was) - min(browser.chatWidth, widest)) > 0.5 { chatWidest = widest }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            ChatLook.widest = width - room.rim.gap - room.rim.inset - DevLook.pageBeside
         }
     }
-
-    /// The chat's column as wide as dragged, less in a room too narrow for
-    /// it, as the developer tools beside the page (DevLook.width(in:)).
-    private var chatShown: CGFloat { max(ChatLook.least, min(browser.chatWidth, chatRoom.widest)) }
 
     /// With two halves and the left one in front, the room the right one
     /// takes: the find bar and the notices are about the page in front, and
@@ -1580,9 +1570,11 @@ struct ContentView: View {
             let (lead, trail) = fieldRoom(in: space.width)
             let top = band + shelfRoom + margins.top
             let homeHeaderTop = navigationHeaderHeight > 0 ? top : nil
-            let column = browser.showsHomeField && browser.chatOpen ? ChatRoom.room(panelRim, width: chatShown) : 0
-            let homeLead = browser.leadingSidebarRoom + (browser.chatLeads ? column : 0)
-            let homeTrail = browser.trailingSidebarRoom + (browser.chatLeads ? 0 : column)
+            let panel = shellPanelRoom()
+            let pageRoom = space.width - browser.leadingSidebarRoom - browser.trailingSidebarRoom
+            let column = panel.reservation(in: pageRoom)
+            let homeLead = browser.leadingSidebarRoom + (panel.leading ? column : 0)
+            let homeTrail = browser.trailingSidebarRoom + (panel.leading ? 0 : column)
             Omnibox(browser: browser, inset: browser.showsHomeField ? max(lead, homeLead) : lead,
                     trail: browser.showsHomeField ? max(trail, homeTrail) : trail,
                     pageTop: top + navigationHeaderHeight + barHeight, pageBottom: margins.bottom,
@@ -2540,7 +2532,7 @@ struct ContentView: View {
         // The same card in a chat's field, in the field's place: its keys
         // come from anywhere in the window nothing is typed into.
         if ([36, 76, 53].contains(event.keyCode) || Keymap.shared.matches(event, .confirmDanger)),
-           browser.chatOpen, !browser.fieldShowing, browser.peeking == nil, browser.active?.typing != true,
+           browser.chatOpen, !browser.inspectorDocked, !browser.fieldShowing, browser.peeking == nil, browser.active?.typing != true,
            !(event.window?.firstResponder is NSText),
            let chat = Chats.shared.chat(Agents.shared.columnChat),
            let tab = ChatColumn.asking(chat, browser: browser), tab.choices.isEmpty,
@@ -2576,7 +2568,7 @@ struct ContentView: View {
         // the column away (register 1130). The empty field's own Escape
         // does the same (ChatComposer); a page's Escape stays the page's.
         if event.keyCode == 53, flags.intersection([.command, .option, .control, .shift]).isEmpty,
-           browser.chatOpen, !browser.fieldShowing, browser.peeking == nil,
+           browser.chatOpen, !browser.inspectorDocked, !browser.fieldShowing, browser.peeking == nil,
            !(event.window?.firstResponder is NSText), let column = browser.chatColumnView,
            (event.window?.firstResponder as? NSView)?.isDescendant(of: column) == true {
             if !event.isARepeat { browser.hideChat() }

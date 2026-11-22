@@ -1,22 +1,5 @@
 import SwiftUI
 
-/// The dock reserves space between the page and any trailing sidebar.
-struct UIInspectorDock: View {
-    let browser: Browser
-    let topInset: CGFloat
-    private let inspector = BrowserUIInspector.shared
-
-    var body: some View {
-        if inspector.isOpen(for: browser), inspector.placement == .docked {
-            UIInspectorPanel(inspector: inspector)
-                .frame(idealWidth: 415, maxWidth: 415)
-                .padding(Backdrop.inset)
-                .padding(.top, topInset)
-                .layoutPriority(1)
-        }
-    }
-}
-
 struct UIInspectorOverlay: View {
     let browser: Browser
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -89,9 +72,10 @@ private struct UIInspectorTreeRow: Identifiable {
     var id: UIInspectorID { entry.id }
 }
 
-private struct UIInspectorPanel: View {
+struct UIInspectorPanel: View {
     let inspector: BrowserUIInspector
     var split = false
+    var inShell = false
     var moveHandle: AnyGesture<DragGesture.Value>?
     @Environment(\.tone) private var tone
     @State private var openNodes: Set<UIInspectorID> = []
@@ -118,7 +102,9 @@ private struct UIInspectorPanel: View {
         }
         .foregroundStyle(Palette.ink)
         .background {
-            RoundedRectangle(cornerRadius: Radius.control).fill(tone?.color ?? Palette.ground)
+            if !inShell {
+                RoundedRectangle(cornerRadius: Radius.control).fill(tone?.color ?? Palette.ground)
+            }
         }
         .background { UIInspectorPanelMarker() }
         .accessibilityIdentifier("browser-ui-inspector")

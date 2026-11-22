@@ -595,8 +595,9 @@ struct HomeNavigation: View {
                         }
                 }
             }.scrollIndicators(.hidden)
-            HomeControl(outline: navigationIconOutline, selected: browser.homeSettingsInColumn && browser.chatOpen, action: {
-                if browser.homeSettingsInColumn && browser.chatOpen { browser.hideChat() }
+            let settingsVisible = browser.homeSettingsInColumn && browser.chatOpen && !browser.inspectorDocked
+            HomeControl(outline: navigationIconOutline, selected: settingsVisible, action: {
+                if settingsVisible { browser.hideChat() }
                 else { browser.moveChat(open: true, homeSettings: true) }
             }) { navigationIcon("gearshape") }
                 .accessibilityLabel("Customize Home")

@@ -119,6 +119,12 @@ https://github.com/swiftlang/swift/issues/70995.
 
 ## Theme ownership
 
+Docked panels use the application shell's shared `ChatRoom` and
+`ChatColumnHost`, alongside Chat, Home Tab Settings, and extension panels.
+Home's field overlay takes its page width from the same `ChatRoom`
+reservation. When changing panel layout, verify Home and a browser tab
+with the panel open, including the sidebar on either side.
+
 The App Container supplies one Space backdrop for themed native Page and
 Panel Content. The Trail and Sidebar apply a subtle shade to it. The outer
 Page and Panel containers are transparent, with padding outside their

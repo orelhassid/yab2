@@ -86,6 +86,25 @@ struct ChatRestorationTests {
         }
     }
 
+    @Test func homeAndThePageReserveTheSameShellPanelRoom() {
+        let rim = DevRoom.Rim(card: false)
+        for width in [340.0, 510, 760, 1000, 1600] {
+            let bounds = CGRect(x: 13, y: 27, width: width, height: 700)
+            for leading in [false, true] {
+                let layout = ChatRoom(open: true, rim: rim, width: 510, leading: leading)
+                let taken = layout.reservation(in: bounds.width)
+                let page = layout.pageFrame(in: bounds)
+                #expect(taken + page.width == bounds.width)
+                #expect(page.width >= min(240, bounds.width / 2))
+                if leading {
+                    #expect(page.minX == bounds.minX + taken)
+                } else {
+                    #expect(page.maxX == bounds.maxX - taken)
+                }
+            }
+        }
+    }
+
     private func withBrowser(_ body: (Browser) async throws -> Void) async throws {
         try #require(Store.testing && Store.world != nil && Store.settings !== UserDefaults.standard)
         let keys = ["mail", "search.suggest", "sidebar", "sidebar.shut", "sidebar.width", "sidebar.flank"]

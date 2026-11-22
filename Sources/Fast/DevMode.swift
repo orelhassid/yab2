@@ -1167,7 +1167,7 @@ extension Browser {
     /// between them, as Chromium's split keeps its inset in full screen
     /// (MultiContentsView::kSplitViewContentInset) and Arc's does
     /// (register 2551).
-    var pageShared: Bool { chatOpen || (devOpen && toolsFront != nil) || stagePair != nil }
+    var pageShared: Bool { chatOpen || inspectorDocked || (devOpen && toolsFront != nil) || stagePair != nil }
 }
 
 /// The page card's paper (Paper): the ground, solid white or the dark

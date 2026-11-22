@@ -47,6 +47,13 @@ extension Browser {
     /// the right, and the two stand on either side of the page.
     var chatLeads: Bool { flank == .right }
 
+    var inspectorDocked: Bool {
+        let inspector = BrowserUIInspector.shared
+        return inspector.isOpen(for: self) && inspector.placement == .docked
+    }
+
+    var shellPanelVisible: Bool { inspectorDocked || (chatOpen && !inDevelopment && !inCollections) }
+
     /// A question about what is on screen belongs to Peek while it is up.
     var chatPage: Tab? { peekFront.page ?? active }
 
@@ -56,8 +63,8 @@ extension Browser {
     }
 }
 
-/// The page, and the column when it is out, in from the card's edges, the
-/// page taking what is left.
+/// The application shell's page and docked panel. Home uses the same
+/// reservation because its content is hosted above the page by the field.
 struct ChatRoom: Layout {
     var open: Bool
     var rim: DevRoom.Rim
@@ -76,8 +83,9 @@ struct ChatRoom: Layout {
             return
         }
         let pageRect = pageFrame(in: bounds)
+        let width = panelWidth(in: bounds.width)
         let column = CGRect(x: leading ? bounds.minX + rim.inset : bounds.maxX - rim.inset - width, y: bounds.minY + rim.inset,
-                            width: width, height: bounds.height - 2 * rim.inset)
+                            width: width, height: max(0, bounds.height - 2 * rim.inset))
         page.place(at: pageRect.origin, proposal: ProposedViewSize(pageRect.size))
         subviews[1].place(at: column.origin, proposal: ProposedViewSize(column.size))
     }
@@ -85,10 +93,21 @@ struct ChatRoom: Layout {
     func pageFrame(in bounds: CGRect) -> CGRect {
         var pageRect = bounds
         if open {
-            pageRect.size.width = max(240, bounds.width - ChatRoom.room(rim, width: width))
+            pageRect.size.width = max(0, bounds.width - reservation(in: bounds.width))
             if leading { pageRect.origin.x = bounds.maxX - pageRect.width }
         }
         return pageRect
+    }
+
+    func panelWidth(in available: CGFloat) -> CGFloat {
+        let available = max(0, available)
+        let minimumPage = min(240, available / 2)
+        let fitted = max(ChatLook.least, min(width, available - Self.room(rim, width: 0) - DevLook.pageBeside))
+        return max(0, min(fitted, available - minimumPage - Self.room(rim, width: 0)))
+    }
+
+    func reservation(in available: CGFloat) -> CGFloat {
+        open ? min(max(0, available), Self.room(rim, width: panelWidth(in: available))) : 0
     }
 
     /// What the column takes from the page.
@@ -307,13 +326,14 @@ extension Browser {
     /// ⌘J pressed again: the column goes away when the keys are in its
     /// field, where ⌘J leaves them, or while it is still coming out.
     var askClosesChat: Bool {
-        guard chatMovement.target ?? chatOpen else { return false }
+        guard !inspectorDocked, chatMovement.target ?? chatOpen else { return false }
         return chatAttach.typing || (chatMoving && chatMovement.target == true)
     }
 
     /// The menu command or column controls put the chat out or away.
     func toggleChat() {
-        if homeSettingsInColumn && AIUse.chats { moveChat(open: true) }
+        if inspectorDocked && (AIUse.chats || panelExtension != nil) { moveChat(open: true) }
+        else if homeSettingsInColumn && AIUse.chats { moveChat(open: true) }
         else if chatMovement.target ?? chatOpen { hideChat() }
         // AI off, or no agent and no chat yet: nothing for the column to show.
         else if AIUse.chats || panelExtension != nil { moveChat(open: true) }
@@ -368,6 +388,7 @@ extension Browser {
     /// still has the model open; it owns the latest intent, not that frame.
     func moveChat(open: Bool, homeSettings: Bool = false) {
         if open {
+            if inspectorDocked { BrowserUIInspector.shared.close(for: self) }
             homeSettingsInColumn = homeSettings
             if homeSettings { panelExtension = nil }
         }
@@ -376,14 +397,14 @@ extension Browser {
         switch chatMovement.request(open: open, current: chatOpen, moving: chatMoving) {
         case .unchanged:
             if !open {
-                chatColumnView?.slide(shown: false)
+                chatColumnView?.slide(shown: shellPanelVisible)
                 if !chatMoving { homeSettingsInColumn = false }
             }
             if !open, !chatOpen, chatRestoration != nil || chatAttach.typing { restoreAfterChat() }
             if !open { FeedbackDiagnostics.shared.chatClose(.skipped, open: chatOpen, moving: chatMoving) }
             return
         case .cancelled:
-            chatColumnView?.slide(shown: open)
+            chatColumnView?.slide(shown: shellPanelVisible)
             chatMoving = false
             if open {
                 // The superseded opening completion can no longer give
@@ -417,7 +438,7 @@ extension Browser {
             // its old page width while the native host slides to the new
             // state. Core Animation owns the motion, not this write.
             chatOpen = open
-            chatColumnView?.slide(shown: open)
+            chatColumnView?.slide(shown: shellPanelVisible)
             if !open {
                 chatAttach.menu = false
                 chatAttach.typing = false
@@ -508,7 +529,7 @@ struct ChatColumnHost: NSViewRepresentable {
     func updateNSView(_ view: ChatColumnView, context: Context) {
         view.dress(corner: corner, width: width, leading: leading)
         // An update queued before a close must not reopen the native host.
-        view.slide(shown: browser.chatOpen)
+        view.slide(shown: browser.shellPanelVisible)
     }
 
     static func dismantleNSView(_ view: ChatColumnView, coordinator: ()) {
@@ -544,8 +565,13 @@ private struct ChatColumnRoot: View {
 
     var body: some View {
         WorkspaceThemeReader(browser: browser) { _ in
+        let inspecting = browser.inspectorDocked
         ZStack {
-            if browser.homeSettingsInColumn {
+            if inspecting {
+                UIInspectorPanel(inspector: BrowserUIInspector.shared, inShell: true)
+                    .modifier(ChatColumnFrame(browser: browser, width: look.width))
+                    .modifier(ChatColumnScheme(browser: browser))
+            } else if browser.homeSettingsInColumn {
                 HomeSettingsPanel(browser: browser, width: look.width, close: browser.hideChat)
                     .modifier(ChatColumnFrame(browser: browser, width: look.width))
                     .modifier(ChatColumnScheme(browser: browser))
@@ -559,14 +585,14 @@ private struct ChatColumnRoot: View {
             // window goes to a space of another (ExtensionSignIns).
             ForEach(Extensions.all.flatMap { $0.panelPages(in: browser) }, id: \.contextID) { page in
                 ExtensionSidePanelColumn(browser: browser, page: page, corner: look.corner, width: look.width)
-                    .opacity(browser.panelExtension == page.id && browser.panelContextID == page.contextID ? 1 : 0)
-                    .allowsHitTesting(browser.panelExtension == page.id && browser.panelContextID == page.contextID)
+                    .opacity(!inspecting && browser.panelExtension == page.id && browser.panelContextID == page.contextID ? 1 : 0)
+                    .allowsHitTesting(!inspecting && browser.panelExtension == page.id && browser.panelContextID == page.contextID)
             }
             if #available(macOS 15.4, *) {
                 ForEach(chromiumPanels.panels(in: browser)) { panel in
                     ChromiumSidePanelColumn(browser: browser, panel: panel, width: look.width)
-                        .opacity(browser.panelExtension == panel.extensionID && browser.panelContextID == panel.contextID ? 1 : 0)
-                        .allowsHitTesting(browser.panelExtension == panel.extensionID && browser.panelContextID == panel.contextID)
+                        .opacity(!inspecting && browser.panelExtension == panel.extensionID && browser.panelContextID == panel.contextID ? 1 : 0)
+                        .allowsHitTesting(!inspecting && browser.panelExtension == panel.extensionID && browser.panelContextID == panel.contextID)
                 }
             }
         }
