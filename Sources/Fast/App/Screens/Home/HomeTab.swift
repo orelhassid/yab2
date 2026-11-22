@@ -389,13 +389,11 @@ struct SpacePageSurface: ViewModifier {
             let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
             content.background {
                 ZStack {
-                    sharesBackdrop ? Color.clear : Palette.stage
+                    sharesBackdrop ? PageContentSurface.wash : Palette.stage
                     if !library && theme.hasPhoto { HomePhoto(space: browser.spaceID) }
                 }
                 .clipShape(shape)
-                .overlay {
-                    if corner > 0 { shape.strokeBorder(Palette.hairline, lineWidth: 1) } // design: outline the shared window backdrop without covering it
-                }
+                .overlay { if !library { PageCardOutline(corner: corner) } }
                 .padding(frame)
                 .allowsHitTesting(false)
             }

@@ -2502,12 +2502,9 @@ private struct ChatColumnFrame: ViewModifier {
         content
             .foregroundStyle(Palette.ink)
             .frame(width: width, alignment: .top)
+            .background(PageContentSurface.wash)
             .clipShape(RoundedRectangle(cornerRadius: Radius.surface, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: Radius.surface, style: .continuous)
-                    .strokeBorder(Palette.hairline, lineWidth: 1) // design: a divider around the shared window ground
-                    .allowsHitTesting(false)
-            }
+            .overlay { PageCardOutline(corner: Backdrop.corner) }
             // Its edge, in the air between it and the page: dragged as a split's.
             .overlay(alignment: browser.chatLeads ? .trailing : .leading) {
                 ChatEdge(browser: browser)

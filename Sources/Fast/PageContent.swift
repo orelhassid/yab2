@@ -218,3 +218,26 @@ struct RoomPaper: View {
 
     var body: some View { Paper(corner: corner, dark: dark, band: band, moving: moving || preview.moving) }
 }
+
+
+/// The native content surface lifts the shared Space backdrop without
+/// obscuring its drawings, texture, or material.
+enum PageContentSurface {
+    static let washOpacity = 0.08
+    static let outlineOpacity = 0.22
+    static var wash: Color { Color.white.opacity(washOpacity) }
+}
+
+/// The edge of a native card on the shared Space backdrop. The backdrop
+/// stays visible on both sides of this outline, including in the gutter.
+struct PageCardOutline: View {
+    let corner: CGFloat
+
+    var body: some View {
+        if corner > 0 {
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .strokeBorder(Palette.ink.opacity(PageContentSurface.outlineOpacity), lineWidth: 1) // design: separate the native card from the shared backdrop
+                .allowsHitTesting(false)
+        }
+    }
+}

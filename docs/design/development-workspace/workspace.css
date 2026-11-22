@@ -367,11 +367,20 @@ input:focus, textarea:focus, select:focus { outline: 0; box-shadow: inset 0 0 0 
 }
 [data-native-space] :is(body,.window,.tab-frame,.body aside) { background: transparent }
 [data-native-space] .body main {
-  background: transparent;
+  position: relative;
+  background: var(--page-surface, transparent);
   margin-block: var(--page-top, 0) var(--page-bottom, 0);
   margin-inline: var(--page-leading, 0) var(--page-trailing, 0);
   border-radius: var(--page-corner, 0);
   overflow: hidden;
+}
+[data-native-space] .body main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 var(--page-outline, 0) color-mix(in srgb, var(--ink) var(--page-outline-opacity, 22%), transparent);
+  pointer-events: none;
 }
 [data-native-space] :is(.composer,.panel,.list,.feature-hero,.run-card,.file[aria-pressed=true],#context) { background: var(--wash); border-color: var(--line) }
 [data-native-space] .composer-tools, [data-native-space] textarea::placeholder { color: var(--muted) }
