@@ -389,11 +389,10 @@ struct SpacePageSurface: ViewModifier {
             let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
             content.background {
                 ZStack {
-                    sharesBackdrop ? PageContentSurface.wash : Palette.stage
+                    sharesBackdrop ? Color.clear : Palette.stage
                     if !library && theme.hasPhoto { HomePhoto(space: browser.spaceID) }
                 }
                 .clipShape(shape)
-                .overlay { if !library { PageCardOutline(corner: corner) } }
                 .padding(frame)
                 .allowsHitTesting(false)
             }

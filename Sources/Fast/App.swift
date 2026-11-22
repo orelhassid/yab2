@@ -1019,9 +1019,7 @@ struct ContentView: View {
                     // its half rather than handed to another view.
                     if browser.inCollections {
                         CollectionWorkspace(browser: browser)
-                            .background(PageContentSurface.wash)
                             .clipShape(RoundedRectangle(cornerRadius: corner))
-                            .overlay { PageCardOutline(corner: corner) }
                             .padding(margins)
                     } else if browser.inDevelopment {
                         DevelopmentPane(browser: browser, project: browser.developmentProject, entries: DevelopmentDirectory.shared.entries,
@@ -1342,8 +1340,6 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: corner, style: .continuous) // design: the card's own corner, the half is a card
                     .strokeBorder(Color(nsColor: Pair.ring), lineWidth: 1)
                     .allowsHitTesting(false)
-            } else if tab.showsLibrary {
-                PageCardOutline(corner: corner)
             }
         }
         .background { pagePaper(tab).transaction { if browser.splitRooming { $0.animation = nil } } }

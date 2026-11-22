@@ -227,9 +227,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
         let shades = Palette.shades(tone)
         let colors = ["--ground": "#" + ground.hex, "--stage": "#" + tone.page.hex,
                       "--ink": "#" + shades.strongNS.hex, "--muted": "#" + shades.mutedNS.hex,
-                      "--faint": "#" + shades.faintNS.hex, "--line": "#" + SpaceSurface.rim(on: tone).hex,
-                      "--page-surface": "rgb(255 255 255 / \(PageContentSurface.washOpacity))",
-                      "--page-outline-opacity": "\(PageContentSurface.outlineOpacity * 100)%"]
+                      "--faint": "#" + shades.faintNS.hex, "--line": "#" + SpaceSurface.rim(on: tone).hex]
         guard colors != sentColors else { return }
         sentColors = colors
         view.callAsyncJavaScript("for (const [key, value] of Object.entries(colors)) document.documentElement.style.setProperty(key, value)",
@@ -238,7 +236,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     func updatePageFrame(margins: EdgeInsets, corner: CGFloat) {
         let frame = ["--page-top": "\(margins.top)px", "--page-leading": "\(margins.leading)px",
                      "--page-bottom": "\(margins.bottom)px", "--page-trailing": "\(margins.trailing)px",
-                     "--page-corner": "\(corner)px", "--page-outline": corner > 0 ? "1px" : "0px"]
+                     "--page-corner": "\(corner)px"]
         guard frame != pageFrame else { return }
         pageFrame = frame
         if ready { applyPageFrame() }
@@ -478,9 +476,7 @@ struct DevelopmentPane: View {
                     .accessibilityHidden(state.environmentSelected)
                 if state.environmentSelected {
                     DevelopmentEnvironmentSettings(browser: browser, state: state)
-                        .background(PageContentSurface.wash)
                         .clipShape(RoundedRectangle(cornerRadius: pageCorner))
-                        .overlay { PageCardOutline(corner: pageCorner) }
                         .padding(pageMargins)
                 }
             }

@@ -300,7 +300,7 @@ enum SpaceSurface {
     }
 
     static func navigationShade(for color: NSColor) -> Color {
-        Color.black.opacity(Tone(color).scheme == .dark ? 0.22 : 0.06)
+        Color.black.opacity(Tone(color).scheme == .dark ? 0.06 : 0.035)
     }
 
     static func badge(on tone: Tone, emphasized: Bool = false) -> Color {

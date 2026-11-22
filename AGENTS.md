@@ -119,12 +119,12 @@ https://github.com/swiftlang/swift/issues/70995.
 
 ## Theme ownership
 
-The App Container supplies the shared Space backdrop. The Trail and
-Sidebar darken that backdrop. The outer Page and Panel containers are
-transparent, so their padding reveals the unmodified backdrop. Native
-Page and Panel Content add a lighter surface over the same backdrop.
-Draw the Card outline at the inner content edge. Edge to Edge removes
-the Page padding and uses square corners. Web content uses its own background.
+The App Container supplies one Space backdrop for themed native Page and
+Panel Content. The Trail and Sidebar apply a subtle shade to it. The outer
+Page and Panel containers are transparent, with padding outside their
+content. Card uses padding and rounded corners. Keep themed native content
+free of a separate fill or perimeter border. Edge to Edge uses square
+corners and zero Page padding. Web content uses its own background.
 
 Resolve window chrome from the active Space. In Development, the selected
 project supplies that look. Pass the resolved tone into each hosting root,
