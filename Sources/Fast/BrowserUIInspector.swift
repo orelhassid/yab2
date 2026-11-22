@@ -201,6 +201,7 @@ final class BrowserUIInspector: NSObject, NSWindowDelegate {
     @ObservationIgnored private weak var target: NSWindow?
     @ObservationIgnored private var detached: NSWindow?
     @ObservationIgnored private var monitor: Any?
+    @ObservationIgnored private var capturedPress = false
     @ObservationIgnored private var refresh: Timer?
     @ObservationIgnored private var hover: UIInspectorID?
     @ObservationIgnored private let probes = NSHashTable<UIInspectorProbe>.weakObjects()
@@ -237,8 +238,11 @@ final class BrowserUIInspector: NSObject, NSWindowDelegate {
         attachOutline(to: target)
         outline.updateTrackingAreas()
         if monitor == nil {
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                self?.cancelPick(with: event) == true ? nil : event
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [
+                .keyDown, .mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp,
+                .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp
+            ]) { [weak self] event in
+                self?.capture(event) == true ? nil : event
             }
         }
     }
@@ -264,6 +268,7 @@ final class BrowserUIInspector: NSObject, NSWindowDelegate {
         dismissDetached()
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
+        capturedPress = false
         refresh?.invalidate()
         refresh = nil
         outline.removeFromSuperview()
@@ -323,6 +328,36 @@ final class BrowserUIInspector: NSObject, NSWindowDelegate {
     }
 
     func ownsPointer(in window: NSWindow?) -> Bool { picking && window === target }
+
+    /// AppKit and the sidebar's own input monitors can see the same press.
+    /// Keep both ends of a pick out of the browser's normal click routing.
+    private func capture(_ event: NSEvent) -> Bool {
+        if cancelPick(with: event) { return true }
+        if capturedPress {
+            if event.type == .leftMouseDragged { return true }
+            if event.type == .leftMouseUp {
+                capturedPress = false
+                return true
+            }
+            if event.type == .leftMouseDown { capturedPress = false }
+        }
+        guard let window = event.window, let content = window.contentView else { return false }
+        let point = event.locationInWindow
+        guard picks(at: point, in: window), content.convert(content.bounds, to: nil).contains(point) else { return false }
+        switch event.type {
+        case .mouseMoved:
+            self.point(at: point)
+            return false
+        case .leftMouseDown:
+            capturedPress = true
+            self.point(at: point, commit: true)
+            return true
+        case .rightMouseDown, .rightMouseDragged, .rightMouseUp, .otherMouseDown, .otherMouseDragged, .otherMouseUp:
+            return true
+        default:
+            return false
+        }
+    }
 
     func picks(at point: CGPoint, in window: NSWindow?) -> Bool {
         ownsPointer(in: window) && !panelFrame.contains(point)
@@ -514,8 +549,8 @@ private final class UIInspectorOutline: NSView {
     override func mouseMoved(with event: NSEvent) { BrowserUIInspector.shared.point(at: event.locationInWindow) }
     override func mouseEntered(with event: NSEvent) { mouseMoved(with: event) }
     override func mouseExited(with event: NSEvent) { BrowserUIInspector.shared.clearHover() }
-    override func mouseDown(with event: NSEvent) { BrowserUIInspector.shared.point(at: event.locationInWindow, commit: true) }
-    override func mouseUp(with event: NSEvent) {}
+    override func mouseDown(with event: NSEvent) { BrowserUIInspector.shared.point(at: event.locationInWindow) }
+    override func mouseUp(with event: NSEvent) { BrowserUIInspector.shared.point(at: event.locationInWindow, commit: true) }
     override func mouseDragged(with event: NSEvent) {}
     override func rightMouseDown(with event: NSEvent) {}
     override func rightMouseUp(with event: NSEvent) {}

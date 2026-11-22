@@ -80,7 +80,8 @@ final class ColumnGrip {
             return event
         case .leftMouseDown:
             state = .idle
-            guard !view.isHiddenOrHasHiddenAncestor, view.bounds.contains(point),
+            guard !BrowserUIInspector.shared.picks(at: event.locationInWindow, in: window),
+                  !view.isHiddenOrHasHiddenAncestor, view.bounds.contains(point),
                   let hit = window.contentView?.superview?.hitTest(event.locationInWindow) ?? window.contentView?.hitTest(event.locationInWindow),
                   hit === view || hit.isDescendant(of: view), attempt?(event) == true else { return event }
             heard["down", default: 0] += 1
