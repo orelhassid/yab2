@@ -953,14 +953,6 @@ struct ContentView: View {
                 }
                 SpaceWashLayer().environment(browser)
             }
-            if browser.leadingSidebarRoom > 0 || browser.trailingSidebarRoom > 0 {
-                let shade = SpaceSurface.navigationShade(for: SpaceSurface.tone(in: browser)?.page ?? NSColor(Palette.ground))
-                HStack(spacing: 0) {
-                    shade.frame(width: browser.leadingSidebarRoom)
-                    Spacer(minLength: 0)
-                    shade.frame(width: browser.trailingSidebarRoom)
-                }.allowsHitTesting(false)
-            }
             if laid {
                 // Not under the tabs: a real view takes a click before
                 // anything SwiftUI draws over it, and over the whole window
@@ -1446,18 +1438,16 @@ struct ContentView: View {
     /// The page's corners: a card's, or none, edge to edge.
     private var corner: CGFloat { laid ? Backdrop.corner : 0 }
 
-    /// The page, laid on the backdrop, the same way in from every edge that
-    /// has nothing of ours along it. The strip already holds the top, and
-    /// the column the left, which, as it goes, hands its edge back to the
-    /// margin a point at a time rather than all at once.
+    /// The transparent space around the page content, inside the room
+    /// already reserved beside the Trail and Sidebar.
     private var margins: EdgeInsets {
         guard laid else { return EdgeInsets() }
         let inset = Backdrop.inset
         return EdgeInsets(
             top: band == 0 && shelfRoom == 0 ? inset : 0,
-            leading: max(0, inset - browser.leadingSidebarRoom),
+            leading: inset,
             bottom: inset,
-            trailing: max(0, inset - browser.trailingSidebarRoom)
+            trailing: inset
         )
     }
 

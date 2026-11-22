@@ -119,9 +119,11 @@ https://github.com/swiftlang/swift/issues/70995.
 
 ## Theme ownership
 
-The App Container supplies the background for the Trail, Sidebar, and Panel.
-Each Page supplies its own background. Card and Edge to Edge change only
-the Page container's outer padding and corner radius.
+The App Container supplies one background for the docked Trail, Sidebar,
+and Panel without a separate navigation tint. The Page is a transparent
+layout container, and Page Content owns its background. In Card layout,
+the Page keeps its side padding beside the Sidebar and Trail. Edge to Edge
+fills the Page's available area with square corners.
 
 Resolve window chrome from the active Space. In Development, the selected
 project supplies that look. Pass the resolved tone into each hosting root,
