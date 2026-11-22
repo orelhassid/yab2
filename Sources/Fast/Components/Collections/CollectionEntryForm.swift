@@ -80,7 +80,7 @@ struct CollectionEntryForm: View {
     }
 }
 
-private struct RecordOptionField: View {
+struct RecordOptionField: View {
     let property: CollectionProperty
     let options: [String]
     @Binding var value: String

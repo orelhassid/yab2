@@ -12,7 +12,7 @@ struct CollectionPage: View {
     }
     @State private var moreViews = false
     @Environment(\.tone) private var tone
-    @State private var filtering = false
+
     @State private var settings = false
     @State private var namingView = false
     @State private var viewName = ""
@@ -29,25 +29,20 @@ struct CollectionPage: View {
         VStack(alignment: .leading, spacing: 0) {
             toolbar
             Divider()
-            if !view.filters.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack {
-                        ForEach(view.filters) { rule in
-                            let title = collection.properties.first { $0.id == rule.property }?.title ?? rule.property
-                            Button {
-                                collection.views[index].filters.removeAll { $0.id == rule.id }
-                            } label: {
-                                HStack { Text("\(title) is \(rule.value)"); Symbol("xmark", size: 9) }
-                            }
-                            .keyTip("Remove filter")
-                        }
-                    }.padding(.vertical, 6)
+            HStack(spacing: 6) {
+                ForEach(CollectionRuleKind.allCases, id: \.self) { kind in
+                    CollectionRuleMenu(kind: kind, collection: collection, view: $collection.views[index])
                 }
-                Divider()
-            }
+                Spacer()
+            }.padding(.vertical, 6)
+            Divider()
             CollectionDataGrid(properties: properties, entries: visible, start: start, total: entries.count,
                                selection: $selection, view: $collection.views[index], schema: collection.properties,
-                               matching: entries, collectionName: collection.name, filteredEmpty: !collection.entries.isEmpty,
+                               matching: entries, collection: collection, update: { id, key, value in
+                                   if let row = collection.entries.firstIndex(where: { $0.id == id }) {
+                                       collection.entries[row].values[key] = value
+                                   }
+                               }, collectionName: collection.name, filteredEmpty: !collection.entries.isEmpty,
                                create: { adding = true }, clear: { collection.views[index].filters.removeAll() }) { entry in
                 openRecord(OpenRecord(collection: collection.id, record: entry.id, view: view.id, page: start / view.pageSize))
             }
@@ -95,7 +90,7 @@ struct CollectionPage: View {
     private var toolbar: some View {
         HStack(spacing: SideBar.markGap) {
             ForEach(collection.views.prefix(2)) { item in
-                PageTabButton(title: item.name, symbol: "tablecells", selected: item.id == view.id) {
+                PageTabButton(title: item.name, symbol: "tablecells", selected: item.id == view.id, size: .regular) {
                     collection.selectedView = item.id
                 }
             }
@@ -122,16 +117,8 @@ struct CollectionPage: View {
                 }
             Spacer()
             if !selection.isEmpty { Text("\(selection.count) selected").font(.caption) }
-            RailButton("Add filter", icon: "line.3.horizontal.decrease", selected: filtering || !view.filters.isEmpty, doorSize: .header) { filtering.toggle() }
-                .keyTip("Add filter")
-                .popover(isPresented: $filtering) {
-                    CollectionFilterForm(properties: collection.properties) { filter in
-                        collection.views[index].filters.append(filter)
-                        filtering = false
-                    }
-                }
-            RailButton("View settings", icon: "gearshape", selected: settings, doorSize: .header) { settings.toggle() }
-                .keyTip("View settings")
+            PageActionButton(title: "View settings", icon: "slider.horizontal.3", variant: .quiet, size: .regular,
+                                   state: settings ? .active : .ready, iconOnly: true) { settings.toggle() }
                 .popover(isPresented: $settings) {
                     VStack(alignment: .leading) {
                         Text("Visible properties").font(.headline)
@@ -141,12 +128,6 @@ struct CollectionPage: View {
                                 else { collection.views[index].hidden.insert(property.id) }
                             }))
                         }
-                        Text("Sort by").font(CardFrame.detail)
-                        ChoiceMenu(title: "Sort by", options: [("Record order", nil)] + collection.properties.map { ($0.title, Optional($0.id)) },
-                                   selection: $collection.views[index].sortProperty)
-                        if view.sortProperty != nil {
-                            Toggle("Descending", isOn: Binding(get: { view.descending == true }, set: { collection.views[index].descending = $0 }))
-                        }
                         Text("Row height").font(CardFrame.detail)
                         ChoiceMenu(title: "Row height", options: [("Comfortable", false), ("Compact", true)],
                                    selection: Binding(get: { view.compactRows == true }, set: { collection.views[index].compactRows = $0 }))
@@ -155,25 +136,7 @@ struct CollectionPage: View {
                                    selection: $collection.views[index].pageSize)
                     }.toggleStyle(NetCheckboxStyle()).padding()
                 }
-            Button { adding = true } label: { Label("New Record", systemImage: "plus") }
-                .buttonStyle(.yab(.primary, .regular))
+            PageActionButton(title: "New Record", icon: "plus", variant: .primary, size: .regular) { adding = true }
         }.padding(.vertical, 6)
-    }
-}
-
-private struct CollectionFilterForm: View {
-    let properties: [CollectionProperty]
-    let apply: (CollectionFilter) -> Void
-    @State private var property = "name"
-    @State private var value = ""
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            Text("Property").font(CardFrame.detail)
-            ChoiceMenu(title: "Property", options: properties.map { ($0.title, $0.id) }, selection: $property)
-            YabFormField("Value equals", text: $value)
-            Button("Apply filter") { apply(.init(property: property, value: value)) }
-                .buttonStyle(.yab(.primary, .regular)).disabled(value.isEmpty)
-        }.padding().frame(minWidth: 220)
     }
 }

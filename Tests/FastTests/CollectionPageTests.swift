@@ -67,6 +67,30 @@ struct CollectionPageTests {
         #expect(collection.resolvedRecordTemplate.buttons == layout.buttons)
     }
 
+    @Test func gridRulesAndColumnWidthsSurviveReload() throws {
+        var collection = CollectionTemplate.invoices.make(name: "Bills")
+        collection.entries = [
+            .init(values: ["name": "B", "status": "Open", "amount": "10"]),
+            .init(values: ["name": "A", "status": "Open", "amount": "10"]),
+            .init(values: ["name": "C", "status": "Open", "amount": "2"]),
+            .init(values: ["name": "D", "status": "Closed", "amount": "1"])
+        ]
+        var view = collection.views[0]
+        view.sortProperty = "amount"
+        view.descending = true
+        #expect(view.sorts.first?.value == "Descending")
+        view.sorts.append(.init(property: "name", value: "Ascending"))
+        view.groupRules = [.init(property: "status", value: "Ascending")]
+        view.columnWidths = ["name": 340]
+        let saved = try JSONDecoder().decode(CollectionTableView.self, from: JSONEncoder().encode(view))
+        #expect(saved.records(in: collection).compactMap { $0.values["name"] } == ["D", "A", "B", "C"])
+        #expect(saved.columnWidths?["name"] == 340)
+        view.sorts = []
+        #expect(view.sortProperty == nil)
+        view.filters = [.init(property: "client", value: "")]
+        #expect(view.records(in: collection).count == 4)
+    }
+
     @Test func savedViewSurvivesReloadWithFilteredCalculations() throws {
         let domain = "collections-test-" + UUID().uuidString
         let settings = try #require(UserDefaults(suiteName: domain))

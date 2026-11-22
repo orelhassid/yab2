@@ -27,8 +27,8 @@ enum CollectionPropertyType: String, Codable, CaseIterable {
         case .text: "textformat"
         case .number: "number"
         case .date: "calendar"
-        case .select: "list.bullet"
-        case .multiSelect: "checklist"
+        case .select: "chevron.down.circle"
+        case .multiSelect: "list.bullet.rectangle"
         case .relation: "link"
         }
     }
@@ -72,12 +72,34 @@ struct CollectionEntry: Identifiable, Codable {
 
 struct CollectionFilter: Identifiable, Equatable, Codable {
     var id = UUID()
-    let property: String
-    let value: String
+    var property: String
+    var value: String
+}
+
+enum CollectionRuleKind: String, CaseIterable {
+    case sort = "Sort", filter = "Filter", group = "Group"
+
+    var icon: String {
+        switch self {
+        case .sort: "arrow.up.arrow.down"
+        case .filter: "line.3.horizontal.decrease"
+        case .group: "rectangle.3.group"
+        }
+    }
 }
 
 enum CollectionColumnAction: String, CaseIterable {
     case ascending = "Sort ascending", descending = "Sort descending", earlier = "Move earlier", later = "Move later", hide = "Hide column"
+
+    var symbol: String {
+        switch self {
+        case .ascending: "arrow.up"
+        case .descending: "arrow.down"
+        case .earlier: "arrow.backward"
+        case .later: "arrow.forward"
+        case .hide: "eye.slash"
+        }
+    }
 
     func title(rtl: Bool) -> String {
         switch self {
@@ -97,6 +119,47 @@ struct CollectionTableView: Identifiable, Codable {
     var pageSize = 25
     var sortProperty: String?
     var descending: Bool?
+
+    var sortRules: [CollectionFilter]?
+    var groupRules: [CollectionFilter]?
+    var columnWidths: [String: Double]?
+
+    var sorts: [CollectionFilter] {
+        get {
+            if let sortRules { return sortRules }
+            guard let sortProperty else { return [] }
+            return [.init(id: id, property: sortProperty, value: descending == true ? "Descending" : "Ascending")]
+        }
+        set {
+            sortRules = newValue
+            sortProperty = newValue.first?.property
+            descending = newValue.first.map { $0.value == "Descending" }
+        }
+    }
+
+    func rules(for kind: CollectionRuleKind) -> [CollectionFilter] {
+        switch kind {
+        case .sort: sorts
+        case .filter: filters
+        case .group: groupRules ?? []
+        }
+    }
+
+    mutating func setRules(_ rules: [CollectionFilter], for kind: CollectionRuleKind) {
+        switch kind {
+        case .sort: sorts = rules
+        case .filter: filters = rules
+        case .group: groupRules = rules
+        }
+    }
+
+    mutating func addRule(_ kind: CollectionRuleKind, property: String, entries: [CollectionEntry]) {
+        var rules = rules(for: kind)
+        guard !rules.contains(where: { $0.property == property }) else { return }
+        let value = kind == .filter ? entries.first?.values[property] ?? "" : "Ascending"
+        rules.append(.init(property: property, value: value))
+        setRules(rules, for: kind)
+    }
 
     var compactRows: Bool?
     var columnOrder: [String]?
@@ -146,29 +209,36 @@ struct CollectionTableView: Identifiable, Codable {
             moveColumn(column, to: visible[i + (action == .earlier ? -1 : 1)].id, properties: properties)
         case .hide: hidden.insert(column)
         case .ascending, .descending:
-            sortProperty = column
-            descending = action == .descending
+            sorts = [.init(property: column, value: action == .descending ? "Descending" : "Ascending")] + sorts.filter { $0.property != column }
         }
     }
 
     func records(in collection: PageCollection, including current: UUID? = nil) -> [CollectionEntry] {
         let filtered = collection.entries.filter { $0.id == current || matches($0) }
-        guard let sortProperty, let property = collection.properties.first(where: { $0.id == sortProperty }) else { return filtered }
+        let grouped = Set((groupRules ?? []).map(\.property))
+        let rules = ((groupRules ?? []) + sorts).compactMap { rule in
+            collection.properties.first { $0.id == rule.property }.map { ($0, rule.value == "Descending") }
+        }
+        guard !rules.isEmpty else { return filtered }
         return filtered.sorted { lhs, rhs in
-            let left = lhs.values[sortProperty] ?? ""
-            let right = rhs.values[sortProperty] ?? ""
-            let order: ComparisonResult
-            if property.numeric, let a = Decimal(string: left), let b = Decimal(string: right) {
-                order = NSDecimalNumber(decimal: a).compare(NSDecimalNumber(decimal: b))
-            } else {
-                order = left.localizedStandardCompare(right)
+            for (property, descending) in rules {
+                let left = lhs.values[property.id] ?? ""
+                let right = rhs.values[property.id] ?? ""
+                var order: ComparisonResult
+                if property.numeric, let a = Decimal(string: left), let b = Decimal(string: right) {
+                    order = NSDecimalNumber(decimal: a).compare(NSDecimalNumber(decimal: b))
+                } else {
+                    order = left.localizedStandardCompare(right)
+                }
+                if order == .orderedSame && grouped.contains(property.id) { order = left.compare(right, options: .literal) }
+                if order != .orderedSame { return descending ? order == .orderedDescending : order == .orderedAscending }
             }
-            return descending == true ? order == .orderedDescending : order == .orderedAscending
+            return false
         }
     }
 
     func matches(_ entry: CollectionEntry) -> Bool {
-        filters.allSatisfy { entry.values[$0.property]?.localizedCaseInsensitiveCompare($0.value) == .orderedSame }
+        filters.allSatisfy { (entry.values[$0.property] ?? "").localizedCaseInsensitiveCompare($0.value) == .orderedSame }
     }
 }
 

@@ -9,6 +9,8 @@ struct CollectionDataGrid: View {
     @Binding var view: CollectionTableView
     let schema: [CollectionProperty]
     let matching: [CollectionEntry]
+    let collection: PageCollection
+    let update: (UUID, String, String) -> Void
     let collectionName: String
     let filteredEmpty: Bool
     let create: () -> Void
@@ -18,6 +20,19 @@ struct CollectionDataGrid: View {
     let openRecord: (CollectionEntry) -> Void
 
     @State private var hovering: String?
+
+    @State private var columnMenu: String?
+    @State private var resizeHover: String?
+    @GestureState private var resizing: Resize?
+    private struct Resize {
+        let key: String
+        let width: CGFloat
+    }
+
+    private func columnWidth(_ id: String, fallback: CGFloat) -> CGFloat {
+        if resizing?.key == id, let resizing { return resizing.width }
+        return max(96, min(1200, view.columnWidths?[id] ?? fallback))
+    }
 
     private struct Drag {
         let source: Int
@@ -49,10 +64,11 @@ struct CollectionDataGrid: View {
                                 .frame(width: gutter, height: height)
                             Text("#").foregroundStyle(.secondary).frame(width: indexWidth)
                             columns(width: dataWidth) { index, property in
-                                columnHeader(property, index: index, width: dataWidth)
+                                columnHeader(property, index: index, fallback: dataWidth)
                             }
                         }
                         ForEach(Array(entries.enumerated()), id: \.element.id) { offset, entry in
+                            groupLabels(entry, previous: offset > 0 ? entries[offset - 1] : nil)
                             HStack(spacing: 0) {
                                 Toggle(isOn: Binding(get: { selection.contains(entry.id) }, set: { on in
                                     if on { selection.insert(entry.id) } else { selection.remove(entry.id) }
@@ -61,16 +77,24 @@ struct CollectionDataGrid: View {
                                 Text(String(start + offset + 1)).monospacedDigit().foregroundStyle(.secondary)
                                     .frame(width: indexWidth)
                                 columns(width: dataWidth) { _, property in
-                                    Button { openRecord(entry) } label: {
+                                    CollectionEditableCell(property: property, entry: entry, primary: property.id == schema.first?.id,
+                                                           height: height, collection: collection, save: { update(entry.id, property.id, $0) },
+                                                           open: { openRecord(entry) }) {
                                         valueCell(entry.values[property.id] ?? "", property: property)
-                                            .lineLimit(1).padding(.horizontal, DropFace.inset)
-                                            .frame(width: dataWidth, height: height, alignment: property.numeric ? .trailing : .leading)
-                                            .clipped().contentShape(Rectangle())
-                                    }.buttonStyle(.plain)
+                                    }
                                 }
                             }
                             .background { if selection.contains(entry.id) { SelectionPlate(corner: 0, state: .selected) } }
                         }
+                        Button(action: create) {
+                            HStack(spacing: 6) {
+                                Symbol("plus", size: 12)
+                                Text("New Record")
+                            }.font(CardFrame.detail).foregroundStyle(Palette.muted)
+                                .padding(.horizontal, DropFace.inset)
+                                .frame(maxWidth: .infinity, minHeight: height, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }.buttonStyle(CollectionCellPress()).accessibilityLabel("Add record in table")
                         if total > 0 {
                             HStack(spacing: 0) {
                                 Color.clear.frame(width: gutter + indexWidth, height: height)
@@ -100,6 +124,23 @@ struct CollectionDataGrid: View {
         }
     }
 
+    @ViewBuilder private func groupLabels(_ entry: CollectionEntry, previous: CollectionEntry?) -> some View {
+        let groups = view.groupRules ?? []
+        ForEach(Array(groups.enumerated()), id: \.element.id) { level, rule in
+            if previous == nil || groups.prefix(level + 1).contains(where: { (entry.values[$0.property] ?? "") != (previous?.values[$0.property] ?? "") }) {
+                let name = schema.first { $0.id == rule.property }?.title ?? rule.property
+                let value = entry.values[rule.property] ?? ""
+                HStack(spacing: 6) {
+                    Symbol("rectangle.3.group", size: 12)
+                    Text(name).foregroundStyle(Palette.muted)
+                    Text(value.isEmpty ? "Empty" : value)
+                }.font(CardFrame.detail).padding(.leading, 8 + CGFloat(level) * 12)
+                    .frame(maxWidth: .infinity, minHeight: height, alignment: .leading)
+                    .background(Palette.hairline.opacity(0.35))
+            }
+        }
+    }
+
     @ViewBuilder private func valueCell(_ value: String, property: CollectionProperty) -> some View {
         if value.isEmpty {
             Color.clear
@@ -123,10 +164,11 @@ struct CollectionDataGrid: View {
         }
     }
 
-    private func columns<Content: View>(width: CGFloat, @ViewBuilder content: @escaping (Int, CollectionProperty) -> Content) -> some View {
+    private func columns<Content: View>(width fallback: CGFloat, @ViewBuilder content: @escaping (Int, CollectionProperty) -> Content) -> some View {
         ForEach(Array(properties.enumerated()), id: \.element.id) { index, property in
+            let width = columnWidth(property.id, fallback: fallback)
             let held = drag?.source == index
-            let shift = drag.map { ColumnHand.shift(index, from: $0.source, to: $0.target, rows: nil, step: width) } ?? 0
+            let shift = drag.map { ColumnHand.shift(index, from: $0.source, to: $0.target, rows: nil, step: columnWidth(properties[$0.source].id, fallback: fallback)) } ?? 0
             ZStack(alignment: .leading) {
                 if drag?.target == index {
                     Rectangle().fill(Color.accentColor.opacity(0.18))
@@ -134,7 +176,11 @@ struct CollectionDataGrid: View {
                 }
                 content(index, property)
                     .frame(width: width, height: height)
-                    .overlay(alignment: .trailing) { Rectangle().fill(Palette.hairline).frame(width: 0.5).allowsHitTesting(false) }
+                    .overlay(alignment: .trailing) {
+                        let highlighted = resizeHover == property.id || resizing?.key == property.id
+                        Rectangle().fill(highlighted ? Color.accentColor : Palette.hairline)
+                            .frame(width: highlighted ? 2 : 0.5).allowsHitTesting(false)
+                    }
                     .overlay(alignment: .bottom) { Rectangle().fill(Palette.hairline).frame(height: 0.5).allowsHitTesting(false) }
                     .background { if held { Rectangle().fill(.regularMaterial) } }
                     .opacity(held ? 0.8 : 1)
@@ -146,17 +192,25 @@ struct CollectionDataGrid: View {
         }
     }
 
-    private func landing(_ travel: CGFloat, from index: Int, width: CGFloat) -> Int {
-        min(properties.count - 1, max(1, index + Int((sign * travel / width).rounded())))
+    private func landing(_ travel: CGFloat, from index: Int, fallback: CGFloat) -> Int {
+        let widths = properties.map { columnWidth($0.id, fallback: fallback) }
+        let center = widths.prefix(index).reduce(0, +) + widths[index] / 2 + sign * travel
+        var edge: CGFloat = 0
+        for (i, width) in widths.enumerated() {
+            edge += width
+            if center < edge { return max(1, i) }
+        }
+        return widths.count - 1
     }
 
-    @ViewBuilder private func columnHeader(_ property: CollectionProperty, index: Int, width: CGFloat) -> some View {
+    @ViewBuilder private func columnHeader(_ property: CollectionProperty, index: Int, fallback: CGFloat) -> some View {
+        let width = columnWidth(property.id, fallback: fallback)
         let fixed = property.id == schema.first?.id
         let header = HStack(spacing: 6) {
             Symbol(property.type.symbol, size: 12).foregroundStyle(Palette.muted)
             Text(property.title).fontWeight(.medium).lineLimit(1)
-            if view.sortProperty == property.id {
-                Symbol(view.descending == true ? "arrow.down" : "arrow.up", size: 10)
+            if let sort = view.sorts.first(where: { $0.property == property.id }) {
+                Symbol(sort.value == "Descending" ? "arrow.down" : "arrow.up", size: 10)
             }
             Spacer(minLength: 0)
             if !fixed && hovering == property.id { Symbol("line.3.horizontal", size: 10).foregroundStyle(Palette.muted) }
@@ -164,16 +218,18 @@ struct CollectionDataGrid: View {
             .background { if hovering == property.id { SelectionPlate(corner: 0, state: .hover) } }
             .onHover { if $0 { hovering = property.id } else if hovering == property.id { hovering = nil } }
             .accessibilityElement(children: .ignore).accessibilityLabel(property.title + " column")
+        let menuHeader = header.onTapGesture { columnMenu = property.id }
+            .accessibilityAddTraits(.isButton).accessibilityAction { columnMenu = property.id }
         Group {
-            if fixed { header }
+            if fixed { menuHeader }
             else {
-                header.gesture(DragGesture(minimumDistance: 5, coordinateSpace: .global)
+                menuHeader.simultaneousGesture(DragGesture(minimumDistance: 5, coordinateSpace: .global)
                     .updating($drag) { value, state, _ in
                         let travel = value.translation.width
-                        state = Drag(source: index, target: landing(travel, from: index, width: width), travel: travel)
+                        state = Drag(source: index, target: landing(travel, from: index, fallback: fallback), travel: travel)
                     }
                     .onEnded { value in
-                        let target = landing(value.translation.width, from: index, width: width)
+                        let target = landing(value.translation.width, from: index, fallback: fallback)
                         guard properties.indices.contains(target) else { return }
                         view.moveColumn(property.id, to: properties[target].id, properties: schema)
                     })
@@ -186,6 +242,45 @@ struct CollectionDataGrid: View {
                 }.disabled(!view.supports(action, column: property.id, properties: schema))
             }
         }
+        .popover(isPresented: Binding(get: { columnMenu == property.id }, set: { if !$0 { columnMenu = nil } })) {
+            VStack(spacing: 0) {
+                ForEach(CollectionColumnAction.allCases, id: \.self) { action in
+                    TrailMenuRow(title: action.title(rtl: direction == .rightToLeft), action: {
+                        columnMenu = nil
+                        view.apply(action, column: property.id, properties: schema)
+                    }) { Symbol(action.symbol, size: 12) }
+                    .disabled(!view.supports(action, column: property.id, properties: schema))
+                }
+            }.padding(4).frame(width: 190).toned(tone)
+        }
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(resizeHover == property.id || resizing?.key == property.id ? Color.accentColor : .clear)
+                .frame(width: 2).frame(width: 8).contentShape(Rectangle())
+                .onHover { inside in
+                    if inside { resizeHover = property.id; NSCursor.resizeLeftRight.set() }
+                    else if resizeHover == property.id { resizeHover = nil; NSCursor.arrow.set() }
+                }
+                .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .updating($resizing) { value, state, _ in
+                        let initial = view.columnWidths?[property.id] ?? fallback
+                        state = Resize(key: property.id, width: min(1200, max(96, initial + sign * value.translation.width)))
+                    }
+                    .onEnded { value in
+                        setWidth((view.columnWidths?[property.id] ?? fallback) + sign * value.translation.width, for: property.id)
+                    })
+                .accessibilityElement().accessibilityLabel("Resize " + property.title)
+                .accessibilityValue(String(Int(width)))
+                .accessibilityAdjustableAction { setWidth(width + ($0 == .increment ? 16 : -16), for: property.id) }
+                .focusable().onMoveCommand { move in
+                    if move == .left || move == .right { setWidth(width + (move == .right ? sign : -sign) * 16, for: property.id) }
+                }
+        }
+    }
+
+    private func setWidth(_ width: CGFloat, for key: String) {
+        var widths = view.columnWidths ?? [:]
+        widths[key] = max(96, min(1200, width))
+        view.columnWidths = widths
     }
 
     private func footer(_ property: CollectionProperty) -> some View {

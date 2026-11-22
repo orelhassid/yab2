@@ -54,7 +54,9 @@ Record pages reuse the shared window switcher, themed search, card fields, dropd
 
 Use the Home capsule `PageTabButton` for collection views, record tabs and
 record creation templates. Keep record destinations inside the collection.
-Both templates use `CollectionTemplateHeader`.
+Both templates use `CollectionTemplateHeader`. Use `PageActionButton`
+for page toolbar actions and `CollectionEditableCell` for grid values.
+Open record details from the name cell’s Open action.
 
 ## Collection grids
 

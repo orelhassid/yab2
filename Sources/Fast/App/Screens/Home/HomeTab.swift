@@ -456,14 +456,25 @@ struct PageTabButton: View {
     var symbol: String?
     var showsTitle = true
     let selected: Bool
+    var variant: ButtonKind = .secondary
+    var size: ButtonSize? = nil
+    var state: PageActionButton.State = .ready
     let action: () -> Void
 
     var body: some View {
-        HomeControl(outline: Capsule(), selected: selected, action: action) {
-            HStack(spacing: 6) {
-                if let symbol { Image(systemName: symbol) }
-                if showsTitle { Text(title).lineLimit(1) }
-            }.font(CardFrame.title).padding(.horizontal, 12).padding(.vertical, 8)
+        Group {
+            if let size {
+                PageActionButton(title: title, icon: symbol, variant: selected ? variant : .quiet, size: size,
+                                 state: selected && state == .ready ? .active : state,
+                                 iconOnly: !showsTitle, capsule: true, action: action)
+            } else {
+                HomeControl(outline: Capsule(), selected: selected, action: action) {
+                    HStack(spacing: 6) {
+                        if let symbol { Image(systemName: symbol) }
+                        if showsTitle { Text(title).lineLimit(1) }
+                    }.font(CardFrame.title).padding(.horizontal, 12).padding(.vertical, 8)
+                }
+            }
         }
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])

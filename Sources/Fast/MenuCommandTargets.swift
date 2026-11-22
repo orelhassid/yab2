@@ -209,6 +209,24 @@ extension MenuCommands {
             if let collection = library.collections.first(where: { $0.id == browser.collectionID }) ?? library.collections.first,
                let view = collection.views.first(where: { $0.id == collection.selectedView }) ?? collection.views.first {
                 let rtl = NSApp.userInterfaceLayoutDirection == .rightToLeft
+                for property in collection.properties {
+                    for kind in CollectionRuleKind.allCases {
+                        let exists = view.rules(for: kind).contains { $0.property == property.id }
+                        let title = (exists ? "Remove " : "Add ") + kind.rawValue.lowercased()
+                        add(.collectionColumn, "\(collection.id):\(view.id):\(property.id):\(title)",
+                            title + " · " + property.title, [title, title + " " + property.title], symbol: kind.icon) { _ in
+                            guard let i = library.collections.firstIndex(where: { $0.id == collection.id }),
+                                  let j = library.collections[i].views.firstIndex(where: { $0.id == view.id }) else { return }
+                            if exists {
+                                let remaining = library.collections[i].views[j].rules(for: kind).filter { $0.property != property.id }
+                                library.collections[i].views[j].setRules(remaining, for: kind)
+                            } else {
+                                let entries = library.collections[i].entries
+                                library.collections[i].views[j].addRule(kind, property: property.id, entries: entries)
+                            }
+                        }
+                    }
+                }
                 for property in view.visibleProperties(collection.properties) {
                     for action in CollectionColumnAction.allCases where view.supports(action, column: property.id, properties: collection.properties) {
                         let name = action.title(rtl: rtl)

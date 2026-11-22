@@ -72,6 +72,12 @@ struct MenuCommandCatalogTests {
             browser.workspaceSpace = .collections
             browser.collectionID = collection.id
             browser.prefs.menuCommands = false
+            for name in ["Add group Owner", "Remove group Owner", "Add sort Owner", "Remove sort Owner", "Add filter Owner", "Remove filter Owner"] {
+                browser.replaceTyped(name)
+                let target = try #require(MenuCommands.targets(.collectionColumn, in: browser).first { $0.matchesExactly(name) })
+                #expect(browser.offers.first?.kind == target.offer.kind)
+                #expect(MenuCommands.runTarget(target.id, in: browser))
+            }
             let name = "Hide column Owner"
             browser.history = History([Visit(url: "https://column.example/", key: "column.example", title: name, count: 10, last: Date(), typed: 9)])
             browser.replaceTyped(name)
