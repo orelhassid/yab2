@@ -79,6 +79,38 @@ struct PrivateSpaceTests {
         }
     }
 
+    @Test func newTabShowsPrivateHomeAndKeepsNavigationInTheSession() {
+        withBrowser { browser in
+            let historyURL = "https://personal-history.example/"
+            browser.history = History([Visit(url: historyURL, key: historyURL, title: "Personal History",
+                                             count: 20, last: Date(), typed: 10)])
+            browser.homeSection = "history"
+            browser.openPrivateSpace()
+            #expect(browser.showsHomeField && browser.tabs.isEmpty)
+            browser.replaceTyped("personal-history")
+            #expect(browser.showsHomeField)
+            #expect(!browser.offers.contains { $0.url?.absoluteString == historyURL })
+            browser.openCommandField()
+            #expect(browser.fieldShowing && !browser.showsHomeField)
+            browser.pressNewTab()
+            #expect(browser.showsHomeField)
+
+            browser.replaceTyped("about:blank")
+            browser.submit()
+            let first = browser.active
+            #expect(first?.shy == true && browser.tabs.count == 1)
+            browser.pressNewTab()
+            #expect(browser.showsHomeField && browser.active === first)
+            browser.replaceTyped("about:blank")
+            browser.submit()
+            #expect(browser.tabs.count == 2)
+            #expect(browser.tabs.allSatisfy { $0.shy && $0.store === first?.store })
+            browser.clearPrivateSession()
+            #expect(browser.showsHomeField && browser.tabs.isEmpty)
+            #expect(browser.homeSection == "history")
+        }
+    }
+
     @Test func privateCommandsLeadComposedOffers() {
         withBrowser { browser in
             let url = "https://private-command.test/"

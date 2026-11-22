@@ -1104,7 +1104,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
     private var commandsOnlyField = false
 
     var showsHomeField: Bool {
-        fieldShowing && !commandsOnlyField && windowPurpose == .normal && !privateBrowsing && fieldGuest == nil
+        fieldShowing && !commandsOnlyField && windowPurpose == .normal && (inPrivateSpace || !privateBrowsing) && fieldGuest == nil
             && (fresh || (active?.isBlank == true && !editing)) && asked != .split
             && query.place == nil && query.scope == nil && !query.answering
             && query.acting == nil && emojiWords == nil
@@ -7508,12 +7508,19 @@ final class Browser: NSObject, ObservableObject, Relaying {
         let openMatches = MainBudget.chunk("field.open") { openPageMatches(matching: typed) }
         let open = openMatches.rows
         let already = Set(open.filter { automaticOpenPage($0) }.compactMap { $0.url.map { Address.pretty($0).lowercased() } })
-        // Bookmarks among the places, as browsers' address fields
-        // offer them: read again only after they change.
-        history.keep(bookmarks: bookmarks.roots, revision: bookmarks.revision)
-        let saved = savedPageRows(matching: typed).filter { !already.contains($0.key) }
-        let savedKeys = Set(saved.map(\.key))
-        let found = saved + history.suggestions(for: typed, limit: 5).filter { !savedKeys.contains($0.key) }
+        let privateHome = inPrivateSpace && showsHomeField
+        let saved: [Suggestion]
+        let found: [Suggestion]
+        if privateHome {
+            saved = []
+            found = []
+        } else {
+            // Read bookmarks again only after they change.
+            history.keep(bookmarks: bookmarks.roots, revision: bookmarks.revision)
+            saved = savedPageRows(matching: typed).filter { !already.contains($0.key) }
+            let savedKeys = Set(saved.map(\.key))
+            found = saved + history.suggestions(for: typed, limit: 5).filter { !savedKeys.contains($0.key) }
+        }
         let guessed = Address.url(from: typed)
         let address = guessed != nil && !Address.isBareName(typed)
         let quick = address ? [] : QuickActions.shared.matches(text)
@@ -7523,7 +7530,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // Mail called by its name, "mail" or "inbox": Yab's own mail, not a
         // bookmarked Gmail page the letters happen to begin. "gmail" stays
         // the site's.
-        let mailNamed = !address && text.count >= 3 && prefs.usesMail && !MailCenter.shared.accounts.isEmpty
+        let mailNamed = !privateHome && !address && text.count >= 3 && prefs.usesMail && !MailCenter.shared.accounts.isEmpty
             && FieldPlace.mail.names.contains { $0 != "gmail" && $0.hasPrefix(text.lowercased()) }
         // Built-in places share one naming rule, including aliases such as
         // "files" and places without a Command, such as Clipboard History.
@@ -7540,7 +7547,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         } : nil
         let pasteNamedIntent = !address && Command.pasteAndMatchStyle.namedExactly(text)
             && Command.pasteAndMatchStyle.available(in: self)
-        let ending = completing && (address || (saved.isEmpty && !openMatches.named)) && quickExact == nil && !mailNamed && placeNamed == nil
+        let ending = !privateHome && completing && (address || (saved.isEmpty && !openMatches.named)) && quickExact == nil && !mailNamed && placeNamed == nil
             && exactCommand == nil && exactTarget == nil && exactPage == nil && projectNamed == nil && !pasteNamedIntent ? history.completion(for: typed, among: found) : nil
         // Five places at most, fewer beside open pages that already answer:
         // a list longer than a glance is read, not chosen from. Never
@@ -7642,7 +7649,7 @@ final class Browser: NSObject, ObservableObject, Relaying {
         // The mail accounts the words name, each going to its own mail: the
         // mail tab's row, which goes to mail as it was left, gives them its
         // place. An account's whole address reads as a place too.
-        let accounts: (rows: [Suggestion], meant: Bool) = address && !text.contains("@") ? ([], false) : MainBudget.chunk("field.accounts") { mailAccountRows(for: text) }
+        let accounts: (rows: [Suggestion], meant: Bool) = privateHome || address && !text.contains("@") ? ([], false) : MainBudget.chunk("field.accounts") { mailAccountRows(for: text) }
         // This space's open tabs lead. Other spaces keep their marks and
         // explicit selection, but remain above history too.
         let shown = accounts.rows.isEmpty ? open : open.filter { !MailPage.isMail($0.url) }

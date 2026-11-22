@@ -715,6 +715,21 @@ private struct HomeDraggedTile: ViewModifier {
     }
 }
 
+struct PrivateHomeHeader: View {
+    let browser: Browser
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label("Private Browsing", systemImage: Space.privateSpace.icon)
+                .font(CardFrame.title)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 0)
+            PageActionButton(title: Command.clearPrivateSession.title, icon: Command.clearPrivateSession.symbol,
+                             action: browser.confirmClearPrivateSession)
+        }
+    }
+}
+
 struct HomeTab: View {
     let browser: Browser
     @ObservedObject var history: History
@@ -736,8 +751,28 @@ struct HomeTab: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            overview(width: geometry.size.width)
+        if browser.inPrivateSpace {
+            privateOverview
+        } else {
+            GeometryReader { geometry in
+                overview(width: geometry.size.width)
+            }
+        }
+    }
+
+    @ViewBuilder private var privateOverview: some View {
+        let tabs = browser.tabs.filter { $0.shy && !$0.bench && !$0.isBlank }
+        if !tabs.isEmpty {
+            section("Open tabs") {
+                HomeSectionStrip(title: "Open tabs", hovered: hoveredSection == "Open tabs") {
+                    ForEach(tabs) { tab in
+                        HomeTile(title: tab.label, action: { browser.select(tab) }) {
+                            Mark(icon: tab.icon, letter: tab.monogram, size: 28)
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, LibraryPageLayout.sectionGap)
         }
     }
 

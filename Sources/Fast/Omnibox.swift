@@ -216,7 +216,7 @@ struct Omnibox: View {
         Binding(get: { browser.homeSection }, set: { browser.homeSection = $0 })
     }
 
-    private var homeGroup: String { browser.homeSection }
+    private var homeGroup: String { browser.inPrivateSpace ? "overview" : browser.homeSection }
     private var homeField: Bool { browser.showsHomeField }
 
     private var showsHome: Bool { homeField && browser.typed.isEmpty }
@@ -232,7 +232,11 @@ struct Omnibox: View {
         GeometryReader { space in
             VStack(spacing: 8) {
                 if homeField {
-                    HomeNavigation(browser: browser, selected: homeSelection)
+                    if browser.inPrivateSpace {
+                        PrivateHomeHeader(browser: browser)
+                    } else {
+                        HomeNavigation(browser: browser, selected: homeSelection)
+                    }
                 }
                 HStack(spacing: 8) {
                     surface(room: showsHome ? 0 : compactList ? Self.compactRoom(in: space.size.height, pageTop: pageTop, pageBottom: pageBottom) : Self.placeRoom(in: space.size.height))
