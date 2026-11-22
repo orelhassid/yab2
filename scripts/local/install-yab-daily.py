@@ -98,7 +98,12 @@ def install(source, identity=None):
     script = SUPPORT / "update.py"
     shutil.copyfile(__file__, script)
     AGENT.parent.mkdir(parents=True, exist_ok=True)
-    job = dict(Label=LABEL, ProgramArguments=["/usr/bin/python3", str(script), str(source)],
+    # Remember the identity even if the installed bundle is replaced or missing.
+    installed_identity = info(DAILY).get("YabDailySigner")
+    arguments = ["/usr/bin/python3", str(script), str(source)]
+    if installed_identity:
+        arguments.extend(["--identity", installed_identity])
+    job = dict(Label=LABEL, ProgramArguments=arguments,
                RunAtLoad=True, StartInterval=60, ProcessType="Background",
                StandardOutPath=str(SUPPORT / "update.log"), StandardErrorPath=str(SUPPORT / "update.log"))
     AGENT.write_bytes(plistlib.dumps(job))
