@@ -49,6 +49,7 @@ private extension View {
 /// while the corner says it; the site stays where it is. Split View is the
 /// band's last door, as Arc keeps it.
 struct AddressBar: View {
+    private static let inspectorSource = UIInspectorSource()
     @ObservedObject var browser: Browser
     @ObservedObject var tab: Tab
     /// The column out over the page: its own door is there while it shows.
@@ -263,6 +264,11 @@ struct AddressBar: View {
         // The whole band, including the empty room beside the site, owns
         // its menu. SteadyMenu lets ordinary clicks and window drags through.
         .steadyMenu(actions: true) { AddressMenu(browser: browser, tab: tab) }
+        .uiInspectable(item: tab.id.uuidString, UIInspectorNode(component: "AddressBar", source: Self.inspectorSource, styles: [
+            UIInspectorStyle("Layout", "Display", "Band layout"),
+            UIInspectorStyle("Layout", "Control spacing", UIInspectorStyle.points(Door.Size.band.gap)),
+            UIInspectorStyle("Color", "Background", "Page surface", swatch: NSColor(tone?.color ?? Palette.ground))
+        ]))
     }
 
     /// The band taken by the hand: the deck has the half from the first

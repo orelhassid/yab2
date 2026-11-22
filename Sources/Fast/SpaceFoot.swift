@@ -218,6 +218,7 @@ extension Browser {
 
 /// Shared hit target, glyph sizing and selection treatment for rail controls.
 struct RailButton<Mark: View>: View {
+    private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
     let title: String
     var selected = false
     var highlighted = false
@@ -270,6 +271,14 @@ struct RailButton<Mark: View>: View {
         .focusable(keyboard)
         .onHover { hovering = $0 }
         .accessibilityLabel(title)
+        .uiInspectable(UIInspectorNode(component: "RailButton", label: title, source: Self.inspectorSource,
+                                       logicalParent: "SideBar", styles: [
+            UIInspectorStyle("Layout", "Alignment", "Center"),
+            UIInspectorStyle("Appearance", "Corner radius", UIInspectorStyle.points(corner)),
+            UIInspectorStyle("Appearance", "State", selected ? "Selected" : "Default"),
+            UIInspectorStyle("Color", "Foreground", "Icon ink",
+                             swatch: NSColor(hovering || selected ? Palette.ink : Palette.muted(on: tone)))
+        ]))
     }
 }
 
@@ -329,6 +338,7 @@ struct TrailLibraryControls: View {
 }
 
 struct SpaceRail: View {
+    private static let inspectorSource = UIInspectorSource()
     @ObservedObject private var drop = SpaceDrop.shared
     @ObservedObject private var pinned = TrailApps.shared
     @ObservedObject var browser: Browser
@@ -391,6 +401,11 @@ struct SpaceRail: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Spaces, pinned apps and shortcuts")
+        .uiInspectable(UIInspectorNode(component: "SpaceRail", label: "Trail", source: Self.inspectorSource,
+                                       pickable: false, styles: [
+            UIInspectorStyle("Layout", "Display", "Vertical stack"),
+            UIInspectorStyle("Layout", "Spacing", UIInspectorStyle.points(0))
+        ]))
     }
 }
 

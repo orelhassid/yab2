@@ -559,7 +559,7 @@ enum Shortcut {
         case sharePage
         case back, forward, reload, hardReload, find, findNext, findPrevious, reader, darkPage, float, fillForm
         case translatePage
-        case hide, zoomIn, zoomOut, actualSize, print, inspector, console, inspectElement
+        case hide, zoomIn, zoomOut, actualSize, print, inspector, console, inspectElement, inspectBrowserUI
         case peekTab, peekSplit, peekClose
         case sidebarTabs, column, closeChat, moveToProject, bookmarksBar, addressBar, extensions, history, downloads, bookmarks, passwords, settings
         case snippets
@@ -776,6 +776,7 @@ enum Shortcut {
             Item(.inspector, "Developer tools", "opens developer tools", k("i", [.option, .command])),
             Item(.console, "JavaScript console", "opens the JavaScript console", k("j", [.option, .command])),
             Item(.inspectElement, "Inspect an element", "inspects an element", k("c", [.option, .command])),
+            Item(.inspectBrowserUI, "Inspect Browser UI", "inspects the browser interface", k("i", [.control, .option, .command])),
             Item(.devMode, "Developer Mode for this site", "toggles Developer Mode", k("d", .control)),
             Item(.devSheet, "A local page's errors and network", "shows errors and network", k("k", [.option, .command])),
             Item(.measure, "Rulers on a local page", "measures the page", k("u", [.option, .command])),
@@ -1027,7 +1028,7 @@ enum Shortcut {
     static let first: Set<Action> = [
         .column, .back, .forward,
         .newWindow, .closeWindow, .newTab, .openCommandField, .newTabInFolder, .reopen, .privateTab, .closeTab, .closeOthers, .closeBefore, .closeAfter, .nextTab, .previousTab, .recentTab, .recentTabReverse, .openAddress, .pasteAndGo, .copyAddress, .copyMarkdownLink,
-        .backArrow, .forwardArrow, .reload, .stopLoading, .hardReload, .fillForm, .closeChat, .reader, .inspector, .console, .inspectElement, .devMode, .devSheet, .measure, .capture,
+        .backArrow, .forwardArrow, .reload, .stopLoading, .hardReload, .fillForm, .closeChat, .reader, .inspector, .console, .inspectElement, .inspectBrowserUI, .devMode, .devSheet, .measure, .capture,
         .sendFeedback, .nextSpace, .previousSpace,
         .clipboard, .emoji, .autofill, .chats, .routines, .boostStore, .now, .purchases,
         .tab1, .tab2, .tab3, .tab4, .tab5, .tab6, .tab7, .tab8, .tab9,
@@ -1065,7 +1066,7 @@ enum Shortcut {
         .find: "Find on Page…", .findNext: "Find Next", .findPrevious: "Find Previous", .reader: "Reading Mode", .translatePage: "Translate Page", .darkPage: "Dark Page",
         .float: "Float Video", .hide: "Hide Elements…", .zoomIn: "Zoom In",
         .zoomOut: "Zoom Out", .actualSize: "Actual Size", .print: "Print…", .inspector: "Developer Tools",
-        .console: "JavaScript Console", .inspectElement: "Inspect Element", .devMode: "Developer Mode", .devSheet: "Errors and Network", .measure: "Measure", .jsonView: "Show JSON as Text", .capture: "Capture…",
+        .console: "JavaScript Console", .inspectElement: "Inspect Element", .inspectBrowserUI: "Inspect Browser UI", .devMode: "Developer Mode", .devSheet: "Errors and Network", .measure: "Measure", .jsonView: "Show JSON as Text", .capture: "Capture…",
         .peekTab: "Open Peek as Tab", .peekSplit: "Open Peek in Split View",
         .peekClose: "Close Peek",
         .sidebarTabs: "Show Tabs in Sidebar", .column: "Hide Sidebar", .closeChat: "Hide Chat", .moveToProject: "Move to Project\u{2026}", .bookmarksBar: "Show Bookmarks Bar",

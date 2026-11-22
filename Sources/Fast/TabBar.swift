@@ -2374,6 +2374,7 @@ extension EnvironmentValues {
 }
 
 private struct TabPill: View, Equatable {
+    private static let inspectorSource = UIInspectorSource()
     let browser: Browser
     // Browser forwards preference changes to the parent. Snapshot the one
     // preference this pill draws so unrelated changes can pass through ==.
@@ -2552,6 +2553,13 @@ private struct TabPill: View, Equatable {
         .steadyMenu(actions: true) { TabMenu(browser: browser, tab: tab, close: close) }
         .iconPicker(tab, in: browser)
         .splitMateIconPicker(browser.pinMate(of: tab), in: browser)
+        .uiInspectable(item: tab.id.uuidString, UIInspectorNode(component: "TabPill", label: tab.rowLabel,
+            source: Self.inspectorSource, pickable: !pictured && !lifted, styles: [
+                UIInspectorStyle("Font / Text", "Font size", UIInspectorStyle.points(pinned ? 12 : titleSize)),
+                UIInspectorStyle("Color", "Foreground", "Tab ink", swatch: NSColor(color)),
+                UIInspectorStyle("Appearance", "State", live ? "Selected" : "Default"),
+                UIInspectorStyle("Appearance", "Corner radius", UIInspectorStyle.points(SideBar.radius))
+            ]))
         .animation(Motion.glide, value: editing)
         .animation(Motion.glide, value: tab.pin)
         .onChange(of: refusals) { _, _ in
@@ -3656,6 +3664,7 @@ struct Held: ButtonStyle {
 /// with the band hidden ⌥⌘R, ⌘E and ⌘T reach them, the site's panel
 /// hanging from the tab's mark (TabPill).
 struct TabEnd: View {
+    private static let inspectorSource = UIInspectorSource()
     let browser: Browser
     @ObservedObject var tab: Tab
     let live: Bool
@@ -3778,6 +3787,9 @@ struct TabEnd: View {
         .onChange(of: speakerBeside) { _, on in if !on { onSpeaker = false } }
         .onChange(of: tab.putDown) { _, down in if down { putDownAt = .now } }
         .onDisappear { face(false) }
+        .uiInspectable(item: tab.id.uuidString, UIInspectorNode(component: "TabEnd",
+            label: crossShown ? "Tab actions" : nil, source: Self.inspectorSource, pickable: crossShown || agent || speakerShown,
+            styles: [UIInspectorStyle("Layout", "Control slot", UIInspectorStyle.points(slotSide))]))
     }
 
     private var slot: some View {

@@ -33,7 +33,7 @@ enum MenuCommands {
         .pasteAndGo, .muteSite, .unmuteSite, .translatePage, .showOriginalPage, .fillForm,
         .copyPageMarkdown, .savePageMarkdown, .captureFullPage, .keepPeek, .splitPeek,
         .showChat, .hideChat, .takeOverAgent, .stopAgent, .muteCall, .unmuteCall, .joinMeeting,
-        .inspectElement, .measurePage, .hideRulers,
+        .inspectElement, .inspectBrowserUI, .hideBrowserUIInspector, .measurePage, .hideRulers,
         .lightTheme, .darkTheme, .systemTheme, .shortcuts, .openCommandField, .addExtension, .importExtensions,
         .newChatProject, .openChatProject, .moveChatToProject,
     ]
@@ -333,6 +333,12 @@ enum MenuCommands {
 
         add(.inspectElement, "Inspect Element", ["inspect an element"], symbol: "square.cursor", key: .inspectElement,
             opens: true, when: page) { $0.inspectElement() }
+        add(.inspectBrowserUI, "Inspect Browser UI", ["browser ui inspector", "inspect sidebar", "inspect native ui"],
+            symbol: "cursorarrow.rays", key: .inspectBrowserUI, opens: true,
+            when: { !BrowserUIInspector.shared.isOpen(for: $0) }) { BrowserUIInspector.shared.toggle(in: $0) }
+        add(.hideBrowserUIInspector, "Hide Browser UI Inspector", ["inspect browser ui", "browser ui inspector", "close browser ui inspector"],
+            symbol: "cursorarrow.rays", key: .inspectBrowserUI,
+            when: { BrowserUIInspector.shared.isOpen(for: $0) }) { BrowserUIInspector.shared.close(for: $0) }
         add(.errorsAndNetwork, "Errors and Network", ["show errors and network"], symbol: "network", key: .devSheet,
             opens: true, when: page) { $0.toggleDevSheet() }
         add(.measurePage, "Measure Page", ["measure", "rulers", "show rulers"], symbol: "ruler", key: .measure,

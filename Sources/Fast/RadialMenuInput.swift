@@ -214,6 +214,7 @@ final class RadialMenuInput {
 
     private func handle(_ event: NSEvent) -> NSEvent? {
         guard !replaying else { return event }
+        if BrowserUIInspector.shared.ownsPointer(in: event.window) { clear(); return event }
         guard let window = event.window, window.isKeyWindow, window.attachedSheet == nil,
               let browser = BrowserWindows.shared.browser(for: window) else { clear(); return event }
         if window !== self.window { clear() }

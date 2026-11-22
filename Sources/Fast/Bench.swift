@@ -7464,6 +7464,10 @@ final class Bench {
                     "place": browser.fieldShowing ? browser.query.place?.rawValue ?? "" : "",
                     "placeRows": browser.fieldShowing && browser.query.place == .snippets ? browser.placeItems.map(\.title) : []])
 
+        case "browser-ui-inspector":
+            guard Store.testing else { answer(["error": "The inspector probe requires a test profile"]); return }
+            answer(BrowserUIInspector.shared.benchState())
+
         case "probe":
             // The state of the window itself, for the bug that is not in a
             // page: which panels are up, whether something modal has the

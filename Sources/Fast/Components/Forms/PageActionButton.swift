@@ -4,6 +4,7 @@ import YabDesign
 /// A page action uses Yab's button metrics and focus behavior with a quiet,
 /// outlined secondary face on the collection canvas.
 struct PageActionButton: View {
+    private static let inspectorSource = UIInspectorSource()
     enum State: Equatable { case ready, active, disabled, loading, error(String) }
     let title: String
     var icon: String?
@@ -37,6 +38,13 @@ struct PageActionButton: View {
         .accessibilityValue(statusText)
         .accessibilityAddTraits(state == .active ? .isSelected : [])
         .keyTip(title)
+        .uiInspectable(UIInspectorNode(component: "PageActionButton", label: title, source: Self.inspectorSource, styles: [
+            UIInspectorStyle("Layout", "Display", "Horizontal stack"),
+            UIInspectorStyle("Layout", "Spacing", UIInspectorStyle.points(6)),
+            UIInspectorStyle("Font / Text", "Size", UIInspectorStyle.points(size.wordSize)),
+            UIInspectorStyle("Appearance", "Variant", String(describing: variant)),
+            UIInspectorStyle("Appearance", "State", statusText.isEmpty ? "Ready" : statusText)
+        ]))
     }
 
     private var tint: Color? {

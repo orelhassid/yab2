@@ -269,7 +269,7 @@ enum Command: String, CaseIterable {
     case keepSearchAsFolder, followSiteInFolder, updateLiveFolder, stopLiveFolder, translatePage, fillForm, copyPageMarkdown
     case savePageMarkdown, captureFullPage, capturePortrait, keepPeek, splitPeek, closePeek, smallWindow
     case fullScreen, undoBrowserAction, showChat, hideChat, takeOverAgent, handBackAgent, stopAgent
-    case muteCall, unmuteCall, joinMeeting, openMeetingThread, inspectElement, errorsAndNetwork, measurePage
+    case muteCall, unmuteCall, joinMeeting, openMeetingThread, inspectElement, inspectBrowserUI, hideBrowserUIInspector, errorsAndNetwork, measurePage
     case focusOtherHalf, swapHalves, developerPanel, showFullURL, showSiteURL, lightTheme, darkTheme
     case systemTheme, shortcuts, importBrowser, copyDiagnostics, tab1, tab2, tab3
     case tab4, tab5, tab6, tab7, tab8, lastTab

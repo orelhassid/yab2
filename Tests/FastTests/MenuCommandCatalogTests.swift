@@ -433,6 +433,26 @@ struct MenuCommandCatalogTests {
         }
     }
 
+    @Test func inspectBrowserUILeadsHistoryAndWebSuggestions() throws {
+        try withPage { browser, _ in
+            let url = try #require(URL(string: "https://developer.example.test/inspect-browser-ui"))
+            browser.history = History([Visit(url: url.absoluteString, key: Address.pretty(url),
+                                             title: "Inspect Browser UI", count: 200, last: Date(), typed: 100)])
+            for words in ["Inspect Browser UI", "Browser UI Inspector", "Inspect Sidebar"] {
+                browser.replaceTyped(words)
+                #expect(browser.offers.first?.kind == .command(.inspectBrowserUI))
+                #expect(browser.query.lead == 0)
+                #expect(!browser.offers.contains { $0.kind == .command(.hideBrowserUIInspector) })
+                let suggestions = [Suggestion(key: words + " tutorial", title: "", url: nil, kind: .suggested)]
+                let merged = SearchSuggestions.merge(suggestions, into: browser.offers, lead: browser.query.lead)
+                #expect(merged.list.first?.kind == .command(.inspectBrowserUI))
+                #expect(merged.lead == 0)
+            }
+            #expect(MenuCommands.entries[.inspectBrowserUI]?.shortcut == .inspectBrowserUI)
+            #expect(MenuCommands.entries[.hideBrowserUIInspector]?.shortcut == .inspectBrowserUI)
+        }
+    }
+
     @Test func developerModeLeadsHistoryAndWebSuggestionsInBothStates() throws {
         try withPage { browser, tab in
             let url = URL(string: "https://developer.example.test/mode")!

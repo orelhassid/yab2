@@ -30,6 +30,7 @@ import SwiftUI
 /// look comes in the frame the tab lights, as the cross does, so the cross
 /// never stands on letters still going.
 struct FadingTitle: View, Equatable {
+    static let inspectorSource = UIInspectorSource()
     let text: String
     let font: Font
     /// How it looks at rest.

@@ -112,6 +112,11 @@ struct DeveloperMenuCommands: View {
             Button("Inspect Element") { browser.inspectElement() }
                 .shortcut(.inspectElement)
                 .disabled(browser.menuBlank)
+            Toggle("Inspect Browser UI", isOn: Binding(
+                get: { BrowserUIInspector.shared.isOpen(for: browser) },
+                set: { _ in BrowserUIInspector.shared.toggle(in: browser) }
+            ))
+            .shortcut(.inspectBrowserUI)
             Divider()
             Button("Errors and Network") { browser.toggleDevSheet() }
                 .shortcut(.devSheet)

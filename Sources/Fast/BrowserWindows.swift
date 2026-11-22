@@ -180,7 +180,7 @@ final class BrowserWindows: ObservableObject {
     private var activeEntry: Entry? {
         if let key = NSApplication.shared.keyWindow,
            let entry = entries.values.first(where: { $0.window === key }) { return entry }
-        if let browser = DevFloating.owner(of: NSApp.keyWindow),
+        if let browser = BrowserUIInspector.browser(for: NSApp.keyWindow) ?? DevFloating.owner(of: NSApp.keyWindow),
            let entry = entries.values.first(where: { $0.browser === browser }) { return entry }
         if let focusedID, let entry = entries[focusedID], entry.window.isVisible { return entry }
         return order.reversed().compactMap { entries[$0] }.first { $0.window.isVisible }

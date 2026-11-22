@@ -119,6 +119,7 @@ private struct FileItems: View {
         // window in front, Settings or a link's, is closed itself.
         Button(DocumentPiP.owning(NSApp.keyWindow) != nil ? "Close Window" : selected.several ? "Close \(selected.chosenCount) Tabs" : "Close Tab") {
             if DocumentPiP.closeKeyWindow() { return }
+            if BrowserUIInspector.browser(for: NSApp.keyWindow) != nil { NSApp.keyWindow?.performClose(nil); return }
             if let key = NSApp.keyWindow, windows.browser(for: key) == nil { key.performClose(nil); return }
             if !selected.closeCurrentRecord() { selected.shut(selected.chosen) }
         }
@@ -1165,6 +1166,8 @@ struct ContentView: View {
                 // Core Animation, then laid out (HeadSunk).
                 .modifier(HeadSunk(peek: browser.headPeek, band: sidebar && browser.headBand, laid: laid, shelf: shelfRoom))
 
+                UIInspectorDock(browser: browser, topInset: band)
+
                 // On the right, the same room after the page.
                 if browser.trailingSidebarRoom > 0 {
                     Color.clear
@@ -1711,6 +1714,7 @@ struct ContentView: View {
             // Mail's search, over the column's field and past it (MailSearch).
             .overlay { MailSearchLayer(browser: browser) }
             .overlay { panels }
+            .overlay { UIInspectorOverlay(browser: browser).ignoresSafeArea() }
             // Over everything, panels included: it is only ever up while ⌃
             // is held, and whatever is under it is what you are leaving.
             .overlay { SwitcherPanel(browser: browser, switcher: browser.switcher) }
@@ -1776,6 +1780,7 @@ struct ContentView: View {
             if browser.windowID == nil { BookmarkMenu.shared.start(for: browser) }
         }
         .onDisappear {
+            BrowserUIInspector.shared.close(for: browser)
             if let keys { NSEvent.removeMonitor(keys); self.keys = nil }
             if let middle { NSEvent.removeMonitor(middle); self.middle = nil }
         }
@@ -2064,7 +2069,7 @@ struct ContentView: View {
         // last said only where no tab is known to be.
         var pressed: Tab.ID?
         middle = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown, .otherMouseUp]) { event in
-            guard event.buttonNumber == 2 else { return event }
+            guard event.buttonNumber == 2, !BrowserUIInspector.shared.ownsPointer(in: event.window) else { return event }
             // Every release ends the gesture, including one outside the
             // tabs or in another window. A second release closes nothing.
             let began = pressed
@@ -2124,6 +2129,7 @@ struct ContentView: View {
                 return event
             }
             if Store.testing { Bench.heard(event) }
+            if BrowserUIInspector.shared.cancelPick(with: event) { return nil }
             return take(event) || mailKeeps(event) ? nil : event
         }
     }
@@ -3048,6 +3054,7 @@ struct ContentView: View {
         case .inspector: browser.developerTools()
         case .console: browser.showConsole()
         case .inspectElement: browser.inspectElement()
+        case .inspectBrowserUI: BrowserUIInspector.shared.toggle(in: browser)
         case .devMode:
             // Control-D still deletes forward while someone is editing text.
             guard browser.active?.typing != true, !(event.window?.firstResponder is NSTextView) else { return false }

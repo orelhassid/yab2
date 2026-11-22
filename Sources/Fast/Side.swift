@@ -7,6 +7,7 @@ import SwiftUI
 /// other way. The traffic lights are the column's own, in its top corner, so
 /// they go wherever it goes; the page takes the whole height beside it.
 struct SideBar: View {
+    private static let inspectorSource = UIInspectorSource()
     @ObservedObject var browser: Browser
     @ObservedObject var prefs: Preferences
     @ObservedObject private var trailApps = TrailApps.shared
@@ -547,6 +548,11 @@ struct SideBar: View {
             browser.columnHovered = pointed
         }
         .onDisappear { browser.columnHovered = false }
+        .uiInspectable(UIInspectorNode(component: "SideBar", label: browser.sidebarSpace.name,
+                                       source: Self.inspectorSource, pickable: false, styles: [
+            UIInspectorStyle("Layout", "Display", "Vertical sidebar"),
+            UIInspectorStyle("Layout", "Content inset", UIInspectorStyle.points(Self.margin))
+        ]))
         // The window still: the rows of spaces not yet visited made now.
         .onReceive(NotificationCenter.default.publisher(for: SpacePager.seedRows)) { [browser] note in
             if (note.object as AnyObject?) === browser { seeded += 1 }
@@ -3820,6 +3826,7 @@ struct FolderToBe: View {
 }
 
 struct SidebarTabRow<Content: View>: View {
+    private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
     var editing = false
     @ViewBuilder var content: () -> Content
 
@@ -3829,10 +3836,23 @@ struct SidebarTabRow<Content: View>: View {
             .padding(.trailing, editing ? SideBar.inner : SideBar.endInset) // design: reserve the tab action inset, matching the leading inset while editing
             .frame(height: SideBar.row)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .uiInspectable(UIInspectorNode(component: "SidebarTabRow", source: Self.inspectorSource,
+                                           pickable: false, styles: Self.layout(editing: editing)))
+    }
+
+    static func layout(editing: Bool = false) -> [UIInspectorStyle] {
+        [
+            UIInspectorStyle("Layout", "Display", "Horizontal stack"),
+            UIInspectorStyle("Layout", "Leading padding", UIInspectorStyle.points(SideBar.inner)),
+            UIInspectorStyle("Layout", "Trailing padding", UIInspectorStyle.points(editing ? SideBar.inner : SideBar.endInset)),
+            UIInspectorStyle("Layout", "Spacing", UIInspectorStyle.points(SideBar.markGap)),
+            UIInspectorStyle("Layout", "Alignment", "Leading")
+        ]
     }
 }
 
 struct SidebarTabLabel<Mark: View>: View {
+    private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
     let title: String
     @ViewBuilder var mark: () -> Mark
     @Environment(\.tabTitleSize) private var titleSize
@@ -3840,11 +3860,18 @@ struct SidebarTabLabel<Mark: View>: View {
     var body: some View {
         mark().frame(width: SideBar.mark, height: SideBar.mark)
         Text(title).font(.system(size: titleSize)).lineLimit(1)
+            .uiInspectable(UIInspectorNode(component: "SidebarTabLabel", label: title, source: Self.inspectorSource,
+                                           pickable: false, styles: [
+                UIInspectorStyle("Font / Text", "Font", "System · " + UIInspectorStyle.points(titleSize)),
+                UIInspectorStyle("Font / Text", "Line limit", "1")
+            ]))
     }
 }
 
 /// A selectable sidebar destination that does not need browser-tab actions.
 struct SidebarTabButton<Mark: View>: View {
+    private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
+    @Environment(\.tabTitleSize) private var titleSize
     let title: String
     let selected: Bool
     let prefs: Preferences
@@ -3876,6 +3903,16 @@ struct SidebarTabButton<Mark: View>: View {
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .uiInspectable(UIInspectorNode(component: "SidebarTabButton", label: title, source: Self.inspectorSource,
+                                       logicalParent: inTabStrip ? nil : "SideBar", styles:
+            (inTabStrip ? [
+                UIInspectorStyle("Layout", "Display", "Horizontal stack"),
+                UIInspectorStyle("Layout", "Horizontal padding", UIInspectorStyle.points(SideBar.inner)),
+                UIInspectorStyle("Layout", "Spacing", UIInspectorStyle.points(SideBar.markGap))
+            ] : SidebarTabRow<EmptyView>.layout()) + [
+                UIInspectorStyle("Font / Text", "Font", "System · " + UIInspectorStyle.points(titleSize)),
+                UIInspectorStyle("Appearance", "State", selected ? "Selected" : "Default")
+            ]))
     }
     @ViewBuilder private var label: some View {
         SidebarTabLabel(title: title, mark: mark)
@@ -3888,6 +3925,7 @@ struct SidebarTabButton<Mark: View>: View {
 }
 
 struct SideRow: View {
+    private static let inspectorSource = UIInspectorSource()
     /// The close control can keep the pointer when the row loses its hover.
     struct Hover {
         var row = false
@@ -4064,6 +4102,12 @@ struct SideRow: View {
                     // otherwise, and would repaint with every redraw of the tab,
                     // the reading gray's included.
                     .equatable()
+                    .uiInspectable(UIInspectorNode(component: "FadingTitle",
+                                                   label: away ? tab.awayLabel : tab.rowLabel,
+                                                   source: FadingTitle.inspectorSource, pickable: false, styles: [
+                        UIInspectorStyle("Font / Text", "Font", "System · " + UIInspectorStyle.points(titleSize) + (calling ? " · Medium" : " · Regular")),
+                        UIInspectorStyle("Font / Text", "Line limit", "1")
+                    ]))
                     // Its short name just given: in behind the old one's dust.
                     .modifier(RenameReveal(since: away ? nil : tab.tidiedAt, tint: Rename.tint(tone)))
                 // No sharing words or Stop on the column's rows (owner,
@@ -4149,6 +4193,16 @@ struct SideRow: View {
         .animation(nil, value: picked)
         // For the bench: rows made by a change of space.
         .onAppear { if SwitchMeter.on { SwitchMeter.made += 1; if !closes { SwitchMeter.pagerMade += 1 } } }
+        .uiInspectable(item: tab.id.uuidString, UIInspectorNode(
+            component: "SideRow", label: away ? tab.awayLabel : tab.rowLabel, source: Self.inspectorSource,
+            logicalParent: "SideBar", styles: SidebarTabRow<EmptyView>.layout(editing: editing) + [
+                UIInspectorStyle("Font / Text", "Font", "System · " + UIInspectorStyle.points(titleSize) + (calling ? " · Medium" : " · Regular")),
+                UIInspectorStyle("Font / Text", "Line limit", "1"),
+                UIInspectorStyle("Color", "Foreground", live ? "Active tab ink" : "Tab ink", swatch: NSColor(color)),
+                UIInspectorStyle("Appearance", "State", live ? "Selected" : "Default"),
+                UIInspectorStyle("Appearance", "Corner radius", UIInspectorStyle.points(SideBar.radius))
+            ]
+        ))
         // An arrival takes its place whole, it is the button's own spot,
         // and the button steps aside for it. A leaving fades and gives a
         // little, over less time than the room it leaves takes to close.
@@ -4291,6 +4345,7 @@ struct SideSpeaker: View {
 
 /// A row that is an action rather than a page. Quiet until the pointer is on it.
 struct Quiet: View {
+    private static let inspectorSource = UIInspectorSource()
     let icon: String
     let title: String
     var height: CGFloat = SideBar.row
@@ -4347,6 +4402,15 @@ struct Quiet: View {
         .onHover { hovering = $0 }
         .animation(nil, value: lit)
         .accessibilityAddTraits(lit ? .isSelected : [])
+        .uiInspectable(UIInspectorNode(component: "Quiet", label: title, source: Self.inspectorSource,
+                                       logicalParent: "SideBar", styles: [
+            UIInspectorStyle("Layout", "Display", "Horizontal stack"),
+            UIInspectorStyle("Layout", "Horizontal padding", UIInspectorStyle.points(10)),
+            UIInspectorStyle("Layout", "Spacing", UIInspectorStyle.points(SideBar.markGap)),
+            UIInspectorStyle("Font / Text", "Font", "System · " + UIInspectorStyle.points(titleSize)),
+            UIInspectorStyle("Color", "Foreground", lit ? "Primary" : "Quiet",
+                             swatch: NSColor(lit ? Palette.ink : Self.ink(on: tone, browser: browser)))
+        ]))
     }
 
     /// Its words at rest. On a site's color the column's tone is a gray
@@ -4377,6 +4441,7 @@ struct Quiet: View {
 
 /// A small square holding one symbol. Lit when what it opens is open.
 struct Door: View {
+    private static let inspectorSource = UIInspectorSource()
     let icon: String
     var on = false
     var help = ""
@@ -4550,6 +4615,15 @@ struct Door: View {
         .onHover { hovering = $0 }
         .background { if hold != nil || beside != nil { DoorHold.Anchor(open: hold, beside: beside, name: icon) } }
         .modifier(DoorTip(help: help, shortcut: shortcut, keys: keys, wait: tipWait))
+        .uiInspectable(UIInspectorNode(component: "Door", label: help.isEmpty ? icon : help,
+                                       source: Self.inspectorSource, logicalParent: "SideBar", styles: [
+            UIInspectorStyle("Layout", "Alignment", "Center"),
+            UIInspectorStyle("Appearance", "Icon", size.drawing(for: icon)),
+            UIInspectorStyle("Appearance", "Icon size", UIInspectorStyle.points(size.glyph(for: icon))),
+            UIInspectorStyle("Appearance", "Corner radius", UIInspectorStyle.points(size.corner)),
+            UIInspectorStyle("Appearance", "State", !enabled ? "Disabled" : on ? "Active" : "Default"),
+            UIInspectorStyle("Color", "Foreground", "Icon ink", swatch: NSColor(ink))
+        ]))
         .onChange(of: pulse) { old, new in
             if let old, let new, new > old { play() }
         }
