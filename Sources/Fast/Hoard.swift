@@ -1235,7 +1235,6 @@ struct HoardButton: View {
     var preview: (() -> Void)?
 
     @State private var hovering = false
-    @FocusState private var previewFocused: Bool
     @State private var reportID = UUID()
     @State private var lastFrame: CGRect?
     @Environment(\.tone) private var tone
@@ -1291,7 +1290,7 @@ struct HoardButton: View {
         Group {
             if inRail {
                 RailButton("Downloads", selected: hoard.openAt == place || hoard.browser?.active?.libraryPage == .downloads,
-                           keyboard: preview != nil, action: {
+                           keyboard: preview != nil, onFocus: hoard.clearWaitingPreview, action: {
                     if let preview {
                         hoard.acknowledgeFailure()
                         hoard.clearWaitingPreview()
@@ -1301,7 +1300,6 @@ struct HoardButton: View {
                     RailButton<Symbol>.glyph("arrow.down.circle")
                         .opacity(hoard.badged && hoard.openAt == nil ? 0 : 1)
                 }
-                .focused($previewFocused)
             } else {
                 legacyButton
             }
@@ -1319,9 +1317,6 @@ struct HoardButton: View {
             if inside, let lastFrame { claim(lastFrame) }
             if preview == nil { hoard.hover(place, inside) }
             else if inside { hoard.clearWaitingPreview() }
-        }
-        .onChange(of: previewFocused) { _, focused in
-            if focused && preview != nil { hoard.clearWaitingPreview() }
         }
         // The column's says what a click does beside it, under its cards.
         // With nothing downloaded there are no cards, and the tip is its own.

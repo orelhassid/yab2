@@ -226,6 +226,7 @@ struct RailButton<Mark: View>: View {
     let keyboard: Bool
     let fitsLabel: Bool
     let doorSize: Door.Size?
+    let onFocus: (() -> Void)?
     let action: () -> Void
     @ViewBuilder let mark: () -> Mark
     @Environment(\.tone) private var tone
@@ -233,7 +234,8 @@ struct RailButton<Mark: View>: View {
     @FocusState private var focused: Bool
 
     init(_ title: String, selected: Bool = false, highlighted: Bool = false, grid: Bool = false,
-         keyboard: Bool = false, fitsLabel: Bool = false, doorSize: Door.Size? = nil, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
+         keyboard: Bool = false, fitsLabel: Bool = false, doorSize: Door.Size? = nil, onFocus: (() -> Void)? = nil,
+         action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
         self.title = title
         self.selected = selected
         self.highlighted = highlighted
@@ -241,6 +243,7 @@ struct RailButton<Mark: View>: View {
         self.keyboard = keyboard
         self.fitsLabel = fitsLabel
         self.doorSize = doorSize
+        self.onFocus = onFocus
         self.action = action
         self.mark = mark
     }
@@ -279,6 +282,9 @@ struct RailButton<Mark: View>: View {
         .focusable(keyboard)
         .focused($focused)
         .focusEffectDisabled()
+        .onChange(of: focused) { _, focused in
+            if focused { onFocus?() }
+        }
         .onHover { hovering = $0 }
         .accessibilityLabel(title)
         .uiInspectable(UIInspectorNode(component: "RailButton", label: title, source: Self.inspectorSource,
