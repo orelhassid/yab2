@@ -230,6 +230,7 @@ struct RailButton<Mark: View>: View {
     @ViewBuilder let mark: () -> Mark
     @Environment(\.tone) private var tone
     @State private var hovering = false
+    @FocusState private var focused: Bool
 
     init(_ title: String, selected: Bool = false, highlighted: Bool = false, grid: Bool = false,
          keyboard: Bool = false, fitsLabel: Bool = false, doorSize: Door.Size? = nil, action: @escaping () -> Void, @ViewBuilder mark: @escaping () -> Mark) {
@@ -265,10 +266,19 @@ struct RailButton<Mark: View>: View {
                         SelectionPlate(corner: corner, state: .hover)
                     }
                 }
+                .overlay {
+                    if focused {
+                        RoundedRectangle(cornerRadius: corner, style: .continuous)
+                            .strokeBorder(Color(nsColor: .systemBlue), lineWidth: 1.5)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(Door.Give())
         .focusable(keyboard)
+        .focused($focused)
+        .focusEffectDisabled()
         .onHover { hovering = $0 }
         .accessibilityLabel(title)
         .uiInspectable(UIInspectorNode(component: "RailButton", label: title, source: Self.inspectorSource,
@@ -302,24 +312,17 @@ struct RailMoreButton: View {
 struct TrailLibraryControls: View {
     @ObservedObject var browser: Browser
     let vertical: Bool
-    @State private var preview = TrailPreviewState()
+    @State private var preview = TrailDownloadsPreviewState()
     @StateObject private var profilePopover = ProfilePopover()
     @ObservedObject private var profiles = BrowserProfileIdentities.shared
 
     var body: some View {
         let layout = vertical ? AnyLayout(VStackLayout(spacing: SideBar.gap)) : AnyLayout(HStackLayout(spacing: SideBar.gap))
         layout {
-            HoardButton(hoard: browser.hoard, place: .side, inRail: true, preview: { preview.pin(.downloads) })
-                .modifier(TrailLibraryPopover(page: .downloads, browser: browser, state: preview, vertical: vertical))
+            HoardButton(hoard: browser.hoard, place: .side, inRail: true, preview: { preview.pin() })
+                .modifier(TrailDownloadsPopover(browser: browser, state: preview, vertical: vertical))
                 .background(ClickZone(away: browser.fieldAway))
             if !browser.inPrivateSpace {
-                ForEach([LibraryPage.bookmarks, .history, .extensions], id: \.self) { page in
-                    RailButton(page.title, icon: page.icon, selected: preview.page == page || browser.active?.libraryPage == page) {
-                        preview.pin(page)
-                    }
-                    .modifier(TrailLibraryPopover(page: page, browser: browser, state: preview, vertical: vertical))
-                    .background(ClickZone(away: browser.fieldAway))
-                }
                 if !vertical {
                     Spacer(minLength: SideBar.gap)
                 }

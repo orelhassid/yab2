@@ -36,6 +36,11 @@ enum MenuCommands {
         .inspectElement, .inspectBrowserUI, .hideBrowserUIInspector, .measurePage, .hideRulers,
         .lightTheme, .darkTheme, .systemTheme, .shortcuts, .openCommandField, .addExtension, .importExtensions,
         .newChatProject, .openChatProject, .moveChatToProject,
+        .openBookmarks, .openHistory, .openExtensions,
+    ]
+
+    static let profileLibraries: [(command: Command, page: LibraryPage)] = [
+        (.openBookmarks, .bookmarks), (.openHistory, .history), (.openExtensions, .extensions),
     ]
 
     static let headerStyles: [(Command, AllTabsConfiguration.HeaderStyle)] = [
@@ -53,6 +58,10 @@ enum MenuCommands {
         }
         add(.openCommandField, "Open Command Field", ["command field", "command palette"],
             key: .openCommandField, opens: true) { $0.openCommandField() }
+        for (command, page) in profileLibraries {
+            add(command, "Open " + page.title, [page.title + " Library"], symbol: page.icon,
+                opens: true, when: { !$0.inPrivateSpace }) { $0.showLibrary(page) }
+        }
         add(.addExtension, "Add Extension", ["Add", "add an extension", "install extension", "custom extension", "unpacked extension", "load unpacked", "A Folder on This Mac"],
             symbol: "puzzlepiece.extension", opens: true,
             when: { _ in if #available(macOS 15.4, *) { return true }; return false }) { browser in

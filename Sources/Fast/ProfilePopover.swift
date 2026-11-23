@@ -133,8 +133,10 @@ struct ProfilePopoverOutline: Shape {
 @MainActor
 final class ProfilePopover: ObservableObject {
     enum Item: Hashable {
-        case header, profile(UUID), tabs, settings
+        case header, profile(UUID), command(Command), settings
     }
+
+    static let commands: [Command] = [.tabOverview] + MenuCommands.profileLibraries.map(\.command)
 
     @Published private(set) var shown = false
     @Published private(set) var focused: Item?
@@ -274,7 +276,7 @@ final class ProfilePopover: ObservableObject {
         close {
             switch item {
             case .header, .settings: SettingsWindow.shared.show(.profile, for: browser)
-            case .tabs: browser.showLibrary(.tabs)
+            case .command(let command): command.run(in: browser)
             case .profile(let id):
                 if let space = browser.spaces.first(where: { $0.id == id }),
                    space.profileID != browser.currentProfileSpace.profileID { browser.switchSpace(to: id) }
@@ -288,7 +290,7 @@ final class ProfilePopover: ObservableObject {
         case 53: close(); return true
         case 36, 76, 49: choose(focused ?? .header); return true
         case 48, 125, 126:
-            let items = [Item.header] + choices.map { .profile($0.id) } + [.tabs, .settings]
+            let items = [Item.header] + choices.map { .profile($0.id) } + Self.commands.map(Item.command) + [.settings]
             let step = event.keyCode == 126 || (event.keyCode == 48 && event.modifierFlags.contains(.shift)) ? -1 : 1
             let current = focused.flatMap { items.firstIndex(of: $0) } ?? (step == 1 ? -1 : 0)
             focused = items[(current + step + items.count) % items.count]

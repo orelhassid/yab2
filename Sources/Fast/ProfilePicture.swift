@@ -51,7 +51,7 @@ struct ProfileSwitcher: View {
     private static let avatarSize: CGFloat = 22
 
     static func fixedHeight(hasChoices: Bool) -> CGFloat {
-        2 * pad + headerHeight + 2 * SideBar.row + dividerHeight
+        2 * pad + headerHeight + CGFloat(ProfilePopover.commands.count + 1) * SideBar.row + dividerHeight
             + (hasChoices ? labelHeight + dividerHeight : 0)
     }
 
@@ -77,7 +77,9 @@ struct ProfileSwitcher: View {
                     profiles(choices, height: available)
                     rule
                 }
-                action(.tabs, Command.tabOverview.title, icon: LibraryPage.tabs.icon)
+                ForEach(ProfilePopover.commands, id: \.self) { command in
+                    action(.command(command), command.title, icon: command.symbol)
+                }
                 action(.settings, Command.settings.title, icon: "gearshape")
             }
             .padding(Self.pad)

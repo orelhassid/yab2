@@ -961,67 +961,56 @@ struct LibraryExtensionRow: View {
     }
 }
 
-@MainActor @Observable final class TrailPreviewState {
-    var page: LibraryPage?
+@MainActor @Observable final class TrailDownloadsPreviewState {
+    private(set) var shown = false
     private var pinned = false
     private var pending: Task<Void, Never>?
-    private var hovered: LibraryPage?
 
-    func pin(_ page: LibraryPage) {
+    func pin() {
         pending?.cancel()
         pinned = true
-        self.page = page
+        shown = true
     }
 
-    func dismiss(_ page: LibraryPage) {
-        guard self.page == page else { return }
+    func dismiss() {
+        guard shown else { return }
         pending?.cancel()
         pinned = false
-        self.page = nil
+        shown = false
     }
 
-    func hover(_ page: LibraryPage, inside: Bool) {
+    func hover(inside: Bool) {
         guard !pinned else { return }
-        if inside { hovered = page }
-        else if hovered == page { hovered = nil }
-        else { return }
         pending?.cancel()
         pending = Task { @MainActor in
             do { try await Task.sleep(for: .milliseconds(inside ? 280 : 240)) }
             catch { return }
-            self.page = self.hovered
+            self.shown = inside
         }
     }
 }
 
-struct TrailLibraryPopover: ViewModifier {
-    let page: LibraryPage
+struct TrailDownloadsPopover: ViewModifier {
     let browser: Browser
-    let state: TrailPreviewState
-    var vertical = true
+    let state: TrailDownloadsPreviewState
+    let vertical: Bool
 
     func body(content: Content) -> some View {
         content
-            .onHover { state.hover(page, inside: $0) }
-            .popover(isPresented: Binding(get: { state.page == page }, set: {
-                if !$0 { state.dismiss(page) }
+            .onHover { state.hover(inside: $0) }
+            .popover(isPresented: Binding(get: { state.shown }, set: {
+                if !$0 { state.dismiss() }
             }), arrowEdge: vertical ? (browser.trailFlank == .right ? .leading : .trailing) : .bottom) {
-                TrailPreviewContent(page: page, browser: browser, bookmarks: browser.bookmarks,
-                                    history: browser.active.map(browser.history(for:)) ?? browser.history,
-                                    loot: browser.loot, hoard: browser.hoard, extensions: Extensions.of(browser)) { state.dismiss(page) }
-                    .onHover { state.hover(page, inside: $0) }
+                TrailDownloadsPreview(browser: browser, loot: browser.loot, hoard: browser.hoard, close: state.dismiss)
+                    .onHover { state.hover(inside: $0) }
             }
     }
 }
 
-private struct TrailPreviewContent: View {
-    let page: LibraryPage
+private struct TrailDownloadsPreview: View {
     let browser: Browser
-    @ObservedObject var bookmarks: Bookmarks
-    @ObservedObject var history: History
     @ObservedObject var loot: Loot
     @ObservedObject var hoard: Hoard
-    @ObservedObject var extensions: Extensions
     let close: () -> Void
     private let limit = 5
     @FocusState private var focused: Bool
@@ -1029,11 +1018,11 @@ private struct TrailPreviewContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(page.title).font(.headline)
+                Text(LibraryPage.downloads.title).font(.headline)
                 Spacer()
                 Button {
                     close()
-                    browser.showLibrary(page)
+                    browser.showLibrary(.downloads)
                 } label: { Label("View All", systemImage: "arrow.up.right.square") }
                 .buttonStyle(.yab(.secondary, .small))
             }.padding(CardFrame.inset)
@@ -1048,79 +1037,22 @@ private struct TrailPreviewContent: View {
     }
 
     @ViewBuilder private var rows: some View {
-        switch page {
-        case .bookmarks:
-            let recent = Bookmarks.recent(bookmarks.roots).prefix(limit).map(\.node)
-            if recent.isEmpty { empty("No recent bookmarks") }
-            ForEach(recent) { node in
-                if let url = node.url.flatMap(URL.init(string:)) { link(node.title, url) }
-            }
-        case .history:
-            let today = history.everything().prefix(while: { Calendar.current.isDateInToday($0.last) }).prefix(limit)
-            if today.isEmpty { empty("No history today") }
-            ForEach(today) { link($0.title, $0.url) }
-        case .downloads:
-            let transfers = hoard.fetches.prefix(limit)
-            let latest = loot.kept.sorted { $0.date > $1.date }.prefix(limit - transfers.count)
-            if transfers.isEmpty && latest.isEmpty { empty("No downloads") }
-            ForEach(transfers) { fetch in
-                HoardList.FetchRow(hoard: hoard, meter: hoard.meter, fetch: fetch)
-            }
-            ForEach(latest) { file in
-                HoardList.KeptRow(hoard: hoard, showActions: true, keep: file, open: {
-                    close()
-                    loot.open(file)
-                }, reveal: {
-                    close()
-                    loot.reveal(file)
-                })
-            }
-        case .extensions:
-            let active = extensions.installed.filter(\.enabled).sorted { alphabetic($0.name, $1.name) }.prefix(limit)
-            if active.isEmpty { empty("No active extensions") }
-            ForEach(active) { item in
-                row(item.name, action: { SettingsWindow.shared.showExtension(item.id, for: browser) }) {
-                    ExtensionMark(id: item.id, side: SideBar.mark, extensions: extensions)
-                }
-            }
-        default: EmptyView()
+        let transfers = hoard.fetches.prefix(limit)
+        let latest = loot.kept.sorted { $0.date > $1.date }.prefix(limit - transfers.count)
+        if transfers.isEmpty && latest.isEmpty {
+            Text("No downloads").font(CardFrame.detail).foregroundStyle(Palette.muted).padding(8)
         }
-    }
-
-    private func empty(_ title: String) -> some View {
-        Text(title).font(CardFrame.detail).foregroundStyle(Palette.muted).padding(8)
-    }
-
-    private func link(_ title: String, _ url: URL) -> some View {
-        row(title.isEmpty ? Address.shown(url) : title, action: { browser.open(url, foreground: true, from: browser.active) }) {
-            if let icon = Favicons.shared.cached(page: url) {
-                Image(nsImage: icon).resizable().scaledToFit()
-            } else { Symbol("globe", size: SideBar.mark) }
+        ForEach(transfers) { fetch in
+            HoardList.FetchRow(hoard: hoard, meter: hoard.meter, fetch: fetch)
         }
-    }
-
-    private func row<Icon: View>(_ title: String, action: @escaping () -> Void, @ViewBuilder icon: @escaping () -> Icon) -> some View {
-        TrailPreviewItem(title: title, action: { close(); action() }, icon: icon)
-    }
-}
-
-private struct TrailPreviewItem<Icon: View>: View {
-    let title: String
-    let action: () -> Void
-    @ViewBuilder var icon: () -> Icon
-    @Environment(\.tabTitleSize) private var titleSize
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            SidebarTabRow {
-                icon().frame(width: SideBar.mark, height: SideBar.mark)
-                Text(title).font(.system(size: titleSize)).lineLimit(1)
-            }
-            .background {
-                if hovering { SelectionPlate(corner: SideBar.radius, state: .hover) }
-            }
-            .contentShape(Rectangle())
-        }.buttonStyle(.plain).onHover { hovering = $0 }
+        ForEach(latest) { file in
+            HoardList.KeptRow(hoard: hoard, showActions: true, keep: file, open: {
+                close()
+                loot.open(file)
+            }, reveal: {
+                close()
+                loot.reveal(file)
+            })
+        }
     }
 }

@@ -202,6 +202,7 @@ enum Command: String, CaseIterable {
     /// A window whose tabs are its own, in no space (BlankWindow.swift).
     case blankWindow
     case tabOverview, history, downloads, bookmarks, passwords, autofill, settings, manageProfiles
+    case openBookmarks, openHistory, openExtensions
     /// Autofill's Bring In, from the field, for cards and addresses kept
     /// in another browser.
     case bringCards

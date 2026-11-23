@@ -44,6 +44,26 @@ struct FieldRankTests {
                                 into: browser.offers, lead: browser.query.lead)
     }
 
+    @Test func profileLibraryCommandsLeadHistoryAndWebSuggestions() throws {
+        try withBrowser { browser, _ in
+            browser.prefs.menuCommands = false
+            for (command, page) in MenuCommands.profileLibraries {
+                let url = URL(string: "https://fixture.example/" + page.rawValue)!
+                for words in [command.title, page.title + " Library"] {
+                    browser.history = History([Visit(url: url.absoluteString, key: Address.pretty(url),
+                                                     title: words, count: 100, last: Date(), typed: 50)])
+                    browser.replaceTyped(words)
+                    #expect(browser.offers.first?.kind == .command(command), "\(words)")
+                    #expect(browser.offers.contains { $0.url == url })
+                    let result = merged(browser, words)
+                    #expect(result.list.first?.kind == .command(command))
+                    #expect(result.list.contains { $0.kind == .suggested })
+                    #expect(result.lead == 0)
+                }
+            }
+        }
+    }
+
     @Test func sitePrefixesLeadLiveFolderCreationInEveryProvider() throws {
         try withBrowser { browser, tab in
             for (words, host) in [("you", "youtube.com"), ("git", "github.com"), ("x", "x.com")] {
