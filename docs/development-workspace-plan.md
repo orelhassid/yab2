@@ -14,6 +14,12 @@ Verify both the selected tool and selected chat, including after a restart. Chec
 
 After navigation and history, the first end-to-end ADE check is a real feature on a disposable repository. Select a project and provider, start a scoped session, follow and steer the run, review actual changes and checks, then commit from the workspace. Run the scenario with Codex and Claude Code, including restart and stop or retry. T3 Code also provides worktree isolation, provider handoff and Git publishing. Use those workflows as functional references when extending the local scenario. [T3 Code](https://github.com/pingdotgg/t3code)
 
+### Codex checkout verification
+
+On source revision `327c29b`, Yab Dev sent a real Codex turn from the Development composer on a disposable Git checkout. Codex changed `value.txt` from `0` to `7` and ran `sh check.sh`. The check wrote a `PASS` marker. A separate shell verified the marker, the expected Git diff, and `git diff --check`. After relaunching Yab, a follow-up completed under the same Yab conversation and Codex thread. A subsequent run with the project's read-only preference set denied a shell write in that checkout.
+
+The full workflow still needs in-app review of the real diff and checks, an in-app commit, and the matching run with Claude Code.
+
 ## What opening a project should feel like
 
 Choose Development in Yab’s Space Switcher and select Yab Browser in the sidebar. Overview tells you what changed since your last visit, which feature is in progress, and whether anyone needs your decision. The manager conversation is open on the left. Pick a different project and its own conversation, draft, and work appear.
