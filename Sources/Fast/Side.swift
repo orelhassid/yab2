@@ -514,7 +514,7 @@ struct SideBar: View {
                 // Here, its room.
                 BandRoom(room: browser.player.room, visible: prefs.showsPlayer, edge: browser.bandEdge)
                 VStack(spacing: 0) {
-                    if browser.inDevelopment {
+                    if browser.inDevelopment && browser.spaceRailWidth > 0 {
                         VStack(spacing: SideBar.gap) {
                             SidebarSectionDivider()
                             DevelopmentSettingsButton(browser: browser)
@@ -3828,13 +3828,14 @@ struct FolderToBe: View {
 struct SidebarTabRow<Content: View>: View {
     private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
     var editing = false
+    var compact = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         HStack(spacing: SideBar.markGap, content: content)
             .padding(.leading, SideBar.inner)
             .padding(.trailing, editing ? SideBar.inner : SideBar.endInset) // design: reserve the tab action inset, matching the leading inset while editing
-            .frame(height: SideBar.row)
+            .frame(height: compact ? SideBar.row - 6 : SideBar.row)
             .frame(maxWidth: .infinity, alignment: .leading)
             .uiInspectable(UIInspectorNode(component: "SidebarTabRow", source: Self.inspectorSource,
                                            pickable: false, styles: Self.layout(editing: editing)))
@@ -3854,11 +3855,12 @@ struct SidebarTabRow<Content: View>: View {
 struct SidebarTabLabel<Mark: View>: View {
     private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
     let title: String
+    var showsMark = true
     @ViewBuilder var mark: () -> Mark
     @Environment(\.tabTitleSize) private var titleSize
 
     var body: some View {
-        mark().frame(width: SideBar.mark, height: SideBar.mark)
+        if showsMark { mark().frame(width: SideBar.mark, height: SideBar.mark) }
         Text(title).font(.system(size: titleSize)).lineLimit(1)
             .uiInspectable(UIInspectorNode(component: "SidebarTabLabel", label: title, source: Self.inspectorSource,
                                            pickable: false, styles: [
@@ -3872,11 +3874,14 @@ struct SidebarTabLabel<Mark: View>: View {
 struct SidebarTabButton<Mark: View>: View {
     private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
     @Environment(\.tabTitleSize) private var titleSize
+    @Environment(\.tone) private var tone
     let title: String
     let selected: Bool
     let prefs: Preferences
     var inTabStrip = false
     var showsDisclosure = false
+    var showsMark = true
+    var trailingLabel: String?
     var badge: (title: String, tint: FolderTint)?
     var remove: (() -> Void)?
     let action: () -> Void
@@ -3895,7 +3900,7 @@ struct SidebarTabButton<Mark: View>: View {
                         .padding(.horizontal, SideBar.inner)
                         .frame(height: prefs.density.tab)
                 } else {
-                    SidebarTabRow {
+                    SidebarTabRow(compact: trailingLabel != nil) {
                         label
                         if pointed && remove != nil { Spacer(minLength: 15) }
                     }
@@ -3940,7 +3945,16 @@ struct SidebarTabButton<Mark: View>: View {
             ]))
     }
     @ViewBuilder private var label: some View {
-        SidebarTabLabel(title: title, mark: mark)
+        SidebarTabLabel(title: title, showsMark: showsMark, mark: mark)
+        if let trailingLabel {
+            Spacer(minLength: 4)
+            Text(trailingLabel).font(.caption2).lineLimit(1)
+                .foregroundStyle(Palette.muted(on: tone))
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(Palette.hover(on: tone), in: Capsule())
+                .frame(maxWidth: 84, alignment: .trailing)
+                .fixedSize(horizontal: true, vertical: false)
+        }
         if let badge {
             Spacer(minLength: 4)
             YabValueBadge(title: badge.title, tint: badge.tint).fixedSize()

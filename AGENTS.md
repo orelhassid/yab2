@@ -41,11 +41,13 @@ and its owning component here or in the relevant project skill.
 
 Give navigation and catalog list rows a leading icon. Providers, plugins,
 and skills use the brand mark when available or the shared symbol for the
-item type.
+item type. Development chat rows use `SidebarTabButton` without a leading
+mark and with a compact project-name badge.
 
-Browser pages and Development share the native `TabWindowHeader`,
-`TabWindowSwitcher` and strip variant of `SidebarTabButton`. Embedded
-workspaces leave header rendering to their native host in every layout.
+Browser pages and Development share the native `TabWindowHeader` and
+`TabWindowSwitcher`. Development tool tabs use subtle pills without the
+switcher divider. Embedded workspaces leave header rendering to their native
+host in every layout.
 Check split, chat-only and full view when changing that boundary.
 
 Use horizontal project tool tabs in the Development header. Keep the Sidebar
@@ -144,8 +146,9 @@ dark project with the Trail visible when changing these surfaces.
 
 ## Project chat
 
-Show the active project's conversation picker in a Chat section below Projects
-in the Development Sidebar.
+Show saved conversations across projects in the Chat section below Projects.
+The header breadcrumb uses `TabWindowSwitcher` for the project and its chat.
+Keep the transcript clear at the top in Development.
 
 Use Codex as the visual reference for Development chat: plain assistant
 replies, rounded user messages, and a two-row composer with controls below

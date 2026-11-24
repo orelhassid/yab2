@@ -82,7 +82,8 @@ struct ChatTranscript: View {
     }
 
     /// What shows between the head and the field.
-    private var visible: CGFloat { max(0, height - ChatHead.height - ChatHead.contentGap - foot) }
+    private var headerInset: CGFloat { projectStyle ? 8 : ChatHead.height + ChatHead.contentGap }
+    private var visible: CGFloat { max(0, height - headerInset - foot) }
     /// Left empty under the last line, always: a third of what shows, so
     /// the newest words stand well over the field, never on it.
     private var spare: CGFloat { max(16, (visible / 3).rounded()) }
@@ -195,8 +196,8 @@ struct ChatTranscript: View {
             .defaultScrollAnchor(follow ? .bottom : .top, for: .sizeChanges)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
             // Room under the head, which the turns scroll up beneath.
-            .contentMargins(.top, ChatHead.height + ChatHead.contentGap, for: .scrollContent)
-            .contentMargins(.top, ChatHead.height, for: .scrollIndicators)
+            .contentMargins(.top, headerInset, for: .scrollContent)
+            .contentMargins(.top, projectStyle ? 0 : ChatHead.height, for: .scrollIndicators)
             .contentMargins(.bottom, foot, for: .scrollIndicators)
             // Going up under the head the turns show through a little,
             // dimmed and blurred, and come clear a little past it, as the
@@ -204,8 +205,13 @@ struct ChatTranscript: View {
             // column's own glass shows, not a veil of white or black.
             .modifier(OwnScrollEdges())
             .modifier(ColumnScrolled(ends: ends))
-            .mask { ColumnFade(ends: ends, top: Self.under, foot: false) }
-            .overlay { ColumnBlur(ends: ends, top: Self.under, foot: false, grain: 0) }
+            .mask {
+                if projectStyle { Color.black }
+                else { ColumnFade(ends: ends, top: Self.under, foot: false) }
+            }
+            .overlay {
+                if !projectStyle { ColumnBlur(ends: ends, top: Self.under, foot: false, grain: 0) }
+            }
             .frame(maxHeight: .infinity)
             // You, not the turns, tell where the scroll is: the end going down
             // out of view with nothing grown is your hand going up; back at

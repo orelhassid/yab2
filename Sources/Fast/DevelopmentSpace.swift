@@ -480,41 +480,37 @@ struct DevelopmentPane: View {
     var body: some View {
         let content = browser.developmentContent
         let state = content.toolbar
+        let homeVisible = state.active == "overview" && state.mode != "chat"
         let look = workspaceTheme.look ?? entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)
         let paint = SpaceWash.painted(look)
         VStack(spacing: 0) {
             let details = DevelopmentDirectory.shared.details(project)
             let destinations = state.destinations(for: details) + (state.environmentOpen ? [.environment] : [])
             let more = DevelopmentDestination.optional.filter { !(details.toolTabs ?? []).contains($0) }
-            TabWindowHeader(selection: state.destinationID) {
-                TabWindowSwitcher(title: DevelopmentDirectory.shared.details(project).name, prefs: browser.prefs,
-                                  items: DevelopmentDirectory.shared.projects,
-                                  label: { DevelopmentDirectory.shared.details($0).name }, selected: { $0 == project },
-                                  choose: { state.environmentSelected = false; browser.developmentProject = $0 },
-                                  rowIcon: { projectIcon($0) }) { projectIcon(project) }
-                    .accessibilityLabel("Switch project, " + DevelopmentDirectory.shared.details(project).name)
-                    .keyTip("Switch project")
-                    .frame(width: state.mode == "split" ? max(60, state.chatWidth - SideBar.margin - 2 * SideBar.markGap) : nil,
-                           alignment: .leading)
+            TabWindowHeader(selection: state.destinationID, showsDivider: false) {
+                HStack(spacing: 2) {
+                    TabWindowSwitcher(title: details.name, prefs: browser.prefs,
+                                      items: DevelopmentDirectory.shared.projects,
+                                      label: { DevelopmentDirectory.shared.details($0).name }, selected: { $0 == project },
+                                      choose: { state.environmentSelected = false; browser.developmentProject = $0 },
+                                      rowIcon: { projectIcon($0) }) { projectIcon(project) }
+                        .accessibilityLabel("Switch project, " + details.name)
+                        .keyTip("Switch project")
+                    Symbol("chevron.right", size: 8)
+                        .foregroundStyle(Palette.muted(on: tone))
+                        .accessibilityHidden(true)
+                    DevelopmentChatSwitcher(browser: browser, project: project, details: details)
+                }
+                .frame(maxWidth: state.mode == "split" ? nil : 320, alignment: .leading)
+                .frame(width: state.mode == "split" ? max(60, state.chatWidth - SideBar.margin - SideBar.markGap) : nil,
+                       alignment: .leading)
             } tabs: {
                 ForEach(destinations) { destination in
-                    let selected = destination.id == state.destinationID
-                    Button { content.open(destination) } label: {
-                        Text(destination.title)
-                            .font(.system(size: 12, weight: selected ? .semibold : .regular))
-                            .foregroundStyle(selected ? Palette.strong(on: tone) : Palette.muted(on: tone))
-                            .padding(.horizontal, 8)
-                            .frame(height: browser.prefs.density.tab)
-                            .overlay(alignment: .bottom) {
-                                if selected { Capsule().fill(Palette.strong(on: tone)).frame(height: 2).padding(.horizontal, 8) }
-                            }
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selected ? .isSelected : [])
-                    .id(destination.id)
+                    DevelopmentToolTab(title: destination.title, selected: destination.id == state.destinationID,
+                                       height: browser.prefs.density.tab) { content.open(destination) }
+                        .id(destination.id)
                 }
-                Button { addTab.toggle() } label: { Symbol("plus", size: 13) }
+                Button { addTab.toggle() } label: { Symbol("plus", size: 10) }
                     .buttonStyle(.yab(.quiet, .small, icon: .square))
                     .accessibilityLabel("Add tab").keyTip("Add tab")
                     .disabled(more.isEmpty)
@@ -551,7 +547,9 @@ struct DevelopmentPane: View {
             .padding(.horizontal, SideBar.margin).frame(height: NavigationHeader.height(topInset: 0))
             Divider()
             ZStack {
-                DevelopmentWebPane(browser: browser, project: project, pageMargins: pageMargins, pageCorner: pageCorner)
+                DevelopmentWebPane(browser: browser, project: project,
+                                   pageMargins: homeVisible ? EdgeInsets() : pageMargins,
+                                   pageCorner: homeVisible ? 0 : pageCorner)
                     .overlay(alignment: .topLeading) {
                         if ["overview", "terminal"].contains(state.active), state.reportedProject == project.rawValue,
                            !state.toolFrame.isEmpty, state.mode != "chat" {
@@ -607,6 +605,30 @@ struct DevelopmentPane: View {
         } label: { Symbol(icon, size: 13) }
         .buttonStyle(.yab(.quiet, .small, icon: .square))
         .accessibilityLabel(title).keyTip(title)
+    }
+}
+
+private struct DevelopmentToolTab: View {
+    let title: String
+    let selected: Bool
+    let height: CGFloat
+    let action: () -> Void
+    @Environment(\.tone) private var tone
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected || hovered ? Palette.strong(on: tone) : Palette.muted(on: tone))
+                .padding(.horizontal, 10)
+                .frame(height: max(22, height - 6))
+                .background(selected ? Palette.wash(on: tone) : hovered ? Palette.hover(on: tone) : .clear, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

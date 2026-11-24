@@ -117,6 +117,7 @@ struct NavigationHeader: View {
 /// scroll, so the switcher and the window actions stay within reach.
 struct TabWindowHeader<ID: Hashable, Switcher: View, Tabs: View, Actions: View>: View {
     let selection: ID?
+    var showsDivider = true
     @ViewBuilder let switcher: () -> Switcher
     @ViewBuilder let tabs: () -> Tabs
     @ViewBuilder let actions: () -> Actions
@@ -124,7 +125,7 @@ struct TabWindowHeader<ID: Hashable, Switcher: View, Tabs: View, Actions: View>:
     var body: some View {
         HStack(spacing: SideBar.markGap) {
             switcher()
-            Divider().frame(height: SideBar.mark)
+            if showsDivider { Divider().frame(height: SideBar.mark) }
             ScrollViewReader { proxy in
                 ThreadScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Metrics.tabGap, content: tabs)
@@ -144,6 +145,7 @@ struct TabWindowSwitcher<Item: Identifiable, Icon: View, RowIcon: View>: View {
     let prefs: Preferences
     let items: [Item]
     var spaceHeading = false
+    var hidesMark = false
     var searchPrompt: String? = nil
     @State private var search = ""
     @FocusState private var searchFocused: Bool
@@ -162,7 +164,7 @@ struct TabWindowSwitcher<Item: Identifiable, Icon: View, RowIcon: View>: View {
                     .buttonStyle(.plain)
             } else {
                 SidebarTabButton(title: title, selected: open, prefs: prefs, inTabStrip: true,
-                                 showsDisclosure: true, action: { open.toggle() }, mark: icon)
+                                 showsDisclosure: true, showsMark: !hidesMark, action: { open.toggle() }, mark: icon)
             }
         }
             .popover(isPresented: $open, arrowEdge: .bottom) {

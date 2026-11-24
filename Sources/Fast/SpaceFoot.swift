@@ -325,9 +325,16 @@ struct TrailLibraryControls: View {
     var body: some View {
         let layout = vertical ? AnyLayout(VStackLayout(spacing: SideBar.gap)) : AnyLayout(HStackLayout(spacing: SideBar.gap))
         layout {
-            HoardButton(hoard: browser.hoard, place: .side, inRail: true, preview: { preview.pin() })
-                .modifier(TrailDownloadsPopover(browser: browser, state: preview, vertical: vertical))
-                .background(ClickZone(away: browser.fieldAway))
+            if browser.inDevelopment && !vertical {
+                let state = browser.developmentContent.toolbar
+                RailButton("Settings", selected: state.environmentSelected, keyboard: true, action: state.openEnvironment) {
+                    Symbol("gearshape", size: SideBar.mark)
+                }
+            } else {
+                HoardButton(hoard: browser.hoard, place: .side, inRail: true, preview: { preview.pin() })
+                    .modifier(TrailDownloadsPopover(browser: browser, state: preview, vertical: vertical))
+                    .background(ClickZone(away: browser.fieldAway))
+            }
             if !browser.inPrivateSpace {
                 if !vertical {
                     Spacer(minLength: SideBar.gap)

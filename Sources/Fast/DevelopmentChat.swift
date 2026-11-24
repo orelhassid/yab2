@@ -1,13 +1,63 @@
 import SwiftUI
 
+struct DevelopmentChatChoice: Identifiable {
+    let title: String
+    let selection: String?
+    let provider: String
+    var updated: Date = .distantPast
+    var id: String { selection ?? "general-" + provider }
+
+    @MainActor func isSelected(in details: DevelopmentDetails) -> Bool {
+        selection == details.chatSelection && provider == details.cli
+    }
+
+    @MainActor func open(project: DevelopmentProject, in browser: Browser) {
+        let directory = DevelopmentDirectory.shared
+        var details = directory.details(project)
+        details.chatSelection = selection
+        details.provider = provider
+        directory.save(details, for: project)
+        browser.developmentProject = project
+        browser.developmentContent.revealChat()
+    }
+}
+
+extension DevelopmentDetails {
+    @MainActor func chatChoices(in history: Chats) -> [DevelopmentChatChoice] {
+        let sessions = recentSessions(in: history).map {
+            DevelopmentChatChoice(title: $0.title, selection: $0.id, provider: $0.cli, updated: $0.updated)
+        }
+        var coordinators = providerChats ?? [:]
+        coordinators["codex"] = chatID
+        return (sessions + coordinators.compactMap { provider, id in
+            guard let chat = developmentChat(id, in: history), chat.archived != true else { return nil }
+            return DevelopmentChatChoice(title: chat.title, selection: nil, provider: provider, updated: chat.updated)
+        }).sorted { ($0.updated, $0.id) > ($1.updated, $1.id) }
+    }
+
+    @MainActor private func developmentChat(_ id: String, in history: Chats) -> Chat? {
+        history.chat(id) ?? Agents.shared.session(id).map { Agents.shared.chat(of: $0) }
+    }
+}
+
+private struct DevelopmentChatRow: Identifiable {
+    let project: DevelopmentProject
+    let chat: DevelopmentChatChoice
+    var id: String { project.id + "/" + chat.id }
+}
+
 struct DevelopmentChatList: View {
     let browser: Browser
     @AppStorage("development.chats.collapsed", store: Store.settings) private var collapsed = false
     @ObservedObject private var history = Chats.shared
+    private var directory: DevelopmentDirectory { .shared }
 
     var body: some View {
-        let project = browser.developmentProject
-        let details = DevelopmentDirectory.shared.details(project)
+        let active = browser.developmentProject
+        let details = directory.details(active)
+        let chats = directory.projects.flatMap { project in
+            directory.details(project).chatChoices(in: history).map { DevelopmentChatRow(project: project, chat: $0) }
+        }.sorted { ($0.chat.updated, $0.project.id, $0.chat.id) > ($1.chat.updated, $1.project.id, $1.chat.id) }
         SidebarSectionDivider()
         SidebarSection(collapsed: collapsed) {
             SidebarSectionHeader(title: "Chat", paint: details.paint ?? SpacePaint(browser.prefs),
@@ -15,30 +65,39 @@ struct DevelopmentChatList: View {
                 Symbol("bubble.left", size: SideBar.mark)
             }
         } rows: {
-            SidebarTabButton(title: "Project chat", selected: details.chatSelection == nil,
-                             prefs: browser.prefs, action: { select(nil, for: project) }) {
-                Symbol("bubble.left", size: SideBar.mark)
-            }
-            ForEach(details.recentSessions(in: history)) { session in
-                SidebarTabButton(title: session.title, selected: details.chatSelection == session.id,
-                                 prefs: browser.prefs, action: { select(session.id, provider: session.cli, for: project) }) {
-                    Symbol("bubble.left", size: SideBar.mark)
-                }
+            ForEach(chats) { row in
+                let owner = directory.details(row.project)
+                SidebarTabButton(title: row.chat.title, selected: row.project == active && row.chat.isSelected(in: owner),
+                                 prefs: browser.prefs, showsMark: false, trailingLabel: owner.name,
+                                 action: { row.chat.open(project: row.project, in: browser) }) { EmptyView() }
             }
             Quiet(icon: "plus", title: "New chat", prefs: browser.prefs, browser: browser) {
-                select(DevelopmentDetails.newChat, for: project)
+                DevelopmentChatChoice(title: "New chat", selection: DevelopmentDetails.newChat, provider: details.cli)
+                    .open(project: active, in: browser)
             }
         }
         .onAppear { history.load() }
     }
+}
 
-    private func select(_ id: String?, provider: String? = nil, for project: DevelopmentProject) {
-        let directory = DevelopmentDirectory.shared
-        var details = directory.details(project)
-        details.chatSelection = id
-        if let provider { details.provider = provider }
-        directory.save(details, for: project)
-        browser.developmentContent.revealChat()
+struct DevelopmentChatSwitcher: View {
+    let browser: Browser
+    let project: DevelopmentProject
+    let details: DevelopmentDetails
+    @ObservedObject private var history = Chats.shared
+
+    var body: some View {
+        let saved = details.chatChoices(in: history)
+        let general = DevelopmentChatChoice(title: "General", selection: nil, provider: details.cli)
+        let start = DevelopmentChatChoice(title: "New chat", selection: DevelopmentDetails.newChat, provider: details.cli)
+        let choices = (saved.contains { $0.id == general.id } ? saved : [general] + saved) + [start]
+        let title = choices.first { $0.isSelected(in: details) }?.title ?? "Chat"
+        TabWindowSwitcher(title: title, prefs: browser.prefs, items: choices, hidesMark: true,
+                          label: { $0.title }, selected: { $0.isSelected(in: details) },
+                          choose: { $0.open(project: project, in: browser) },
+                          rowIcon: { Symbol($0.selection == DevelopmentDetails.newChat ? "plus" : "bubble.left", size: 13) }) { EmptyView() }
+            .accessibilityLabel("Switch chat, " + title)
+            .onAppear { history.load() }
     }
 }
 
@@ -54,11 +113,6 @@ struct DevelopmentChat: View {
     var body: some View {
         VStack(spacing: 0) {
             if !compact {
-                let title = details.chatSelection == nil ? "Project chat" : (feed.chat?.title ?? "New chat")
-                Label { Text(title).lineLimit(1) } icon: { Symbol("bubble.left", size: SideBar.mark) }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, ChatLook.fieldInset)
-                    .padding(.vertical, 8)
                 if let chat = feed.chat {
                     ChatTranscript(browser: browser, chat: chat, live: feed.live, away: $away)
                 } else {
@@ -91,7 +145,7 @@ extension DevelopmentDetails {
 
     @MainActor func recentSessions(in history: Chats) -> [Chat] {
         (sessionIDs ?? []).compactMap { id in
-            history.chat(id) ?? Agents.shared.session(id).map { Agents.shared.chat(of: $0) }
+            developmentChat(id, in: history)
         }.filter { $0.archived != true }.sorted { $0.updated > $1.updated }
     }
 
