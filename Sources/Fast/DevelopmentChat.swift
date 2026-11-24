@@ -1,5 +1,47 @@
 import SwiftUI
 
+struct DevelopmentChatList: View {
+    let browser: Browser
+    @AppStorage("development.chats.collapsed", store: Store.settings) private var collapsed = false
+    @ObservedObject private var history = Chats.shared
+
+    var body: some View {
+        let project = browser.developmentProject
+        let details = DevelopmentDirectory.shared.details(project)
+        SidebarSectionDivider()
+        SidebarSection(collapsed: collapsed) {
+            SidebarSectionHeader(title: "Chat", paint: details.paint ?? SpacePaint(browser.prefs),
+                                 collapsed: collapsed, toggle: { collapsed.toggle() }) {
+                Symbol("bubble.left", size: SideBar.mark)
+            }
+        } rows: {
+            SidebarTabButton(title: "Project chat", selected: details.chatSelection == nil,
+                             prefs: browser.prefs, action: { select(nil, for: project) }) {
+                Symbol("bubble.left", size: SideBar.mark)
+            }
+            ForEach(details.recentSessions(in: history)) { session in
+                SidebarTabButton(title: session.title, selected: details.chatSelection == session.id,
+                                 prefs: browser.prefs, action: { select(session.id, provider: session.cli, for: project) }) {
+                    Symbol("bubble.left", size: SideBar.mark)
+                }
+            }
+            Quiet(icon: "plus", title: "New chat", prefs: browser.prefs, browser: browser) {
+                select(DevelopmentDetails.newChat, for: project)
+            }
+        }
+        .onAppear { history.load() }
+    }
+
+    private func select(_ id: String?, provider: String? = nil, for project: DevelopmentProject) {
+        let directory = DevelopmentDirectory.shared
+        var details = directory.details(project)
+        details.chatSelection = id
+        if let provider { details.provider = provider }
+        directory.save(details, for: project)
+        browser.developmentContent.revealChat()
+    }
+}
+
 struct DevelopmentChat: View {
     let browser: Browser
     let project: DevelopmentProject
@@ -7,59 +49,16 @@ struct DevelopmentChat: View {
     let compact: Bool
     @StateObject private var feed = ChatFeed()
     @State private var away = false
-    @State private var switcherOpen = false
-    @ObservedObject private var history = Chats.shared
     private var details: DevelopmentDetails { DevelopmentDirectory.shared.details(project) }
-
-    private var sessions: [Chat] {
-        details.recentSessions(in: history)
-    }
-
-    private func select(_ id: String?, provider: String? = nil) {
-        var next = details
-        next.chatSelection = id
-        if let provider { next.provider = provider }
-        DevelopmentDirectory.shared.save(next, for: project)
-        switcherOpen = false
-    }
-
-    private var switcher: some View {
-        let active = sessions.first { $0.id == details.chatSelection }
-        let title = active?.title ?? (details.chatSelection == nil ? "Project chat" : "New chat")
-        return SidebarTabButton(title: title, selected: switcherOpen, prefs: browser.prefs, inTabStrip: true,
-                                showsDisclosure: true, action: { switcherOpen.toggle() }) {
-            Symbol("bubble.left", size: SideBar.mark)
-        }
-        .accessibilityLabel("Switch chat, " + title)
-        .popover(isPresented: $switcherOpen, arrowEdge: .bottom) {
-            VStack(alignment: .leading, spacing: 2) {
-                TrailMenuRow(title: "Project chat", selected: details.chatSelection == nil,
-                             action: { select(nil) }) { Symbol("bubble.left", size: 14) }
-                TrailMenuRow(title: "New chat", selected: details.chatSelection == DevelopmentDetails.newChat,
-                             action: { select(DevelopmentDetails.newChat) }) { Symbol("plus", size: 14) }
-                if !sessions.isEmpty {
-                    LibrarySeparator()
-                    Text("Recent chats").font(.caption).foregroundStyle(.secondary).padding(.horizontal, SideBar.inner)
-                    ScrollView {
-                        LazyVStack(spacing: 2) {
-                            ForEach(sessions) { session in
-                                TrailMenuRow(title: session.title, selected: session.id == details.chatSelection,
-                                             lastActivity: session.updated, action: { select(session.id, provider: session.cli) }) {
-                                    Symbol("bubble.left", size: 14)
-                                }
-                            }
-                        }
-                    }.frame(height: CGFloat(min(sessions.count, 7)) * (SideBar.row + 2))
-                }
-            }.padding(6).frame(width: 260)
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
             if !compact {
-                switcher.frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, ChatLook.fieldInset).padding(.vertical, 4)
+                let title = details.chatSelection == nil ? "Project chat" : (feed.chat?.title ?? "New chat")
+                Label { Text(title).lineLimit(1) } icon: { Symbol("bubble.left", size: SideBar.mark) }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, ChatLook.fieldInset)
+                    .padding(.vertical, 8)
                 if let chat = feed.chat {
                     ChatTranscript(browser: browser, chat: chat, live: feed.live, away: $away)
                 } else {
@@ -79,7 +78,7 @@ struct DevelopmentChat: View {
         .environment(\.projectChatStyle, true)
         .environment(\.openUIProject, project)
         .onChange(of: details.selectedChatID, initial: true) { _, id in feed.follow(id) }
-        .onAppear { history.load() }
+        .onAppear { Chats.shared.load() }
         .onDisappear { feed.stop() }
     }
 }

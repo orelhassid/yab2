@@ -180,6 +180,7 @@ struct DevelopmentProjects: View {
                             }
                         }
                     }
+                    DevelopmentChatList(browser: browser)
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -228,6 +229,11 @@ struct DevelopmentSettingsButton: View {
 final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     let toolbar = DevelopmentToolbarState()
     let terminals = DevelopmentTerminals()
+
+    func revealChat() {
+        toolbar.environmentSelected = false
+        if toolbar.mode == "full" { open(.chat) }
+    }
 
     fileprivate func open(_ destination: DevelopmentDestination) {
         guard destination.available else { return }

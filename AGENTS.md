@@ -144,6 +144,9 @@ dark project with the Trail visible when changing these surfaces.
 
 ## Project chat
 
+Show the active project's conversation picker in a Chat section below Projects
+in the Development Sidebar.
+
 Use Codex as the visual reference for Development chat: plain assistant
 replies, rounded user messages, and a two-row composer with controls below
 the draft. Use T3 as a reference for provider and integration behavior.
