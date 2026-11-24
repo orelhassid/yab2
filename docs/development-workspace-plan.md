@@ -2,6 +2,18 @@
 
 Product proposal for review. The first version assumes one developer on a Mac, one local repository per development project, and Claude Code or Codex already connected through Yab.
 
+## Vertical project navigation and chat history
+
+The current Development Space already has project folders, native chat, project appearance, a terminal, and an embedded tool pane. Each project can start and reopen multiple chats from the chat picker. The first ADE milestone brings those sessions into view and makes the project tools vertical.
+
+- **Sidebar placement.** Expand the selected project to show its tool destinations. Keep Chats in its own section. This uses the existing Sidebar and gives the Page more room for a diff, preview, or terminal.
+- **Page placement.** Show project tools in a vertical column inside the Page. Keep the Sidebar focused on projects and chats. At narrow widths, the Page column becomes a vertical menu opened from the tool header.
+- **Chat history.** Default to **This project**. Offer **All projects** with a project tag on each session. Selecting a chat in another project switches both the project and the conversation. New chat uses the selected project. Keep each unsent draft with its conversation and preserve the existing provider coordinator chats. Use existing chat IDs and records for legacy and new sessions.
+
+Verify both the selected tool and selected chat, including after a restart. Check a project with no history, more sessions than fit at once, a running turn while switching projects, and selecting a session with another provider. Exercise split, chat-only, and full view with the Sidebar open and closed, and verify keyboard navigation in light and dark project themes.
+
+After navigation and history, the first end-to-end ADE check is a real feature on a disposable repository. Select a project and provider, start a scoped session, follow and steer the run, review actual changes and checks, then commit from the workspace. Run the scenario with Codex and Claude Code, including restart and stop or retry. T3 Code also provides worktree isolation, provider handoff and Git publishing. Use those workflows as functional references when extending the local scenario. [T3 Code](https://github.com/pingdotgg/t3code)
+
 ## What opening a project should feel like
 
 Choose Development in Yab’s Space Switcher and select Yab Browser in the sidebar. Overview tells you what changed since your last visit, which feature is in progress, and whether anyone needs your decision. The manager conversation is open on the left. Pick a different project and its own conversation, draft, and work appear.
@@ -30,7 +42,7 @@ Checked against the Mac source at `d641485`. Checked items have an implementatio
 
 ## Screens and components
 
-Use a single compact header. The project icon and name align with seven tool tabs. Shared navigation owns project selection, active tool, keyboard focus, and narrow-window overflow. Each screen supplies the content below the strip. Roadmap, a document, and a code diff each open inside their destination, with Back restoring the previous selection and scroll. Keep the left conversation and its draft in place while navigating. At narrow widths, let the user switch between chat and the current tool, preserving both. Use the existing Yab palette, type, frames, buttons, focus treatment, and motion.
+Use a single compact header for project identity, the active destination, and layout actions. The vertical tool navigation owns destination selection and keyboard focus. Roadmap, a document, and a code diff each open inside their destination, with Back restoring the previous selection and scroll. Keep the conversation and its draft in place while navigating. At narrow widths, let the user switch between chat and the current tool, preserving both. Use the existing Yab palette, type, frames, buttons, focus treatment, and motion.
 
 Illustrative Overview with a project already underway:
 
@@ -51,7 +63,7 @@ Illustrative Overview with a project already underway:
 | Screen | What the developer sees and can do |
 | --- | --- |
 | Projects | Choose Development from the Space Switcher. The sidebar lists projects. Select a row to open its workspace inside the tab content. **Open folder** connects a checkout. Opening it again resolves to its existing project. Offer existing chat projects **Connect repository** and keep their prior conversations accessible in history. |
-| Manager chat | One visible conversation per project. The composer has attachments, a removable feature/file context chip, Auto with override, and send or steer. The transcript shows decisions, proposals, worker summaries, and review actions. Detailed tool output expands on demand. |
+| Manager chat | Each project has a coordinator conversation and can open other sessions from its history. The composer has attachments, a removable feature/file context chip, Auto with override, and send or steer. The transcript shows decisions, proposals, worker summaries, and review actions. Detailed tool output expands on demand. |
 | Overview | Project home. Put decisions needing attention first, then active features and changes since the last visit. Each row opens its source. For a new repo, offer **Use existing spec** or **Draft from repository**. Show the proposed draft for editing. |
 | Product / Roadmap | Group features into lanes by product outcome, with dependencies and progress visible. **Suggest features** proposes cards with a reason and a reference to the spec, backlog, or repo. Accept, edit, dismiss, reorder, or link to an existing feature. Acceptance adds it to the roadmap. **Build** is a separate action. |
 | Product / Feature detail | Show the user problem, expected behavior, scope, acceptance criteria, dependencies, decisions, tasks, and related runs. **Discuss** targets the manager composer. **Build** starts or resumes work. **Review changes** opens the evidence for this feature. |
@@ -64,7 +76,7 @@ Illustrative Overview with a project already underway:
 | Preview | Open the project's configured app URL in a browser tab. Each project keeps its own address. |
 | Terminal | A project-scoped shell pane. The design prototype simulates command input and keeps a separate history for each project. |
 
-Implement a small shared set of components. The Space Switcher, project sidebar, and project tool tab bar each handle a different level of navigation. A context chip, proposal card, run summary, and review card connect chat with project records. A feature card and dependency row serve Roadmap. A document outline and revision diff serve Spec and Deck. Task rows, event rows, and a changed-file list serve Overview and the detail screens. A card in chat and its counterpart on the roadmap should call the same action with the same record ID.
+Use shared Yab components for the Space Switcher, the project and chat rows, and vertical tool navigation. A context chip, proposal card, run summary, and review card connect chat with project records. A feature card and dependency row serve Roadmap. A document outline and revision diff serve Spec and Deck. Task rows, event rows, and a changed-file list serve Overview and the detail screens. A card in chat and its counterpart on the roadmap should call the same action with the same record ID.
 
 ## How the manager keeps continuity
 
@@ -76,7 +88,7 @@ Implement a small shared set of components. The Space Switcher, project sidebar,
 
 **Storage proposal.** Keep machine-specific repository access, manager chat ID, run IDs, and view state in Yab's local profile. Keep the canonical Spec in a selected repo document and read external edits back into the workspace. Store feature briefs and approved product artifacts as reviewable repo documents with stable IDs. Keep operational task events local for the first version. Resolve document edits against their source revision before saving. Disconnecting or deleting a project must preserve its external checkout. Existing chat-only projects can opt into the workspace.
 
-**Technical dependency.** Yab can already give a full-access session a working folder. The project files fallback is a Yab-owned directory. Codex's current launch path selects read-only or full-machine access, and Claude's full-access path depends on its permission mode. A working directory alone does not constrain writes. Before enabling Build, demonstrate repository-scoped operation and approval handling for each provider. Verify that a missing or moved checkout leads to reconnect, never execution in a fallback directory. [Launch and folder selection](../Sources/Fast/Agents.swift)
+**Technical dependency.** Development passes an available source folder to Codex. Its launch path selects read-only or workspace-write access for that folder. The Development launch path leaves Claude Code’s source folder unset. Before enabling Build, verify repository-scoped execution and approval handling for each provider. A missing or moved checkout should prompt for reconnection before starting a build. [Launch and folder selection](../Sources/Fast/Agents.swift)
 
 ## Delivery checklist
 
