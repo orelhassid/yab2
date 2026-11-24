@@ -47,9 +47,8 @@ struct SettingsItem: Identifiable, Hashable {
                                      words: "bring global shortcut hotkey")
 
     private static let fixed: [SettingsItem] = [
-        SettingsItem(id: "radial-count", page: .mouse, title: "Radial menu command count", words: "six eight ten slots"),
         SettingsItem(id: "radial-layout", page: .mouse, title: "Radial menu layout", words: "wheel dropdown drag mouse"),
-        SettingsItem(id: "radial-commands", page: .mouse, title: "Radial menu commands", words: "wheel slots assignments submenu"),
+        SettingsItem(id: "radial-commands", page: .mouse, title: "Radial menu commands", words: "wheel slots assignments submenu count add remove new item"),
         SettingsItem(id: "radial-sensitivity", page: .mouse, title: "Activation distance", words: "radial menu sensitivity instant flick right click"),
         SettingsItem(id: "peek-click", page: .tabs, title: "Peek links with", words: "shift option click modifier preview split"),
         SettingsItem(id: "peek-address", page: .appearance, title: "Show address bar in Peek", words: "peek preview url site address bar toolbar link"),

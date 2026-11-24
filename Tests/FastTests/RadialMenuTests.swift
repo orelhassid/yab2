@@ -33,15 +33,17 @@ struct RadialMenuTests {
         }
     }
 
-    @Test func eightDirectionsKeepNavigationAlignedAndExtraCommandsSurviveResizing() {
+    @Test func legacyEightCommandsKeepNavigationAligned() {
         let store = Store.settings
-        let keys = [RadialPreferences.slotsKey, RadialPreferences.extraKey, RadialPreferences.countKey]
+        let keys = [RadialPreferences.itemsKey, RadialPreferences.slotsKey, RadialPreferences.extraKey, RadialPreferences.countKey]
         let previous = keys.map { store.object(forKey: $0) }
         defer { for (key, value) in zip(keys, previous) { store.set(value, forKey: key) } }
+        store.removeObject(forKey: RadialPreferences.itemsKey)
+        store.set(RadialPreferences.encode(RadialSelection.commands), forKey: RadialPreferences.slotsKey)
+        store.set("settings|history", forKey: RadialPreferences.extraKey)
         store.set(8, forKey: RadialPreferences.countKey)
-        var eight = RadialPreferences.slots("", extra: "", count: 8)
-        eight[2] = .command(.settings)
-        RadialPreferences.save(eight)
+        let eight = RadialPreferences.saved
+        #expect(eight[2] == .command(.settings))
         var selection = RadialSelection(slots: eight)
         for index in eight.indices {
             let angle = Double(index) * .pi / 4
@@ -72,30 +74,39 @@ struct RadialMenuTests {
         #expect(rows.allSatisfy { !$0.icon.isEmpty })
     }
 
-    @Test func tenSlotsAndSubmenuAssignmentsRoundTripAcrossSizes() {
+    @Test func editedMenuAndSubmenuSizesRoundTrip() {
         let store = Store.settings
-        let keys = [RadialPreferences.slotsKey, RadialPreferences.extraKey, RadialPreferences.additionalKey, RadialPreferences.countKey]
+        let keys = [RadialPreferences.itemsKey]
         let previous = keys.map { store.object(forKey: $0) }
         defer { for (key, value) in zip(keys, previous) { store.set(value, forKey: key) } }
         let original = RadialPreferences.slots("forward|downloads|newTab|back|reload|radial.spaces",
                                                extra: "bookmarks|history", count: 10)
         var submenu = RadialSubmenu()
-        submenu.count = 10
-        submenu.commands[9] = .downloads
+        submenu.commands += [.bookmarks, .tabOverview, .settings, .downloads]
         var ten = original
         ten[1] = .submenu(submenu)
         ten[6] = .command(.history)
         RadialPreferences.save(ten)
-        for count in [6, 8] {
-            store.set(count, forKey: RadialPreferences.countKey)
-            #expect(!RadialPreferences.saved.contains(.submenu(submenu)))
-            #expect(RadialPreferences.saved.count == count)
-        }
-        store.set(10, forKey: RadialPreferences.countKey)
         #expect(RadialPreferences.saved == ten)
-        #expect(RadialPreferences.validated(RadialPreferences.encode(ten), count: 10) == ten)
-        #expect(RadialPreferences.validated("radial.menu|made-up", count: 2) == nil)
-        #expect(RadialPreferences.validated("radial.menu", count: 1) == [.submenu(RadialSubmenu())])
+        #expect(RadialPreferences.validated(RadialPreferences.encode(ten)) == ten)
+        #expect(RadialPreferences.validated("radial.menu|made-up") == nil)
+        #expect(RadialPreferences.validated("radial.menu") == [.submenu(RadialSubmenu())])
+        #expect(RadialSubmenu(encoded: "6,forward,downloads,newTab,back,reload,history,bookmarks,tabOverview,settings,closeTab")
+                == RadialSubmenu())
+
+        var nine = ten
+        nine.remove(at: 0)
+        submenu.commands.remove(at: 0)
+        nine[0] = .submenu(submenu)
+        RadialPreferences.save(nine)
+        #expect(RadialPreferences.saved == nine)
+        RadialPreferences.save([])
+        #expect(RadialPreferences.saved.isEmpty)
+        RadialPreferences.save([.command(.downloads)])
+        #expect(RadialPreferences.saved == [.command(.downloads)])
+        var single = RadialSelection(slots: RadialPreferences.saved)
+        single.move(CGPoint(x: -92, y: 0), childCount: 0)
+        #expect(single.wedge == 0)
         var selection = RadialSelection(slots: ten)
         for index in ten.indices {
             let angle = Double(index) * .pi / 5
@@ -123,12 +134,11 @@ struct RadialMenuTests {
                 context: nil, eventNumber: 1, clickCount: 1, pressure: 0))
             NSApp.sendEvent(event)
         }
-        let keys = [RadialPreferences.layoutKey, RadialPreferences.slotsKey, RadialPreferences.countKey,
+        let keys = [RadialPreferences.layoutKey, RadialPreferences.itemsKey,
                     RadialPreferences.sensitivityKey, "mouse.gestures.enabled"]
         let previous = keys.map { Store.settings.object(forKey: $0) }
         defer { for (key, value) in zip(keys, previous) { Store.settings.set(value, forKey: key) } }
         Store.settings.set("wheel", forKey: RadialPreferences.layoutKey)
-        Store.settings.set(6, forKey: RadialPreferences.countKey)
         Store.settings.set(true, forKey: "mouse.gestures.enabled")
         Store.settings.removeObject(forKey: RadialPreferences.sensitivityKey)
         var slots = RadialSelection.commands

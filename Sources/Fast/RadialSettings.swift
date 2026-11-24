@@ -30,32 +30,30 @@ enum RadialItem: Equatable {
         switch self {
         case .command(let command): command.available(in: browser)
         case .spaces: browser.spacesShown && !browser.spaces.isEmpty
-        case .submenu: true
+        case .submenu(let menu): !menu.commands.isEmpty
         }
     }
 }
 
 struct RadialSubmenu: Equatable {
-    var count = 6
-    var commands: [Command] = [.forward, .downloads, .newTab, .back, .reload, .history,
-                               .bookmarks, .tabOverview, .settings, .closeTab]
+    var commands: [Command] = [.forward, .downloads, .newTab, .back, .reload, .history]
 
-    var items: [RadialItem] { commands.prefix(count).map(RadialItem.command) }
+    var items: [RadialItem] { commands.map(RadialItem.command) }
 
     init() {}
 
     init?(encoded: Substring) {
-        let fields = encoded.split(separator: ",")
-        guard fields.count == commands.count + 1, let count = Int(fields[0]),
-              RadialPreferences.counts.contains(count) else { return nil }
+        let fields = encoded.split(separator: ",", omittingEmptySubsequences: false)
+        guard let first = fields.first, let count = Int(first),
+              RadialPreferences.itemCounts.contains(count),
+              fields.count == count + 1 || fields.count == 11 else { return nil }
         let commands = fields.dropFirst().compactMap { Command(rawValue: String($0)) }
-        guard commands.count == self.commands.count else { return nil }
-        self.count = count
-        self.commands = commands
+        guard commands.count == fields.count - 1 else { return nil }
+        self.commands = Array(commands.prefix(count))
     }
 
     var encoded: String {
-        ([String(count)] + commands.map(\.rawValue)).joined(separator: ",")
+        ([String(commands.count)] + commands.map(\.rawValue)).joined(separator: ",")
     }
 }
 
@@ -66,7 +64,8 @@ enum RadialPreferences {
     static let extraKey = "mouse.radial.extra"
     static let additionalKey = "mouse.radial.additional"
     static let sensitivityKey = "mouse.radial.sensitivity"
-    static let counts = [6, 8, 10]
+    static let itemsKey = "mouse.radial.items"
+    static let itemCounts = 0...10
     static let sensitivityRange = 8...64
     static let defaultSensitivity = 8
     static let extraDefaults: [RadialItem] = [.command(.bookmarks), .command(.history)]
@@ -82,10 +81,11 @@ enum RadialPreferences {
         return Command(rawValue: value).map(RadialItem.command)
     }
 
-    static func validated(_ raw: String, count: Int) -> [RadialItem]? {
+    static func validated(_ raw: String) -> [RadialItem]? {
+        if raw.isEmpty { return [] }
         let values = raw.components(separatedBy: "|")
         let items = values.compactMap(item)
-        return values.count == count && items.count == count ? items : nil
+        return itemCounts.contains(values.count) && items.count == values.count ? items : nil
     }
 
     static func decode(_ raw: String, defaults: [RadialItem] = RadialSelection.commands) -> [RadialItem] {
@@ -120,23 +120,13 @@ enum RadialPreferences {
     }
 
     @MainActor static func save(_ slots: [RadialItem]) {
-        var basic = slots
-        if basic.count == 10 {
-            let second = basic.remove(at: 6)
-            let first = basic.remove(at: 1)
-            Store.settings.set(encode([first, second]), forKey: additionalKey)
-        }
-        if basic.count == 8 {
-            let second = basic.remove(at: 6)
-            let first = basic.remove(at: 2)
-            Store.settings.set(encode([first, second]), forKey: extraKey)
-        }
-        Store.settings.set(encode(basic), forKey: slotsKey)
+        Store.settings.set(encode(slots), forKey: itemsKey)
     }
 
     @MainActor static var saved: [RadialItem] {
-        slots(Store.settings.string(forKey: slotsKey) ?? "", extra: Store.settings.string(forKey: extraKey) ?? "",
-              additional: Store.settings.string(forKey: additionalKey) ?? "", count: Store.settings.integer(forKey: countKey))
+        if let raw = Store.settings.string(forKey: itemsKey), let items = validated(raw) { return items }
+        return slots(Store.settings.string(forKey: slotsKey) ?? "", extra: Store.settings.string(forKey: extraKey) ?? "",
+                     additional: Store.settings.string(forKey: additionalKey) ?? "", count: Store.settings.integer(forKey: countKey))
     }
 
     @MainActor static var sensitivity: CGFloat {
@@ -154,22 +144,16 @@ enum RadialPreferences {
 struct RadialSettings: View {
     @ObservedObject var browser: Browser
     @AppStorage(RadialPreferences.layoutKey, store: Store.settings) private var layout = "wheel"
-    @AppStorage(RadialPreferences.slotsKey, store: Store.settings) private var raw = ""
-    @AppStorage(RadialPreferences.countKey, store: Store.settings) private var count = 6
-    @AppStorage(RadialPreferences.extraKey, store: Store.settings) private var extra = ""
-    @AppStorage(RadialPreferences.additionalKey, store: Store.settings) private var additional = ""
+    @AppStorage(RadialPreferences.itemsKey, store: Store.settings) private var raw: String?
     @AppStorage(RadialPreferences.sensitivityKey, store: Store.settings) private var sensitivity = RadialPreferences.defaultSensitivity
-    @State private var slot = 1
 
     var body: some View {
-        let slots = RadialPreferences.slots(raw, extra: extra, additional: additional, count: count)
+        let slots = raw.flatMap(RadialPreferences.validated) ?? RadialPreferences.saved
         Section("Radial menu") {
             Picker("Layout", selection: $layout) {
                 Text("Wheel").tag("wheel")
                 Text("Dropdown").tag("dropdown")
             }.pickerStyle(.segmented).settingsAnchor("radial-layout")
-            RadialCommandCount(count: $count).settingsAnchor("radial-count")
-                .onChange(of: count) { _, _ in slot = min(slot, slots.count - 1) }
             SettingsRow("Activation distance") {
                 Slider(value: Binding(get: { Double(sensitivity) }, set: { sensitivity = Int($0) }),
                        in: Double(RadialPreferences.sensitivityRange.lowerBound)...Double(RadialPreferences.sensitivityRange.upperBound),
@@ -178,60 +162,25 @@ struct RadialSettings: View {
                     .accessibilityLabel("Activation distance")
                 Text("\(sensitivity) pt").monospacedDigit()
             }.settingsAnchor("radial-sensitivity")
-            RadialCommandEditor(browser: browser, layout: layout, slots: slots, slot: $slot, allowsSubmenu: true) {
-                save($0, at: slot, in: slots)
+            RadialCommandEditor(browser: browser, layout: layout, slots: slots, allowsSubmenu: true) {
+                raw = RadialPreferences.encode($0)
             }.settingsAnchor("radial-commands")
         }
 
-        // Each assigned submenu keeps its own commands as the main selection changes.
         ForEach(slots.indices, id: \.self) { index in
             if case .submenu(let submenu) = slots[index] {
-                RadialSubmenuSettings(browser: browser, layout: layout, submenu: submenu,
-                                      title: "Submenu (Command \(index + 1))") {
-                    save(.submenu($0), at: index, in: slots)
+                Section("Submenu (Command \(index + 1))") {
+                    RadialCommandEditor(browser: browser, layout: layout, slots: submenu.items) { items in
+                        var updated = slots
+                        var submenu = submenu
+                        submenu.commands = items.compactMap {
+                            if case .command(let command) = $0 { return command }
+                            return nil
+                        }
+                        updated[index] = .submenu(submenu)
+                        raw = RadialPreferences.encode(updated)
+                    }
                 }
-            }
-        }
-    }
-
-    private func save(_ item: RadialItem, at index: Int, in slots: [RadialItem]) {
-        var updated = slots
-        updated[min(index, slots.count - 1)] = item
-        RadialPreferences.save(updated)
-    }
-}
-
-private struct RadialCommandCount: View {
-    @Binding var count: Int
-
-    var body: some View {
-        Picker("Commands", selection: $count) {
-            ForEach(RadialPreferences.counts, id: \.self) { count in Text(String(count)).tag(count) }
-        }.pickerStyle(.segmented)
-    }
-}
-
-private struct RadialSubmenuSettings: View {
-    let browser: Browser
-    let layout: String
-    let submenu: RadialSubmenu
-    let title: String
-    let save: (RadialSubmenu) -> Void
-    @State private var slot = 0
-
-    var body: some View {
-        Section(title) {
-            RadialCommandCount(count: Binding(get: { submenu.count }, set: { count in
-                var updated = submenu
-                updated.count = count
-                slot = min(slot, count - 1)
-                save(updated)
-            }))
-            RadialCommandEditor(browser: browser, layout: layout, slots: submenu.items, slot: $slot) { item in
-                guard case .command(let command) = item else { return }
-                var updated = submenu
-                updated.commands[min(slot, submenu.count - 1)] = command
-                save(updated)
             }
         }
     }
@@ -241,35 +190,71 @@ private struct RadialCommandEditor: View {
     let browser: Browser
     let layout: String
     let slots: [RadialItem]
-    @Binding var slot: Int
+    @State private var slot: Int? = 0
     var allowsSubmenu = false
-    let choose: (RadialItem) -> Void
+    let save: ([RadialItem]) -> Void
     @State private var search = ""
     private static let commands = Command.allCases.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         .map(RadialItem.command)
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack { preview; Divider(); editor.frame(minWidth: 180) }
-            VStack { preview; editor }
+            HStack(alignment: .top) { list.frame(width: RadialDropdown.width); Divider(); editor.frame(minWidth: 180) }
+            VStack { list; editor }
         }
     }
 
-    private func selectSlot(_ index: Int) {
+    private var selected: Int? {
+        slot.flatMap { slots.isEmpty ? nil : min($0, slots.count - 1) }
+    }
+
+    private func selectSlot(_ index: Int?) {
         slot = index
         search = ""
     }
 
-    @ViewBuilder private var preview: some View {
-        if layout == "dropdown" {
-            RadialDropdown(rows: RadialDropdownRow.commands(slots, browser: browser, editing: true),
-                           paint: SpacePaint(browser.prefs), selected: slot, choose: selectSlot)
-                .frame(width: RadialDropdown.width)
-        } else {
-            RadialMenu(paint: SpacePaint(browser.prefs), select: selectSlot, rows: [],
-                       available: slots.map { _ in true }, selection: RadialSelection(wedge: min(slot, slots.count - 1), slots: slots))
-                .scaleEffect(0.79).frame(width: 224, height: 224)
+    private var list: some View {
+        VStack(spacing: 0) {
+            Quiet(icon: "plus", title: "New Item", lit: selected == nil, prefs: browser.prefs) {
+                selectSlot(nil)
+            }
+            .disabled(!canAdd)
+            ForEach(slots.indices, id: \.self) { index in
+                let item = slots[index]
+                SidebarTabButton(title: item.title, selected: selected == index, prefs: browser.prefs,
+                                 remove: { remove(index) }, action: { selectSlot(index) }) {
+                    Symbol(item.icon, size: 13)
+                }
+            }
+            if layout == "wheel", !slots.isEmpty {
+                RadialMenu(paint: SpacePaint(browser.prefs), select: { selectSlot($0) }, rows: [],
+                           available: slots.map { _ in true }, selection: RadialSelection(wedge: selected, slots: slots))
+                    .scaleEffect(0.48).frame(width: 176, height: 176)
+            }
         }
+    }
+
+    private var canAdd: Bool { slots.count < RadialPreferences.itemCounts.upperBound }
+
+    private func remove(_ index: Int) {
+        var updated = slots
+        updated.remove(at: index)
+        if let selected {
+            selectSlot(updated.isEmpty ? nil : min(selected > index ? selected - 1 : selected, updated.count - 1))
+        }
+        save(updated)
+    }
+
+    private func choose(_ item: RadialItem) {
+        var updated = slots
+        if let selected {
+            updated[selected] = item
+        } else {
+            guard canAdd else { return }
+            selectSlot(updated.count)
+            updated.append(item)
+        }
+        save(updated)
     }
 
     private func isSelected(_ item: RadialItem, current: RadialItem) -> Bool {
@@ -278,17 +263,17 @@ private struct RadialCommandEditor: View {
     }
 
     private var editor: some View {
-        let current = slots[min(slot, slots.count - 1)]
+        let current = selected.map { slots[$0] }
         let special: [RadialItem] = allowsSubmenu ? [.spaces, .submenu(RadialSubmenu())] : []
         let choices = (special + Self.commands).filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
         return VStack(alignment: .leading, spacing: 8) {
-            Text(current.title).font(.headline)
+            Text(current?.title ?? "New Item").font(.headline)
             ThemedSearchField("Find a command", text: $search)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(choices.indices, id: \.self) { index in
                         let item = choices[index]
-                        let selected = isSelected(item, current: current)
+                        let selected = current.map { isSelected(item, current: $0) } ?? false
                         Button {
                             if !selected { choose(item) }
                         } label: {

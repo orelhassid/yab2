@@ -3706,7 +3706,6 @@ struct TabEnd: View {
     /// the pointer, and the second press of a double click lands on it.
     @State private var putDownAt = Date.distantPast
     @Environment(\.tone) private var tone
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The cross's 15 and the gap between its square and the face's, in
     /// the column.
@@ -3897,8 +3896,28 @@ struct TabEnd: View {
     /// https://claude.ai/artifact/5ZTV5PpmZvJHnjkPWEjcZa); woken, it folds
     /// back. With Reduce Motion it is the other at once.
     private var cross: some View {
-        let minus = tab.kept && !tab.putDown
-        return MinusCross(open: minus ? 0 : 1)
+        TabCloseMark(plate: plate, slotSide: slotSide, minus: tab.kept && !tab.putDown,
+                     pointed: onCross, pressed: crossPressed)
+    }
+
+    private func face(_ on: Bool) {
+        guard on != onFace else { return }
+        onFace = on
+        browser.glance.face(tab.id, on)
+    }
+}
+
+struct TabCloseMark: View {
+    let plate: RowPlate
+    var slotSide: CGFloat = 15
+    var minus = false
+    let pointed: Bool
+    let pressed: Bool
+    @Environment(\.tone) private var tone
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        MinusCross(open: minus ? 0 : 1)
             // Two points at a 16-point cross, Arc's stroke (RowPlate.cross).
             .stroke(style: StrokeStyle(lineWidth: plate.cross / 8, lineCap: .round))
             .frame(width: plate.cross, height: plate.cross)
@@ -3909,26 +3928,20 @@ struct TabEnd: View {
             // darkens, as they do.
             // Under the pointer a shade short of the title's ink, as Arc's
             // cross is (0.7 white beside a 0.9 title, measured 2026-10-12).
-            .foregroundStyle(onCross ? Palette.ink.opacity(0.75) : Palette.muted(on: tone))
+            .foregroundStyle(pointed ? Palette.ink.opacity(0.75) : Palette.muted(on: tone))
             .frame(width: slotSide, height: slotSide)
             // Under the pointer, a square, concentric with the tab around it
             // (RowPlate). Drawn past the slot, so the title doesn't
             // move for it.
             .background {
-                if onCross { plate.square() }
+                if pointed { plate.square() }
             }
             // The pointer's comings and goings flip it at once, whatever the
             // tab around it eases.
             .transaction { $0.animation = nil }
             // About 1.5 pt of its 18, as a small button gives.
-            .scaleEffect(crossPressed && !reduceMotion ? 0.9 : 1)
-            .animation(crossPressed ? Press.down : Press.up, value: crossPressed)
-    }
-
-    private func face(_ on: Bool) {
-        guard on != onFace else { return }
-        onFace = on
-        browser.glance.face(tab.id, on)
+            .scaleEffect(pressed && !reduceMotion ? 0.9 : 1)
+            .animation(pressed ? Press.down : Press.up, value: pressed)
     }
 }
 

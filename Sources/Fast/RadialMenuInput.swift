@@ -51,6 +51,7 @@ final class RadialMenuInput {
         guard let window, window.isKeyWindow, window.attachedSheet == nil,
               target?.window === window, let root = window.contentView, let down else { return }
         let slots = RadialPreferences.saved
+        guard !slots.isEmpty else { return }
         let origin = root.convert(down.locationInWindow, from: nil)
         let paint = browser.developmentLook ?? SpacePaint(browser.prefs)
         if Store.settings.string(forKey: RadialPreferences.layoutKey) == "dropdown" {
@@ -101,7 +102,7 @@ final class RadialMenuInput {
                 }
             }
         case .submenu(let menu):
-            return menu.commands.prefix(menu.count).map { command in
+            return menu.commands.map { command in
                 Child(row: RadialDropdownRow(title: command.title, icon: command.symbol, enabled: command.available(in: browser))) {
                     RadialPreferences.run(command, in: $0)
                 }

@@ -16,7 +16,7 @@ struct RadialSelection {
     mutating func move(_ delta: CGPoint, childCount: Int, activationDistance: CGFloat? = nil) {
         let radius = hypot(delta.x, delta.y)
         child = nil
-        guard radius >= (activationDistance ?? Self.hub) else { wedge = nil; return }
+        guard !slots.isEmpty, radius >= (activationDistance ?? Self.hub) else { wedge = nil; return }
         if radius > Self.outer, showsChildren, childCount > 0 {
             wedge = nil
         } else if radius > Self.rim, showsChildren, childCount > 0 {
@@ -64,8 +64,12 @@ struct RadialMenu: View {
     private func sector(_ inner: CGFloat, _ outer: CGFloat, _ angle: Double, _ half: Double) -> Path {
         Path { path in
             path.addArc(center: center, radius: outer, startAngle: .radians(angle - half),
+                        endAngle: .radians(angle), clockwise: false)
+            path.addArc(center: center, radius: outer, startAngle: .radians(angle),
                         endAngle: .radians(angle + half), clockwise: false)
             path.addArc(center: center, radius: inner, startAngle: .radians(angle + half),
+                        endAngle: .radians(angle), clockwise: true)
+            path.addArc(center: center, radius: inner, startAngle: .radians(angle),
                         endAngle: .radians(angle - half), clockwise: true)
             path.closeSubpath()
         }

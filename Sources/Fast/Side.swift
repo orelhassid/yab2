@@ -3878,9 +3878,14 @@ struct SidebarTabButton<Mark: View>: View {
     var inTabStrip = false
     var showsDisclosure = false
     var badge: (title: String, tint: FolderTint)?
+    var remove: (() -> Void)?
     let action: () -> Void
     @ViewBuilder var mark: () -> Mark
     @State private var hovered = false
+    @State private var closeHovered = false
+    @State private var closePressed = false
+
+    private var pointed: Bool { hovered || closeHovered }
 
     var body: some View {
         Button(action: action) {
@@ -3890,11 +3895,14 @@ struct SidebarTabButton<Mark: View>: View {
                         .padding(.horizontal, SideBar.inner)
                         .frame(height: prefs.density.tab)
                 } else {
-                    SidebarTabRow { label }
+                    SidebarTabRow {
+                        label
+                        if pointed && remove != nil { Spacer(minLength: 15) }
+                    }
                 }
             }
             .background {
-                if selected || hovered {
+                if selected || pointed {
                     SelectionPlate(corner: SideBar.radius, state: selected ? .selected : .hover, prefs: prefs, strip: inTabStrip)
                 }
             }
@@ -3902,6 +3910,23 @@ struct SidebarTabButton<Mark: View>: View {
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
+        .overlay(alignment: .trailing) {
+            if let remove, pointed {
+                Button(action: remove) {
+                    TabCloseMark(plate: .column, pointed: closeHovered, pressed: closePressed)
+                        .frame(width: 30, height: SideBar.row)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(Held(pressed: $closePressed))
+                .accessibilityLabel("Remove \(title)")
+                .focusable(false)
+                .onHover { closeHovered = $0 }
+                .padding(.trailing, SideBar.endInset - 7.5)
+            }
+        }
+        .accessibilityActions {
+            if let remove { Button("Remove \(title)", action: remove) }
+        }
         .accessibilityAddTraits(selected ? .isSelected : [])
         .uiInspectable(UIInspectorNode(component: "SidebarTabButton", label: title, source: Self.inspectorSource,
                                        logicalParent: inTabStrip ? nil : "SideBar", styles:

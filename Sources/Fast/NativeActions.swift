@@ -101,13 +101,12 @@ struct NativeSetting {
             }
             Store.settings.set(layout, forKey: RadialPreferences.layoutKey)
         },
-        count("radial-count", "Radial menu command count", key: RadialPreferences.countKey, default: 6, values: RadialPreferences.counts),
         count("radial-sensitivity", "Activation distance", key: RadialPreferences.sensitivityKey,
               default: RadialPreferences.defaultSensitivity, values: Array(RadialPreferences.sensitivityRange)),
-        stored("radial-commands", "Radial menu commands", ["type": "string", "description": "Command IDs for the current layout, separated by |, clockwise from the right. Use radial.spaces for Spaces or radial.menu for a new submenu."],
+        stored("radial-commands", "Radial menu commands", ["type": "string", "description": "Up to ten command IDs, separated by |, clockwise from the right in the wheel. Use radial.spaces for Spaces or radial.menu for a new submenu."],
                read: { .string(RadialPreferences.encode(RadialPreferences.saved)) }) { value in
-            guard case .string(let raw) = value, let slots = RadialPreferences.validated(raw, count: RadialPreferences.saved.count) else {
-                throw NativeFailure("invalid_arguments", "Choose a valid command for each slot")
+            guard case .string(let raw) = value, let slots = RadialPreferences.validated(raw) else {
+                throw NativeFailure("invalid_arguments", "Choose up to ten valid commands")
             }
             RadialPreferences.save(slots)
         },
