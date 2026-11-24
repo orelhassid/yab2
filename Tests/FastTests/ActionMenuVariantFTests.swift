@@ -67,7 +67,7 @@ struct ActionMenuVariantFPresentationTests {
         let window = NSWindow(contentRect: plate, styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         layout.place([root], frames: [plate], in: window, room: ActionMenu.room)
-        let host = NSHostingView(rootView: ActionMenuStack(layout: layout))
+        let host = NSHostingView(rootView: ActionMenuStack(layout: layout, tone: nil))
         window.contentView = host
         host.frame = CGRect(origin: .zero, size: window.frame.size)
         host.autoresizingMask = [.width, .height]
