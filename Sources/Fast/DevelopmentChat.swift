@@ -126,6 +126,10 @@ extension DevelopmentDirectory {
               project: DevelopmentProject,
               browser: Browser, later: Bool) -> Bool {
         var details = details(project)
+        if details.sourceFolderUnavailable {
+            browser.toaster.pop(DevelopmentDetails.unavailableSourceMessage, mark: "folder")
+            return false
+        }
         let history = Chats.shared
         history.load()
         if let problem = details.resumeProblem(in: history) {

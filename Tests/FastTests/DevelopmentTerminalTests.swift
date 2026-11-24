@@ -4,21 +4,35 @@ import Testing
 
 @MainActor
 struct DevelopmentTerminalTests {
-    @Test func browserChatWithoutAnAvailableSourceFolderDoesNotUseAProjectWorkspace() throws {
+    @Test func anUnlinkedProjectDiffersFromAnUnavailableCheckout() throws {
         var project = DevelopmentDetails(name: "Example", icon: "", folder: "")
         #expect(project.availableSourceFolder == nil)
+        #expect(!project.sourceFolderUnavailable)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         project.folder = root.path
         #expect(project.availableSourceFolder == nil)
+        #expect(project.sourceFolderUnavailable)
 
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
         #expect(project.availableSourceFolder == root.path)
+        #expect(!project.sourceFolderUnavailable)
 
         let file = root.appendingPathComponent("file.txt")
         try Data().write(to: file)
         project.folder = file.path
         #expect(project.availableSourceFolder == nil)
+        #expect(project.sourceFolderUnavailable)
+    }
+
+    @Test(arguments: ["codex", "claude"])
+    func developmentRunRejectsAnUnavailableCheckoutBeforeRegisteringAConversation(provider: String) {
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        let project = DevelopmentDetails(name: "Example", icon: "", folder: missing, provider: provider)
+        let run = Agents.shared.run(prompt: "Check the current project", cli: provider, resume: nil, development: project)
+        #expect(run.state == .failed)
+        #expect(run.result == DevelopmentDetails.unavailableSourceMessage)
+        #expect(Agents.shared.session(run.id) == nil)
     }
 
     @Test func shellAndOutputSurviveProjectSwitching() async throws {

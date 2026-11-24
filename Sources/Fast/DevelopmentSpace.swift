@@ -55,6 +55,7 @@ struct DevelopmentDetails: Codable, Equatable {
     var workspaceWrite: Bool?
 
     var canWriteProject: Bool { workspaceWrite ?? true }
+    static let unavailableSourceMessage = "Reconnect the source folder in Project settings."
 
     var availableSourceFolder: String? {
         var directory: ObjCBool = false
@@ -62,6 +63,8 @@ struct DevelopmentDetails: Codable, Equatable {
               directory.boolValue else { return nil }
         return folder
     }
+
+    var sourceFolderUnavailable: Bool { !folder.isEmpty && availableSourceFolder == nil }
 
     var cli: String { provider ?? "codex" }
     var choice: ModelChoice { modelChoices?[cli] ?? ModelChoice(cli: cli) }

@@ -993,6 +993,10 @@ final class Agents: ObservableObject {
     func run(prompt: String, cli wanted: String?, model: String? = nil, effort: String? = nil, access: String? = nil, folder: String? = nil, quiet: Bool = false, name: String? = nil, sealed: Bool = false, resume: String?, parent: String? = nil, profile: String? = nil, person: String? = nil, strict: Bool = false,
              background: Bool = false, contextGrant: ContextGrant? = nil, backgroundPermit: BackgroundPermit? = nil, memoryOnly: Bool = false,
              project: String? = nil, development: DevelopmentDetails? = nil) -> Session {
+        let projectFolder = development?.availableSourceFolder
+        if let development, !development.folder.isEmpty, projectFolder == nil {
+            return refusedRun(wanted ?? development.cli, prompt: prompt, reason: DevelopmentDetails.unavailableSourceMessage)
+        }
         let knowingPrompt = prompt.hasPrefix(String(Agents.setUpMemoryPrompt.prefix(60)))
         let derivingPrompt = prompt.hasPrefix(String(Agents.fromMemoryPrompt.prefix(60)))
         if knowingPrompt || derivingPrompt {
@@ -1067,7 +1071,7 @@ final class Agents: ObservableObject {
         session.developmentWrite = cli == "codex" && development?.canWriteProject == true
         session.developmentChat = development != nil
         if let development {
-            session.developmentFolder = cli == "codex" ? development.availableSourceFolder : nil
+            session.developmentFolder = cli == "codex" ? projectFolder : nil
             session.model = development.choice.model
             session.effort = development.choice.effort
         }
@@ -2006,7 +2010,7 @@ final class Agents: ObservableObject {
         if let folder = session.developmentFolder, !session.remembering {
             var directory: ObjCBool = false
             guard !folder.isEmpty, FileManager.default.fileExists(atPath: folder, isDirectory: &directory), directory.boolValue else {
-                session.result = "Choose an available source folder in Project Settings."
+                session.result = DevelopmentDetails.unavailableSourceMessage
                 finish(session, .failed)
                 return
             }
