@@ -136,6 +136,7 @@ final class DevelopmentDirectory {
 struct DevelopmentProjects: View {
     let browser: Browser
     @AppStorage("development.projects.collapsed", store: Store.settings) private var collapsed = false
+    @State private var collapsedTools: Set<DevelopmentProject> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: SideBar.gap) {
@@ -165,16 +166,73 @@ struct DevelopmentProjects: View {
                         ForEach(DevelopmentDirectory.shared.projects, id: \.self) { project in
                             let details = DevelopmentDirectory.shared.details(project)
                             let selected = browser.developmentProject == project
-                            SidebarTabButton(title: details.name, selected: selected, prefs: browser.prefs,
-                                             action: { browser.developmentContent.toolbar.environmentSelected = false; browser.developmentProject = project }) {
-                                if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
-                                else { Text(details.icon) }
+                            let expanded = selected && !collapsedTools.contains(project)
+                            SidebarSection(collapsed: !expanded) {
+                                SidebarTabButton(title: details.name, selected: selected, prefs: browser.prefs,
+                                                 disclosure: selected ? expanded : nil, reservesActions: false,
+                                                 action: { select(project, expanded: expanded) }) {
+                                    if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
+                                    else { Text(details.icon) }
+                                }
+                            } rows: {
+                                DevelopmentToolRows(browser: browser)
                             }
                         }
                     }
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
+        }
+    }
+
+    private func select(_ project: DevelopmentProject, expanded: Bool) {
+        let state = browser.developmentContent.toolbar
+        if browser.developmentProject == project, !state.environmentSelected {
+            if expanded { collapsedTools.insert(project) }
+            else { collapsedTools.remove(project) }
+        } else {
+            state.environmentSelected = false
+            browser.developmentProject = project
+            collapsedTools.remove(project)
+        }
+    }
+}
+
+private struct DevelopmentDestination: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+
+    static let chat = Self(id: "chat", title: "Chat", icon: "bubble.left")
+    static let environment = Self(id: "environment", title: "Settings", icon: "gearshape")
+    static let tools = [
+        Self(id: "overview", title: "Overview", icon: "rectangle.grid.2x2"),
+        Self(id: "roadmap", title: "Roadmap", icon: "point.3.connected.trianglepath.dotted"),
+        Self(id: "specs", title: "Spec", icon: "doc.text"),
+        Self(id: "pitch", title: "Pitch board", icon: "rectangle.3.group"),
+        Self(id: "tasks", title: "Tasks", icon: "checklist"),
+        Self(id: "agents", title: "Agents", icon: "person.2"),
+        Self(id: "review", title: "Code", icon: "chevron.left.forwardslash.chevron.right"),
+        Self(id: "preview", title: "Preview", icon: "globe"),
+        Self(id: "terminal", title: "Terminal", icon: "terminal"),
+        Self(id: "settings", title: "Project settings", icon: "slider.horizontal.3")
+    ]
+
+    var available: Bool { id != "agents" }
+}
+
+private struct DevelopmentToolRows: View {
+    let browser: Browser
+
+    var body: some View {
+        let content = browser.developmentContent
+        let state = content.toolbar
+        ForEach(state.destinations) { destination in
+            SidebarTabButton(title: destination.title, selected: state.destinationID == destination.id,
+                             prefs: browser.prefs, reservesActions: false, action: { content.open(destination) }) {
+                Symbol(destination.icon, size: SideBar.mark)
+            }
+            .disabled(!destination.available)
         }
     }
 }
@@ -197,6 +255,16 @@ struct DevelopmentSettingsButton: View {
 final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     let toolbar = DevelopmentToolbarState()
     let terminals = DevelopmentTerminals()
+
+    fileprivate func open(_ destination: DevelopmentDestination) {
+        guard destination.available else { return }
+        if destination.id == DevelopmentDestination.environment.id {
+            toolbar.openEnvironment()
+        } else {
+            toolbar.environmentSelected = false
+            view.callAsyncJavaScript("go(route)", arguments: ["route": destination.id], in: nil, in: .page, completionHandler: nil)
+        }
+    }
     private var newChatDrafts: [DevelopmentProject: ChatAttach] = [:]
     private var drafts: [DevelopmentProject: ChatAttach] = [:]
     func draft(for project: DevelopmentProject) -> ChatAttach {
@@ -333,6 +401,15 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
     var environmentSelected = false
     var environmentSection: DevelopmentSettingsSection = .providers
 
+    fileprivate var destinations: [DevelopmentDestination] {
+        (mode == "split" ? [] : [.chat]) + DevelopmentDestination.tools
+    }
+
+    fileprivate var destinationID: String {
+        if environmentSelected { return DevelopmentDestination.environment.id }
+        return mode == "chat" ? DevelopmentDestination.chat.id : active
+    }
+
     func openEnvironment() {
         environmentOpen = true
         environmentSelected = true
@@ -386,61 +463,43 @@ struct DevelopmentPane: View {
     let entries: [String: DevelopmentDetails]
     var pageMargins = EdgeInsets()
     var pageCorner: CGFloat = 0
-    private let tabs = [
-        ("overview", "Overview", "rectangle.grid.2x2"), ("roadmap", "Roadmap", "point.3.connected.trianglepath.dotted"),
-        ("specs", "Spec", "doc.text"), ("pitch", "Pitch board", "rectangle.3.group"),
-        ("tasks", "Tasks", "checklist"), ("agents", "Agents", "person.2"),
-        ("review", "Code", "chevron.left.forwardslash.chevron.right"), ("preview", "Preview", "globe"),
-        ("terminal", "Terminal", "terminal"), ("settings", "Project settings", "slider.horizontal.3")
-    ]
-
     var body: some View {
         let content = browser.developmentContent
         let state = content.toolbar
         let look = workspaceTheme.look ?? entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)
         let paint = SpaceWash.painted(look)
         VStack(spacing: 0) {
-            if !state.environmentSelected {
-                let selected = state.mode == "chat" ? "chat" : state.active
-                TabWindowHeader(selection: selected) {
-                    TabWindowSwitcher(title: DevelopmentDirectory.shared.details(project).name, prefs: browser.prefs,
-                                      items: DevelopmentDirectory.shared.projects,
-                                      label: { DevelopmentDirectory.shared.details($0).name }, selected: { $0 == project },
-                                      choose: { state.environmentSelected = false; browser.developmentProject = $0 },
-                                      rowIcon: { projectIcon($0) }) { projectIcon(project) }
-                        .accessibilityLabel("Switch project, " + DevelopmentDirectory.shared.details(project).name)
-                        .keyTip("Switch project")
-                } tabs: {
-                    let chatTab = [("chat", "Chat", "bubble.left")]
-                    let settingsTab = [("environment", "Settings", "gearshape")]
-                    ForEach((state.mode == "split" ? [] : chatTab) + tabs + (state.environmentOpen ? settingsTab : []), id: \.0) { item in
-                        SidebarTabButton(title: item.1, selected: selected == item.0, prefs: browser.prefs, inTabStrip: true, action: {
-                            state.environmentSelected = item.0 == "environment"
-                            if !state.environmentSelected {
-                                content.view.callAsyncJavaScript("go(route)", arguments: ["route": item.0], in: nil, in: .page, completionHandler: nil)
-                            }
-                        }) { Symbol(item.2, size: 12) }
-                        .disabled(item.0 == "agents")
-                        .id(item.0)
-                    }
-                } actions: {
-                    if browser.prefs.sideShut && browser.trailFlank == nil {
-                        ColumnDoor(browser: browser, prefs: browser.prefs)
-                            .environment(\.doorSize, .header)
-                    }
+            let destinations = state.destinations.filter(\.available) + (state.environmentOpen ? [.environment] : [])
+            let active = destinations.first { $0.id == state.destinationID } ?? DevelopmentDestination.tools[0]
+            TabWindowHeader(selection: Optional<String>.none) {
+                TabWindowSwitcher(title: DevelopmentDirectory.shared.details(project).name, prefs: browser.prefs,
+                                  items: DevelopmentDirectory.shared.projects,
+                                  label: { DevelopmentDirectory.shared.details($0).name }, selected: { $0 == project },
+                                  choose: { state.environmentSelected = false; browser.developmentProject = $0 },
+                                  rowIcon: { projectIcon($0) }) { projectIcon(project) }
+                    .accessibilityLabel("Switch project, " + DevelopmentDirectory.shared.details(project).name)
+                    .keyTip("Switch project")
+            } tabs: {
+                TabWindowSwitcher(title: active.title, prefs: browser.prefs, items: destinations,
+                                  label: { $0.title }, selected: { $0.id == state.destinationID },
+                                  choose: content.open, rowIcon: { Symbol($0.icon, size: SideBar.mark) }) {
+                    Symbol(active.icon, size: 12)
+                }
+                .accessibilityLabel("Project tools, " + active.title)
+                .keyTip("Project tools")
+            } actions: {
+                if browser.prefs.sideShut && browser.trailFlank == nil {
+                    ColumnDoor(browser: browser, prefs: browser.prefs)
+                        .environment(\.doorSize, .header)
+                }
+                if !state.environmentSelected {
                     layoutAction("sidebar.right", state.mode == "chat" ? "Show tools panel" : "Hide tools panel", "panel")
                     layoutAction(state.mode == "full" ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
                                  state.mode == "full" ? "Exit full view" : "Enter full view", "full")
                 }
-                .padding(.horizontal, SideBar.margin).frame(height: NavigationHeader.height(topInset: 0))
-                Divider()
-            } else if browser.prefs.sideShut && browser.trailFlank == nil {
-                ColumnDoor(browser: browser, prefs: browser.prefs)
-                    .environment(\.doorSize, .header)
-                    .frame(maxWidth: .infinity, alignment: browser.flank == .left ? .leading : .trailing)
-                    .padding(.horizontal, SideBar.margin)
-                    .frame(height: NavigationHeader.height(topInset: 0))
             }
+            .padding(.horizontal, SideBar.margin).frame(height: NavigationHeader.height(topInset: 0))
+            Divider()
             ZStack {
                 DevelopmentWebPane(browser: browser, project: project, pageMargins: pageMargins, pageCorner: pageCorner)
                     .overlay(alignment: .topLeading) {

@@ -6,8 +6,8 @@ Product proposal for review. The first version assumes one developer on a Mac, o
 
 The current Development Space already has project folders, native chat, project appearance, a terminal, and an embedded tool pane. Each project can start and reopen multiple chats from the chat picker. The first ADE milestone brings those sessions into view and makes the project tools vertical.
 
-- **Sidebar placement.** Expand the selected project to show its tool destinations. Keep Chats in its own section. This uses the existing Sidebar and gives the Page more room for a diff, preview, or terminal.
-- **Page placement.** Show project tools in a vertical column inside the Page. Keep the Sidebar focused on projects and chats. At narrow widths, the Page column becomes a vertical menu opened from the tool header.
+- **Sidebar placement.** The selected project expands to show its existing tool destinations. The compact header opens the same destinations in a vertical picker, including when the Sidebar is closed. A separate Chats section is proposed for visual approval.
+- **Page alternative.** The navigation prototype also offers a vertical column inside the Page. At narrow widths, the Page column becomes a vertical menu opened from the tool header.
 - **Chat history.** Default to **This project**. Offer **All projects** with a project tag on each session. Selecting a chat in another project switches both the project and the conversation. New chat uses the selected project. Keep each unsent draft with its conversation and preserve the existing provider coordinator chats. Use existing chat IDs and records for legacy and new sessions.
 
 Verify both the selected tool and selected chat, including after a restart. Check a project with no history, more sessions than fit at once, a running turn while switching projects, and selecting a session with another provider. Exercise split, chat-only, and full view with the Sidebar open and closed, and verify keyboard navigation in light and dark project themes.
