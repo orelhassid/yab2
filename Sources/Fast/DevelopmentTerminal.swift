@@ -1,22 +1,46 @@
+import Darwin
 import SwiftUI
 import SwiftTerm
 
-/// The window owns sessions. Attaching a different view never stops the PTY.
+/// The window keeps a shell for each checkout opened in a project.
 @MainActor
 final class DevelopmentTerminals {
-    private var sessions: [DevelopmentProject: DevelopmentShell] = [:]
+    private struct Checkout: Hashable {
+        let project: DevelopmentProject
+        let path: String
+        let device: dev_t
+        let inode: ino_t
+
+        init?(project: DevelopmentProject, folder: String) {
+            guard folder.hasPrefix("/") else { return nil }
+            let path = URL(fileURLWithPath: folder, isDirectory: true).resolvingSymlinksInPath().path
+            var entry = stat()
+            guard stat(path, &entry) == 0, entry.st_mode & S_IFMT == S_IFDIR,
+                  FileManager.default.isExecutableFile(atPath: path) else { return nil }
+            self.project = project
+            self.path = path
+            device = entry.st_dev
+            inode = entry.st_ino
+        }
+    }
+
+    private var sessions: [Checkout: DevelopmentShell] = [:]
 
     func session(for project: DevelopmentProject, folder: String) -> DevelopmentShell? {
-        if let existing = sessions[project] { return existing }
-        guard let session = DevelopmentShell(folder: folder) else { return nil }
-        sessions[project] = session
-        return session
+        guard let checkout = Checkout(project: project, folder: folder) else { return nil }
+        return sessions[checkout] ?? start(checkout)
     }
 
     func restart(_ project: DevelopmentProject, folder: String) -> DevelopmentShell? {
-        guard sessions[project]?.status != nil else { return sessions[project] }
-        sessions.removeValue(forKey: project)
-        return session(for: project, folder: folder)
+        guard let checkout = Checkout(project: project, folder: folder) else { return nil }
+        if let existing = sessions[checkout], existing.status == nil { return existing }
+        return start(checkout)
+    }
+
+    private func start(_ checkout: Checkout) -> DevelopmentShell {
+        let session = DevelopmentShell(folder: checkout.path)
+        sessions[checkout] = session
+        return session
     }
 }
 
@@ -25,11 +49,7 @@ final class DevelopmentShell: LocalProcessTerminalViewDelegate {
     let terminal: LocalProcessTerminalView
     private(set) var status: String?
 
-    init?(folder: String) {
-        var directory: ObjCBool = false
-        guard folder.hasPrefix("/"), FileManager.default.fileExists(atPath: folder, isDirectory: &directory),
-              directory.boolValue, FileManager.default.isExecutableFile(atPath: folder) else { return nil }
-
+    fileprivate init(folder: String) {
         terminal = ProjectTerminalView(frame: CGRect(x: 0, y: 0, width: 640, height: 400))
         terminal.processDelegate = self
         let configuredShell = getpwuid(getuid()).flatMap { $0.pointee.pw_shell }.map { String(cString: $0) }

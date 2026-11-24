@@ -48,7 +48,7 @@ struct DevelopmentTerminalTests {
         defer { first.terminal.terminate(); second.terminal.terminate() }
         first.terminal.send(txt: "export YAB_TEST_VALUE=one; mkdir sub; cd sub; sleep 0.3; echo finished > output\r")
         second.terminal.send(txt: "echo \"${YAB_TEST_VALUE:-independent}\" > output\r")
-        let returned = try #require(terminals.session(for: .yab, folder: b.path))
+        let returned = try #require(terminals.session(for: .yab, folder: a.path))
         #expect(returned === first)
         returned.terminal.send(txt: "printf '%s' \"$YAB_TEST_VALUE\" > variable; printf 'scrollback-%d\\n' 42\r")
         let clock = ContinuousClock()
@@ -66,8 +66,59 @@ struct DevelopmentTerminalTests {
         let deadline = clock.now.advanced(by: .seconds(5))
         while returned.status == nil && clock.now < deadline { try await Task.sleep(for: .milliseconds(50)) }
         #expect(returned.status == "Shell exited with status 7.")
-        let replacement = try #require(terminals.restart(.yab, folder: b.path))
+        let replacement = try #require(terminals.restart(.yab, folder: a.path))
         #expect(replacement !== first)
         replacement.terminal.terminate()
+    }
+
+    @Test func changingTheLinkedCheckoutChangesTheShellWithoutClosingTheOriginal() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let original = root.appendingPathComponent("original")
+        let relinked = root.appendingPathComponent("relinked")
+        for url in [original, relinked] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let terminals = DevelopmentTerminals()
+        let first = try #require(terminals.session(for: .yab, folder: original.path))
+        defer { first.terminal.terminate() }
+        let linked = try #require(terminals.session(for: .yab, folder: relinked.path))
+        guard linked !== first else {
+            Issue.record("The terminal still points at the original checkout.")
+            return
+        }
+        defer { linked.terminal.terminate() }
+        #expect(terminals.session(for: .yab, folder: original.path) === first)
+        #expect(first.status == nil)
+        #expect(terminals.restart(.yab, folder: relinked.path) === linked)
+
+        let marker = relinked.appendingPathComponent("relinked-shell.txt")
+        linked.terminal.send(txt: "printf relinked > relinked-shell.txt\r")
+        for _ in 0..<100 {
+            if FileManager.default.fileExists(atPath: marker.path) { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(try String(contentsOf: marker, encoding: .utf8) == "relinked")
+        #expect(!FileManager.default.fileExists(atPath: original.appendingPathComponent(marker.lastPathComponent).path))
+    }
+
+    @Test func aReplacementDirectoryAtTheSamePathGetsItsOwnShell() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let checkout = root.appendingPathComponent("checkout")
+        try FileManager.default.createDirectory(at: checkout, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let terminals = DevelopmentTerminals()
+        let original = try #require(terminals.session(for: .yab, folder: checkout.path))
+        defer { original.terminal.terminate() }
+
+        try FileManager.default.moveItem(at: checkout, to: root.appendingPathComponent("old"))
+        #expect(terminals.session(for: .yab, folder: checkout.path) == nil)
+        try FileManager.default.createDirectory(at: checkout, withIntermediateDirectories: false)
+        let replacement = try #require(terminals.restart(.yab, folder: checkout.path))
+        defer { if replacement !== original { replacement.terminal.terminate() } }
+        #expect(replacement !== original)
+        #expect(replacement.status == nil)
+        #expect(terminals.session(for: .yab, folder: checkout.path) === replacement)
     }
 }
