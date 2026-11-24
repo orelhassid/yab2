@@ -30,7 +30,7 @@ function roadmap() {
   const suggestions = features.filter(f => featureState(f) === 'Suggested').length;
   return  '<section class="page product-map">'+tabHeader('roadmap','Roadmap',[features.length+' features',suggestions+' suggested'])+
     lanes.map(l => '<section class="product-lane"><h2>'+icon(l.icon)+l.name+'</h2><p>'+l.goal+'</p><div class="milestones">'+l.features.map(f =>
-      '<div class="build-card"><button data-route="'+f.id+'" class="milestone '+(featureState(f) === 'Suggested' ? 'suggestion' : '')+'"><small>'+featureState(f)+'</small><b>'+f.title+'</b><span>'+f.goal+'</span></button>'+buildButton(f)+'</div>').join('')+'</div></section>').join('')+'</section>';
+      '<div class="build-card"><button data-route="'+f.id+'" class="milestone '+(featureState(f) === 'Suggested' ? 'suggestion' : '')+'"><small>'+featureState(f)+'</small><b>'+f.title+'</b><span>'+f.goal+'</span></button>'+buildButton(f)+'</div>').join('')+'</div></section>').join('')+roadmapTasks()+'</section>';
 }
 function selectedFeature() {
   return productLanes().flatMap(l => l.features).find(f => f.id === screen);

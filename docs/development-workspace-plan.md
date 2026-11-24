@@ -8,12 +8,12 @@ Development uses horizontal project tool tabs in the native header. The Sidebar 
 
 The Chat section follows Projects in the Sidebar. It shows the active project's coordinator chat, saved sessions, and New chat. Selecting a saved session restores its provider and conversation. Drafts remain with their conversations.
 
-### Home and project tools proposal
+### Home and project tools
 
-- Align a minimal horizontal tab strip to the project pane in split view. Show Home, Roadmap, Spec, and Preview by default. Use the trailing Add Tab control for other tools, including Terminal, Code, and Pitch Board.
+- Align a minimal horizontal tab strip to the project pane in split view. Show Home, Roadmap, Spec, and Preview by default. Use the trailing Add Tab control for other tools, including Terminal, Code, and Pitch Board. Added tabs are saved per project.
 - Rename Overview to Home and place project settings on the same page. Keep app-wide appearance in App Settings and the project's look inside its Home settings.
 - Show icon cards for project destinations on Home. Opening a card replaces the right pane and keeps Home selected. Back to Home returns to the card grid.
-- Put Tasks below the roadmap on the Roadmap page. Use a table with completion checkboxes, the task's feature, its owner, and status. The Tasks card on Home opens this section directly.
+- Put Tasks below the roadmap on the Roadmap page. Use a table with completion checkboxes, the task's feature, its owner, and status. The Tasks card on Home opens this section directly. Completion is saved with the project.
 
 Verify both the selected tool and selected chat, including after a restart. Check a project with no history, more sessions than fit at once, a running turn while switching projects, and selecting a session with another provider. Exercise split, chat-only, and full view with the Sidebar open and closed, and verify keyboard navigation in light and dark project themes.
 

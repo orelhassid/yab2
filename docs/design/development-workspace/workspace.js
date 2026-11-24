@@ -29,7 +29,7 @@ function icon(name) {
 }
 for (const el of document.querySelectorAll('[data-icon]')) el.innerHTML = icon(el.dataset.icon);
 const appMark = document.documentElement.hasAttribute('data-native-space') ? 'Mark.png' : '../../../Icon/Mark.png';
-const views = ['overview','roadmap','specs','pitch','tasks','feature','review','preview','terminal','settings'];
+const views = ['overview','roadmap','specs','pitch','tasks','feature','review','preview','terminal','settings','agents'];
 const content = document.querySelector('#content');
 const draft = document.querySelector('#draft');
 let selectedFile = 0;
@@ -236,6 +236,8 @@ document.addEventListener('input', event => {
   }
 });
 const renderers = {overview,feature,review};
+const homeNavigation = new Set();
+let scrollToTasks = false;
 function render() {
   const parts = location.hash.slice(1).split('/');
   if (project && space === 'Development' && screen) scroll[pathFor(project,screen)] = content.scrollTop;
@@ -257,14 +259,15 @@ function render() {
   restoreChat(id);
   lastProject = project;
   screen = parts.at(-1);
-  const taskRoute = screen.startsWith('tasks-') && buildPlans.get(project)?.has(screen.slice(6));
+  const taskRoute = screen === 'tasks' || screen.startsWith('tasks-');
+  if (taskRoute) screen = 'roadmap';
+  if (screen === 'settings' && nativeSpace) screen = 'overview';
   if (!views.includes(screen) && !selectedFeature() && !taskRoute) screen = 'overview';
   lastView.set(project,screen);
   projectList();
   document.querySelector('#compact-title').textContent = projects[id].name;
-  if (screen === 'settings' && nativeSpace) content.replaceChildren();
+  if (screen === 'overview' && nativeSpace) content.replaceChildren();
   else if (screen === 'settings') renderSettings();
-  else if (screen === 'tasks' || taskRoute) content.innerHTML = tasksPage();
   else if (screen === 'specs' || screen === 'pitch') content.innerHTML = productIndex();
   else if (screen === 'roadmap') content.innerHTML = roadmap();
   else if (screen !== 'feature' && selectedFeature()) content.innerHTML = productSpec(selectedFeature());
@@ -277,21 +280,34 @@ function render() {
   else content.innerHTML = id === 'yab' ? renderers[screen]() : otherProject();
   document.querySelector('#project-picker').value = project;
   document.querySelectorAll('nav [data-route]').forEach(b=>{
-    if (b.dataset.route === (taskRoute ? 'tasks' : selectedFeature() ? 'specs' : screen)) b.setAttribute('aria-current','page');
+    if (b.dataset.route === (selectedFeature() ? 'roadmap' : screen)) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
   reportToolbar();
   content.scrollTop = scroll[pathFor(project,screen)] || 0;
-  document.title = ((taskRoute && 'Tasks') || (selectedFeature() && selectedFeature().title) || ({settings:'Project settings',specs:'Spec',pitch:'Pitch board',tasks:'Tasks',roadmap:'Roadmap',overview:'Project overview',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal'})[screen])+' · '+projects[id].name;
+  if (scrollToTasks || taskRoute) document.querySelector('#roadmap-tasks')?.scrollIntoView();
+  scrollToTasks = false;
+  document.title = ((selectedFeature() && selectedFeature().title) || ({settings:'Project settings',specs:'Spec',pitch:'Pitch board',tasks:'Tasks',roadmap:'Roadmap',overview:'Home',feature:'Roadmap feature detail',review:'Code review',preview:'Preview',terminal:'Terminal',agents:'Agents'})[screen])+' · '+projects[id].name;
 }
-function go(route) {
+function go(route, fromHome) {
   document.body.classList.remove('chat-open');
   if (route === 'chat') {
     if (layoutMode !== 'chat') setLayout('chat');
     return;
   }
   if (layoutMode === 'chat') setLayout(chatOrigin === 'full' || narrowLayout.matches ? 'full' : 'split');
-  if (route===screen) return;
+  if (fromHome === true) homeNavigation.add(project);
+  else if (fromHome === false || route === 'overview') homeNavigation.delete(project);
+  if (route === 'tasks' || route.startsWith('tasks-')) {
+    scrollToTasks = true;
+    route = 'roadmap';
+  }
+  if (route === screen) {
+    if (scrollToTasks) document.querySelector('#roadmap-tasks')?.scrollIntoView();
+    scrollToTasks = false;
+    reportToolbar();
+    return;
+  }
   location.hash = pathFor(project,route);
 }
 function discuss(label, route) {
@@ -342,9 +358,9 @@ document.addEventListener('click',e=>{
   if (b.dataset.route) go(b.dataset.route);
   if (b.dataset.build) openBuild(b.dataset.build);
   if (b.dataset.taskIndex !== undefined) {
-    const id = currentPlan.get(project);
+    const id = b.dataset.taskFeature;
     const f = productLanes().flatMap(l=>l.features).find(f=>f.id===id);
-    discuss(taskRows(f)[Number(b.dataset.taskIndex)].title, 'tasks-'+id);
+    if (f) discuss(taskRows(f)[Number(b.dataset.taskIndex)].title, 'tasks-'+id);
   }
   if (b.dataset.file!==undefined) { selectedFile=Number(b.dataset.file); render(); document.querySelector('[data-file="'+selectedFile+'"]').focus({preventScroll:true}); }
   switch(b.dataset.action) {
@@ -360,8 +376,10 @@ document.addEventListener('click',e=>{
       accepted = true;
       recordActivity('Accepted Dock download progress');
       const card = document.querySelector('.run-card');
-      card.querySelector('b').textContent = 'Changes accepted';
-      card.querySelector('small').textContent = 'View reviewed diff · 2 files';
+      if (card) {
+        card.querySelector('b').textContent = 'Changes accepted';
+        card.querySelector('small').textContent = 'View reviewed diff · 2 files';
+      }
       render();
       break;
     }
@@ -369,8 +387,8 @@ document.addEventListener('click',e=>{
 });
 
 const destinations = [
-  ['overview','Overview','layout'], ['roadmap','Roadmap','roadmap'], ['specs','Spec','file'],
-  ['pitch','Pitch board','bookmark'], ['tasks','Tasks','checked'], ['agents','Agents','branch'],
+  ['overview','Home','layout'], ['roadmap','Roadmap','roadmap'], ['specs','Spec','file'],
+  ['pitch','Pitch Board','bookmark'], ['tasks','Tasks','checked'], ['agents','Agents','branch'],
   ['review','Code','diff'], ['preview','Preview','layout'], ['terminal','Terminal','terminal'],
   ['settings','Settings','settings']
 ];
@@ -401,6 +419,9 @@ function applyDirectory(entries) {
     (newDetails.icon || '') === (oldDetails.icon || '');
   const edits = folderChanged ? [openForm.elements.name.value,openForm.elements.symbol.value] : null;
   directory = entries;
+  for (const [id, item] of Object.entries(entries)) {
+    if (item.taskPlans) buildPlans.set(id, new Set([...(id === 'yab' ? ['feature'] : []), ...item.taskPlans]));
+  }
   for (const id of Object.keys(entries)) {
     if (/^project-[a-f0-9-]+$/.test(id) && !projects[id]) projects[id] = {color:'var(--muted)'};
   }
@@ -416,7 +437,7 @@ function applyDirectory(entries) {
   document.querySelector('#project-title').textContent = projects[project].name;
   document.querySelector('#chat-mark').innerHTML = projectMark(project);
   const visualChange = ['name','icon','folder'].some(key=>oldDetails[key] !== newDetails[key]);
-  if (visualChange || screen === 'overview') render();
+  if (visualChange || screen === 'overview' || (screen === 'roadmap' && oldDetails.taskPlans !== newDetails.taskPlans && JSON.stringify(oldDetails.taskPlans) !== JSON.stringify(newDetails.taskPlans))) render();
   else projectList();
   if (edits) {
     const fields = document.querySelector('#project-settings').elements;
@@ -467,12 +488,19 @@ function setLayout(mode) {
     button.setAttribute('aria-pressed',String(action==='full'?mode==='full':mode!=='chat'));
   }
 }
+function projectLanesProgress() {
+  const features = productLanes().flatMap(lane => lane.features);
+  const complete = features.filter(feature => ['Accepted','Shipped'].includes(featureState(feature))).length;
+  return complete+' of '+features.length+' shipped or accepted';
+}
 function reportToolbar() {
   const pane = content.getBoundingClientRect();
   const bottom = layoutMode === 'full' ? document.querySelector('.composer').getBoundingClientRect().top - 8 : pane.bottom;
   window.webkit?.messageHandlers?.toolbar?.postMessage({
     project, toolFrame:[pane.x,pane.y,pane.width,Math.max(0,bottom-pane.y)],
-    active:document.querySelector('nav [aria-current="page"]')?.dataset.route || 'overview',
+    active:project && selectedFeature() ? 'roadmap' : (screen || 'overview'),
+    homeNavigation:homeNavigation.has(project),
+    roadmapProgress:project ? projectLanesProgress() : '',
     mode:layoutMode,width:document.querySelector('#chat').offsetWidth
   });
 }

@@ -1,86 +1,126 @@
 import SwiftUI
 
-struct DevelopmentSettings: View {
+struct DevelopmentHome: View {
     let project: DevelopmentProject
     let prefs: Preferences
-    @State private var appearance = false
-    @State private var query = ""
+    let roadmapProgress: String
+    let open: (String) -> Void
     @Environment(\.tone) private var tone
     @State private var name: String
     @State private var icon: String
     private var directory: DevelopmentDirectory { .shared }
     private var details: DevelopmentDetails { directory.details(project) }
 
-    init(project: DevelopmentProject, prefs: Preferences) {
+    init(project: DevelopmentProject, prefs: Preferences, roadmapProgress: String, open: @escaping (String) -> Void) {
         self.project = project
         self.prefs = prefs
+        self.roadmapProgress = roadmapProgress
+        self.open = open
         let details = DevelopmentDirectory.shared.details(project)
         _name = State(initialValue: details.name)
         _icon = State(initialValue: details.icon)
     }
 
     var body: some View {
-        LibraryPageFrame(page: .settings, breadcrumbs: [appearance ? "Appearance" : "Project"]) {
-            EmptyView()
-        } search: {
-            ThemedSearchField("Search settings", text: $query)
-        } content: {
-            GeometryReader { bounds in
-                let wide = bounds.size.width >= 520
-                HStack(alignment: .top, spacing: LibraryPageLayout.columnGap) {
-                    if wide { VStack { navigation }.frame(width: LibraryPageLayout.navigationWidth) }
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: LibraryPageLayout.sectionGap) {
-                            if !wide { HStack { navigation } }
-                            if matches("Project name icon source folder", page: false) {
-                                group("Project details") {
-                                    SettingsRow("Project name") { field("Project name", text: $name).labelsHidden() }
-                                    LibrarySeparator()
-                                    SettingsRow("Project icon") { field("Default icon", text: $icon).labelsHidden() }
-                                    LibrarySeparator()
-                                    SettingsRow("Source folder", detail: details.folder) {
-                                        Button("Choose folder", action: chooseFolder).buttonStyle(.yab(.secondary, .small))
-                                    }
-                                    if name != details.name || icon != details.icon {
-                                        Button("Save changes", action: save).buttonStyle(.yab(.primary, .small))
-                                            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                                    }
+        GeometryReader { room in
+            let columns = room.size.width >= 620 ? 4 : (room.size.width >= 320 ? 2 : 1)
+            ScrollView {
+                VStack(alignment: .leading, spacing: LibraryPageLayout.sectionGap) {
+                    if let url = Bundle.main.url(forResource: "eclipse", withExtension: "webp", subdirectory: "Development"),
+                       let cover = NSImage(contentsOf: url) {
+                        GeometryReader { room in
+                            Image(nsImage: cover).resizable().scaledToFill()
+                                .frame(width: room.size.width, height: room.size.height).clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: Radius.card))
+                        }
+                        .frame(height: 120)
+                        .accessibilityHidden(true)
+                    }
+                    Label(details.name, systemImage: "house")
+                        .font(.title2.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    navigation("Planning", ids: ["roadmap", "tasks", "specs", "pitch"], columns: columns)
+                    navigation("Development tools", ids: ["preview", "review", "terminal", "agents"], columns: columns)
+                    group("Project details") {
+                        SettingsRow("Source folder", detail: details.folder.isEmpty ? "No folder selected" : details.folder) { EmptyView() }
+                        if !roadmapProgress.isEmpty {
+                            LibrarySeparator()
+                            SettingsRow("Roadmap progress", detail: roadmapProgress) { EmptyView() }
+                        }
+                        if let created = details.createdAt {
+                            LibrarySeparator()
+                            SettingsRow("Created", detail: Date(timeIntervalSince1970: created).formatted(date: .abbreviated, time: .omitted)) { EmptyView() }
+                        }
+                    }
+                    group("Project settings") {
+                        SettingsRow("Project name") { field("Project name", text: $name).labelsHidden() }
+                        LibrarySeparator()
+                        SettingsRow("Project icon") { field("Default icon", text: $icon).labelsHidden() }
+                        LibrarySeparator()
+                        SettingsRow("Source folder") {
+                            Button("Choose folder", action: chooseFolder).buttonStyle(.yab(.secondary, .small))
+                        }
+                        LibrarySeparator()
+                        SettingsRow("Project look") {
+                            LookPicker(paint: Binding(get: { details.paint ?? SpacePaint(prefs) }, set: { paint in
+                                var updated = details
+                                updated.paint = paint
+                                directory.save(updated, for: project)
+                            }), named: details.name, offersBrowserTabs: false)
+                        }
+                        if name != details.name || icon != details.icon {
+                            Button("Save changes", action: save).buttonStyle(.yab(.primary, .small))
+                                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
+                    if let events = details.activity, !events.isEmpty {
+                        group("Activity") {
+                            ForEach(Array(events.suffix(8).reversed().enumerated()), id: \.offset) { entry in
+                                SettingsRow(entry.element.title) {
+                                    Text(Date(timeIntervalSince1970: entry.element.time), format: .relative(presentation: .named))
+                                        .foregroundStyle(.secondary)
                                 }
                             }
-                            if matches("Appearance theme look color", page: true) {
-                                group("Appearance") {
-                                    SettingsRow("Project look") {
-                                        LookPicker(paint: Binding(get: { details.paint ?? SpacePaint(prefs) }, set: { paint in
-                                            var updated = details
-                                            updated.paint = paint
-                                            directory.save(updated, for: project)
-                                        }), named: details.name, offersBrowserTabs: false)
-                                    }
-                                }
-                            }
-                            if !query.isEmpty && !matches("Project name icon source folder", page: false)
-                                && !matches("Appearance theme look color", page: true) {
-                                Text("No matching settings").foregroundStyle(.secondary)
-                            }
-                        }.frame(maxWidth: LibraryPageLayout.formWidth, alignment: .leading)
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                .frame(maxWidth: 1040, alignment: .leading)
+                .padding(LibraryPageLayout.sectionGap)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .foregroundStyle(Palette.strong(on: tone))
+    }
+
+    private func navigation(_ title: String, ids: [String], columns: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.headline).accessibilityAddTraits(.isHeader)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
+                ForEach(ids, id: \.self) { id in
+                    let item = DevelopmentDestination.tools.first { $0.id == id }
+                    let title = id == "tasks" ? "Tasks" : item?.title ?? ""
+                    Button { open(id) } label: {
+                        HStack(spacing: 8) {
+                            Symbol(id == "tasks" ? "checklist" : item?.icon ?? "folder", size: 15)
+                            Text(title).lineLimit(1)
+                            Spacer(minLength: 0)
+                            Symbol("chevron.right", size: 9)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .modifier(LibraryCardSurface())
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
                 }
             }
         }
     }
 
-    private func matches(_ words: String, page: Bool) -> Bool {
-        query.isEmpty ? appearance == page : words.localizedCaseInsensitiveContains(query)
-    }
-
-    @ViewBuilder private var navigation: some View {
-        LibraryScopeRow(title: "Project", symbol: "folder", selected: !appearance) { appearance = false; query = "" }
-        LibraryScopeRow(title: "Appearance", symbol: "circle.lefthalf.filled", selected: appearance) { appearance = true; query = "" }
-    }
-
     private func group<Rows: View>(_ title: String, @ViewBuilder rows: () -> Rows) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            SettingsText(title).foregroundStyle(.secondary)
+            Text(title).font(.headline).accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: CardFrame.inset, content: rows)
                 .padding(CardFrame.inset).modifier(LibraryCardSurface())
         }

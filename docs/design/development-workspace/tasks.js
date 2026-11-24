@@ -1,6 +1,5 @@
-// Build plans live for the duration of the design review.
+// Keep the original sample task plan for Yab Browser.
 const buildPlans = new Map([['yab', new Set(['feature'])]]);
-const currentPlan = new Map([['yab', 'feature']]);
 const dockTasks = [
   {title:'Aggregate transfers across windows', owner:'Codex', state:'Done'},
   {title:'Verify progress with concurrent downloads', owner:'Test agent', state:'Done'},
@@ -17,6 +16,9 @@ function openBuild(id) {
     plans.add(id);
     buildPlans.set(project,plans);
     const f = productLanes().flatMap(l=>l.features).find(f=>f.id===id);
+    const details = directory[project] ||= {};
+    details.taskPlans = [...plans];
+    if (nativeSpace) window.webkit.messageHandlers.toolbar.postMessage({project, taskPlan:id});
     recordActivity('Created task plan for '+f.title);
     const link = document.createElement('button');
     link.className = 'chat-link';
@@ -24,8 +26,8 @@ function openBuild(id) {
     link.textContent = 'Task plan · '+f.title;
     messages.append(link);
     messages.scrollTop = messages.scrollHeight;
+    if (screen === 'roadmap') render();
   }
-  currentPlan.set(project,id);
   go('tasks-'+id);
 }
 function taskRows(f) {
@@ -34,21 +36,38 @@ function taskRows(f) {
   return [...checks.map(title=>({title,owner:'Codex',state:'Queued'})),
     {title:'Verify the acceptance criteria',owner:'Test agent',state:'Queued'}];
 }
-function tasksPage() {
+function roadmapTasks() {
   const plans = buildPlans.get(project);
-  if (!plans?.size) return toolSurface('Tasks','<p class="body-copy">Choose a roadmap feature to build its task plan.</p>'+action('Open roadmap','data-route="roadmap"'));
-  const id = screen.startsWith('tasks-') ? screen.slice(6) : currentPlan.get(project);
-  currentPlan.set(project,id);
-  const features = productLanes().flatMap(l=>l.features).filter(f=>plans.has(f.id));
-  const f = features.find(f=>f.id===id);
-  const rows = taskRows(f);
-  const ready = rows.filter(t=>t.state==='Ready for code review');
-  const done = rows.filter(t=>t.state==='Done').length;
-  const picker = features.length > 1 ? '<select id="plan-picker" aria-label="Feature task plan">'+features.map(option=>'<option value="'+option.id+'" '+(option.id===id?'selected':'')+'>'+option.title+'</option>').join('')+'</select>' : '';
-  return '<section class="page tasks-page">'+tabHeader('list',f.title,[done+' of '+rows.length+' complete'],picker+action('Open spec','data-route="'+id+'"'))+
-    progressChart(rows)+taskCollection(rows,id)+
-    '<section class="block"><h2>Ready for code review</h2>'+(ready.length ? '<div class="panel handoff"><div><b>'+ready[0].title+'</b><small>Codex · 2 files · 2 checks passed</small></div>'+action('Review changes','data-route="review"',true)+'</div>' : '<p class="body-copy">'+(done===rows.length?'All changes accepted.':'No changes ready for review yet.')+'</p>')+'</section></section>';
+  const entries = productLanes().flatMap(lane => lane.features)
+    .filter(feature => plans?.has(feature.id))
+    .flatMap(feature => taskRows(feature).map((task, index) => ({...task, feature, index})));
+  const rows = entries.map(task => {
+    const key = task.feature.id+':'+task.index;
+    const done = directory[project]?.taskCompletion?.[key] ?? (task.state === 'Done');
+    return '<tr><td><input type="checkbox" data-completion="'+key+'" aria-label="'+escapeAttribute(task.title)+'" '+(done ? 'checked' : '')+'></td>'+
+      '<td>'+escapeHTML(task.title)+'</td><td><button class="task-link" data-route="'+task.feature.id+'">'+escapeHTML(task.feature.title)+'</button></td>'+
+      '<td>'+escapeHTML(task.owner)+'</td><td data-task-status data-incomplete="'+escapeAttribute(task.state === 'Done' ? 'To do' : task.state)+'">'+
+      (done ? 'Done' : task.state === 'Done' ? 'To do' : escapeHTML(task.state))+'</td>'+
+      '<td><button class="task-link" aria-label="Discuss '+escapeAttribute(task.title)+'" data-task-feature="'+task.feature.id+'" data-task-index="'+task.index+'">'+icon('chat')+'</button></td></tr>';
+  }).join('');
+  const count = entries.filter(task=>(directory[project]?.taskCompletion?.[task.feature.id+':'+task.index] ?? (task.state === 'Done'))).length;
+  return '<section class="block" id="roadmap-tasks"><div class="section-heading"><h2>Tasks</h2><span id="task-progress" aria-live="polite">'+count+' of '+entries.length+' done</span></div>'+
+    (entries.length ? '<div class="panel roadmap-task-table"><table aria-label="Project tasks"><thead><tr><th scope="col">Done</th><th scope="col">Task</th><th scope="col">Feature</th><th scope="col">Owner</th><th scope="col">Status</th><th scope="col"><span class="task-sr-only">Discuss</span></th></tr></thead><tbody>'+rows+'</tbody></table></div>' : '<p class="body-copy">No tasks yet.</p>')+
+    (entries.some(task=>task.state==='Ready for code review') ? '<p class="task-review">'+action('Review changes','data-route="review"')+'</p>' : '')+'</section>';
 }
-document.addEventListener('change',e=>{
-  if (e.target.id==='plan-picker') go('tasks-'+e.target.value);
+function escapeAttribute(value) {
+  return escapeHTML(value).replaceAll('"','&quot;');
+}
+document.addEventListener('change', event => {
+  const input = event.target;
+  const task = input.dataset.completion;
+  if (!task) return;
+  const details = directory[project] ||= {};
+  (details.taskCompletion ||= {})[task] = input.checked;
+  if (nativeSpace) window.webkit.messageHandlers.toolbar.postMessage({project, task, checked:input.checked});
+  else localStorage.setItem('development-directory',JSON.stringify(directory));
+  const state = input.closest('tr').querySelector('[data-task-status]');
+  state.textContent = input.checked ? 'Done' : state.dataset.incomplete;
+  const rows = document.querySelectorAll('#roadmap-tasks input[data-completion]');
+  document.querySelector('#task-progress').textContent = [...rows].filter(row=>row.checked).length+' of '+rows.length+' done';
 });
