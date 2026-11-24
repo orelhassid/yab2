@@ -142,7 +142,6 @@ final class DevelopmentDirectory {
 struct DevelopmentProjects: View {
     let browser: Browser
     @AppStorage("development.projects.collapsed", store: Store.settings) private var collapsed = false
-    @State private var collapsedTools: Set<DevelopmentProject> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: SideBar.gap) {
@@ -172,34 +171,18 @@ struct DevelopmentProjects: View {
                         ForEach(DevelopmentDirectory.shared.projects, id: \.self) { project in
                             let details = DevelopmentDirectory.shared.details(project)
                             let selected = browser.developmentProject == project
-                            let expanded = selected && !collapsedTools.contains(project)
-                            SidebarSection(collapsed: !expanded) {
-                                SidebarTabButton(title: details.name, selected: selected, prefs: browser.prefs,
-                                                 disclosure: selected ? expanded : nil, reservesActions: false,
-                                                 action: { select(project, expanded: expanded) }) {
-                                    if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
-                                    else { Text(details.icon) }
-                                }
-                            } rows: {
-                                DevelopmentToolRows(browser: browser)
+                            SidebarTabButton(title: details.name, selected: selected, prefs: browser.prefs, action: {
+                                browser.developmentContent.toolbar.environmentSelected = false
+                                browser.developmentProject = project
+                            }) {
+                                if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
+                                else { Text(details.icon) }
                             }
                         }
                     }
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
-        }
-    }
-
-    private func select(_ project: DevelopmentProject, expanded: Bool) {
-        let state = browser.developmentContent.toolbar
-        if browser.developmentProject == project, !state.environmentSelected {
-            if expanded { collapsedTools.insert(project) }
-            else { collapsedTools.remove(project) }
-        } else {
-            state.environmentSelected = false
-            browser.developmentProject = project
-            collapsedTools.remove(project)
         }
     }
 }
@@ -225,22 +208,6 @@ private struct DevelopmentDestination: Identifiable {
     ]
 
     var available: Bool { id != "agents" }
-}
-
-private struct DevelopmentToolRows: View {
-    let browser: Browser
-
-    var body: some View {
-        let content = browser.developmentContent
-        let state = content.toolbar
-        ForEach(state.destinations) { destination in
-            SidebarTabButton(title: destination.title, selected: state.destinationID == destination.id,
-                             prefs: browser.prefs, reservesActions: false, action: { content.open(destination) }) {
-                Symbol(destination.icon, size: SideBar.mark)
-            }
-            .disabled(!destination.available)
-        }
-    }
 }
 
 struct DevelopmentSettingsButton: View {
@@ -475,9 +442,8 @@ struct DevelopmentPane: View {
         let look = workspaceTheme.look ?? entries[project.rawValue]?.paint ?? SpacePaint(browser.prefs)
         let paint = SpaceWash.painted(look)
         VStack(spacing: 0) {
-            let destinations = state.destinations.filter(\.available) + (state.environmentOpen ? [.environment] : [])
-            let active = destinations.first { $0.id == state.destinationID } ?? DevelopmentDestination.tools[0]
-            TabWindowHeader(selection: Optional<String>.none) {
+            let destinations = state.destinations + (state.environmentOpen ? [.environment] : [])
+            TabWindowHeader(selection: state.destinationID) {
                 TabWindowSwitcher(title: DevelopmentDirectory.shared.details(project).name, prefs: browser.prefs,
                                   items: DevelopmentDirectory.shared.projects,
                                   label: { DevelopmentDirectory.shared.details($0).name }, selected: { $0 == project },
@@ -486,13 +452,14 @@ struct DevelopmentPane: View {
                     .accessibilityLabel("Switch project, " + DevelopmentDirectory.shared.details(project).name)
                     .keyTip("Switch project")
             } tabs: {
-                TabWindowSwitcher(title: active.title, prefs: browser.prefs, items: destinations,
-                                  label: { $0.title }, selected: { $0.id == state.destinationID },
-                                  choose: content.open, rowIcon: { Symbol($0.icon, size: SideBar.mark) }) {
-                    Symbol(active.icon, size: 12)
+                ForEach(destinations) { destination in
+                    SidebarTabButton(title: destination.title, selected: destination.id == state.destinationID,
+                                     prefs: browser.prefs, inTabStrip: true, action: { content.open(destination) }) {
+                        Symbol(destination.icon, size: 12)
+                    }
+                    .disabled(!destination.available)
+                    .id(destination.id)
                 }
-                .accessibilityLabel("Project tools, " + active.title)
-                .keyTip("Project tools")
             } actions: {
                 if browser.prefs.sideShut && browser.trailFlank == nil {
                     ColumnDoor(browser: browser, prefs: browser.prefs)

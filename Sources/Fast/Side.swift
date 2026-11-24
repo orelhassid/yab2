@@ -3828,28 +3828,23 @@ struct FolderToBe: View {
 struct SidebarTabRow<Content: View>: View {
     private static var inspectorSource: UIInspectorSource { UIInspectorSource() }
     var editing = false
-    var reservesActions = true
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         HStack(spacing: SideBar.markGap, content: content)
             .padding(.leading, SideBar.inner)
-            .padding(.trailing, Self.trailingInset(editing: editing, reservesActions: reservesActions))
+            .padding(.trailing, editing ? SideBar.inner : SideBar.endInset) // design: reserve the tab action inset, matching the leading inset while editing
             .frame(height: SideBar.row)
             .frame(maxWidth: .infinity, alignment: .leading)
             .uiInspectable(UIInspectorNode(component: "SidebarTabRow", source: Self.inspectorSource,
-                                           pickable: false, styles: Self.layout(editing: editing, reservesActions: reservesActions)))
+                                           pickable: false, styles: Self.layout(editing: editing)))
     }
 
-    private static func trailingInset(editing: Bool, reservesActions: Bool) -> CGFloat {
-        editing || !reservesActions ? SideBar.inner : SideBar.endInset
-    }
-
-    static func layout(editing: Bool = false, reservesActions: Bool = true) -> [UIInspectorStyle] {
+    static func layout(editing: Bool = false) -> [UIInspectorStyle] {
         [
             UIInspectorStyle("Layout", "Display", "Horizontal stack"),
             UIInspectorStyle("Layout", "Leading padding", UIInspectorStyle.points(SideBar.inner)),
-            UIInspectorStyle("Layout", "Trailing padding", UIInspectorStyle.points(trailingInset(editing: editing, reservesActions: reservesActions))),
+            UIInspectorStyle("Layout", "Trailing padding", UIInspectorStyle.points(editing ? SideBar.inner : SideBar.endInset)),
             UIInspectorStyle("Layout", "Spacing", UIInspectorStyle.points(SideBar.markGap)),
             UIInspectorStyle("Layout", "Alignment", "Leading")
         ]
@@ -3882,8 +3877,6 @@ struct SidebarTabButton<Mark: View>: View {
     let prefs: Preferences
     var inTabStrip = false
     var showsDisclosure = false
-    var disclosure: Bool? = nil
-    var reservesActions = true
     var badge: (title: String, tint: FolderTint)?
     let action: () -> Void
     @ViewBuilder var mark: () -> Mark
@@ -3897,7 +3890,7 @@ struct SidebarTabButton<Mark: View>: View {
                         .padding(.horizontal, SideBar.inner)
                         .frame(height: prefs.density.tab)
                 } else {
-                    SidebarTabRow(reservesActions: reservesActions) { label }
+                    SidebarTabRow { label }
                 }
             }
             .background {
@@ -3916,7 +3909,7 @@ struct SidebarTabButton<Mark: View>: View {
                 UIInspectorStyle("Layout", "Display", "Horizontal stack"),
                 UIInspectorStyle("Layout", "Horizontal padding", UIInspectorStyle.points(SideBar.inner)),
                 UIInspectorStyle("Layout", "Spacing", UIInspectorStyle.points(SideBar.markGap))
-            ] : SidebarTabRow<EmptyView>.layout(reservesActions: reservesActions)) + [
+            ] : SidebarTabRow<EmptyView>.layout()) + [
                 UIInspectorStyle("Font / Text", "Font", "System · " + UIInspectorStyle.points(titleSize)),
                 UIInspectorStyle("Appearance", "State", selected ? "Selected" : "Default")
             ]))
@@ -3927,12 +3920,7 @@ struct SidebarTabButton<Mark: View>: View {
             Spacer(minLength: 4)
             YabValueBadge(title: badge.title, tint: badge.tint).fixedSize()
         }
-        if let disclosure {
-            Spacer(minLength: 0)
-            Symbol(disclosure ? "chevron.down" : "chevron.right", size: 9)
-        } else if showsDisclosure {
-            Symbol("chevron.down", size: 9)
-        }
+        if showsDisclosure { Symbol("chevron.down", size: 9) }
     }
 }
 

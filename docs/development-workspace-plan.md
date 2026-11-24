@@ -2,12 +2,12 @@
 
 Product proposal for review. The first version assumes one developer on a Mac, one local repository per development project, and Claude Code or Codex already connected through Yab.
 
-## Vertical project navigation and chat history
+## Project navigation and chat history
 
-The current Development Space already has project folders, native chat, project appearance, a terminal, and an embedded tool pane. Each project can start and reopen multiple chats from the chat picker. The first ADE milestone brings those sessions into view and makes the project tools vertical.
+Development uses horizontal project tool tabs in the native header. The Sidebar lists projects in a flat group. A future vertical layout can replace the Sidebar with the selected project's context and show tools at its top level.
 
-- **Sidebar placement.** The selected project expands to show its existing tool destinations. The compact header opens the same destinations in a vertical picker, including when the Sidebar is closed. A separate Chats section is proposed for visual approval.
-- **Page alternative.** The navigation prototype also offers a vertical column inside the Page. At narrow widths, the Page column becomes a vertical menu opened from the tool header.
+Projects already have a chat picker for starting and reopening sessions. A separate Chats section is proposed for visual approval.
+
 - **Chat history.** Default to **This project**. Offer **All projects** with a project tag on each session. Selecting a chat in another project switches both the project and the conversation. New chat uses the selected project. Keep each unsent draft with its conversation and preserve the existing provider coordinator chats. Use existing chat IDs and records for legacy and new sessions.
 
 Verify both the selected tool and selected chat, including after a restart. Check a project with no history, more sessions than fit at once, a running turn while switching projects, and selecting a session with another provider. Exercise split, chat-only, and full view with the Sidebar open and closed, and verify keyboard navigation in light and dark project themes.
@@ -48,7 +48,7 @@ Checked against the Mac source at `d641485`. Checked items have an implementatio
 
 ## Screens and components
 
-Use a single compact header for project identity, the active destination, and layout actions. The vertical tool navigation owns destination selection and keyboard focus. Roadmap, a document, and a code diff each open inside their destination, with Back restoring the previous selection and scroll. Keep the conversation and its draft in place while navigating. At narrow widths, let the user switch between chat and the current tool, preserving both. Use the existing Yab palette, type, frames, buttons, focus treatment, and motion.
+Use a single compact header for project identity, horizontal tool tabs, and layout actions. The tool strip scrolls to the active tab and supports keyboard navigation. Roadmap, a document, and a code diff each open inside their destination, with Back restoring the previous selection and scroll. Keep the conversation and its draft in place while navigating. At narrow widths, let the user switch between chat and the current tool, preserving both. Use the existing Yab palette, type, frames, buttons, focus treatment, and motion.
 
 Illustrative Overview with a project already underway:
 
@@ -82,7 +82,7 @@ Illustrative Overview with a project already underway:
 | Preview | Open the project's configured app URL in a browser tab. Each project keeps its own address. |
 | Terminal | A project-scoped shell pane. The design prototype simulates command input and keeps a separate history for each project. |
 
-Use shared Yab components for the Space Switcher, the project and chat rows, and vertical tool navigation. A context chip, proposal card, run summary, and review card connect chat with project records. A feature card and dependency row serve Roadmap. A document outline and revision diff serve Spec and Deck. Task rows, event rows, and a changed-file list serve Overview and the detail screens. A card in chat and its counterpart on the roadmap should call the same action with the same record ID.
+Use shared Yab components for the Space Switcher, the project and chat rows, and the horizontal tool strip. A context chip, proposal card, run summary, and review card connect chat with project records. A feature card and dependency row serve Roadmap. A document outline and revision diff serve Spec and Deck. Task rows, event rows, and a changed-file list serve Overview and the detail screens. A card in chat and its counterpart on the roadmap should call the same action with the same record ID.
 
 ## How the manager keeps continuity
 

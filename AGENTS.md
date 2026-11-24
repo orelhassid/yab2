@@ -48,6 +48,10 @@ Browser pages and Development share the native `TabWindowHeader`,
 workspaces leave header rendering to their native host in every layout.
 Check split, chat-only and full view when changing that boundary.
 
+Use horizontal project tool tabs in the Development header. Keep the Sidebar
+project list flat. A vertical layout may switch the Sidebar to the active
+project's context, with the tool list at the top level.
+
 The Collections window header shows the collection switcher. Keep saved-view tabs inside `CollectionPage`, above active filters and the data grid. In `CollectionDataGrid`, size the selection and row-number columns to their contents.
 
 Record pages reuse the shared window switcher, themed search, card fields, dropdowns and Yab buttons. Use these components for inputs in place of stock form controls.
