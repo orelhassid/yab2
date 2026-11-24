@@ -85,6 +85,11 @@ struct DevelopmentChat: View {
 }
 
 extension DevelopmentDetails {
+    @MainActor func resumeProblem(in history: Chats) -> String? {
+        guard let id = selectedChatID, Agents.shared.session(id) == nil, history.chat(id) == nil else { return nil }
+        return history.loaded ? "This chat is unavailable. Choose another chat or start a new one." : "This chat is still loading. Try again in a moment."
+    }
+
     @MainActor func recentSessions(in history: Chats) -> [Chat] {
         (sessionIDs ?? []).compactMap { id in
             history.chat(id) ?? Agents.shared.session(id).map { Agents.shared.chat(of: $0) }
@@ -121,6 +126,12 @@ extension DevelopmentDirectory {
               project: DevelopmentProject,
               browser: Browser, later: Bool) -> Bool {
         var details = details(project)
+        let history = Chats.shared
+        history.load()
+        if let problem = details.resumeProblem(in: history) {
+            browser.toaster.pop(problem, mark: "bubble.left")
+            return false
+        }
         let references = mentions.compactMap(\.reference).reduce(into: [DevelopmentReference]()) { list, reference in
             if !list.contains(reference) { list.append(reference) }
         }

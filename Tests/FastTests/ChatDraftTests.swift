@@ -60,6 +60,46 @@ struct ChatDraftTests {
         #expect(DevelopmentDetails.suggestedChat(for: "What about this?", among: [session]) == nil)
     }
 
+    @Test func replacingTheSelectedSessionKeepsItsHistoryAndCoordinator() {
+        var details = DevelopmentDetails(name: "Yab", icon: "", folder: "", chatID: "coordinator",
+                                         sessionIDs: ["earlier", "selected"], chatSelection: "selected")
+        details.selectedChatID = "replacement"
+        details.selectedChatID = "replacement"
+        #expect(details.sessionIDs == ["earlier", "selected", "replacement"])
+        #expect(details.selectedChatID == "replacement")
+
+        details.selectedChatID = nil
+        #expect(details.chatSelection == DevelopmentDetails.newChat)
+        #expect(details.selectedChatID == nil)
+        details.chatSelection = nil
+        #expect(details.selectedChatID == "coordinator")
+    }
+
+    @Test func selectedDevelopmentSessionWaitsForSavedHistory() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let saved = Self.chat(UUID().uuidString)
+        Chats.write([saved], to: folder)
+        let history = Chats(folder: folder)
+        var details = DevelopmentDetails(name: "Yab", icon: "", folder: "", sessionIDs: [saved.id], chatSelection: saved.id)
+
+        history.load()
+        #expect(!history.loaded)
+        #expect(details.resumeProblem(in: history) == "This chat is still loading. Try again in a moment.")
+        for _ in 0..<100 {
+            if history.loaded { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(history.loaded)
+        #expect(details.resumeProblem(in: history) == nil)
+
+        let missing = UUID().uuidString
+        details.selectedChatID = missing
+        #expect(details.resumeProblem(in: history) == "This chat is unavailable. Choose another chat or start a new one.")
+        details.chatSelection = DevelopmentDetails.newChat
+        #expect(details.resumeProblem(in: history) == nil)
+    }
+
     private func settle() async {
         for _ in 0..<8 {
             await Task.yield()

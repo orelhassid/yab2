@@ -257,6 +257,7 @@ final class Chats: ObservableObject {
 
     @Published private(set) var all: [Chat] = []
     private(set) var loaded = false
+    private var loading = false
     private var waiting: [String: Chat] = [:]
     private var writing = false
     private static let disk = DispatchQueue(label: "yab.chats", qos: .utility)
@@ -280,8 +281,8 @@ final class Chats: ObservableObject {
 
     /// The chats on disk; those gone untouched past the setting put away.
     func load() {
-        guard !loaded else { return }
-        loaded = true
+        guard !loaded, !loading else { return }
+        loading = true
         let folder = storage
         Chats.disk.async {
             let found = Chats.read(folder)
@@ -292,6 +293,8 @@ final class Chats: ObservableObject {
                     for chat in found where !merged.contains(where: { $0.id == chat.id }) { merged.append(chat) }
                     self.all = merged.sorted { $0.updated > $1.updated }
                     self.archiveOld()
+                    self.loaded = true
+                    self.loading = false
                 }
             }
         }

@@ -71,9 +71,12 @@ struct DevelopmentDetails: Codable, Equatable {
             return cli == "codex" ? chatID : providerChats?[cli]
         }
         set {
-            if let chatSelection, let newValue {
+            if chatSelection != nil {
+                guard let newValue else {
+                    chatSelection = Self.newChat
+                    return
+                }
                 var ids = sessionIDs ?? []
-                if chatSelection != newValue { ids.removeAll { $0 == chatSelection } }
                 if !ids.contains(newValue) { ids.append(newValue) }
                 sessionIDs = ids
                 self.chatSelection = newValue
