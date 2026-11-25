@@ -107,6 +107,20 @@ struct ExtensionPopupLayoutTests {
         }
     }
 
+    @Test func inheritedBodyPositionStaysInFlowDuringMeasurement() async throws {
+        let html = """
+        <style>body{margin:0;width:300px;height:584px;overflow:hidden;position:inherit!important}</style>
+        <body><button>Decline</button></body>
+        """
+        let (web, watcher) = try await fixture(size: NSSize(width: 25, height: 25), html: html)
+        defer { web.stopLoading() }
+        try await install(web, token: "inherited-position")
+        for _ in 0..<100 where watcher.messages.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        #expect(watcher.messages.first.flatMap(ExtensionPopup.layoutSize) == NSSize(width: 300, height: 584))
+        let position = try await web.evaluateJavaScript("getComputedStyle(document.body).position") as? String
+        #expect(position == "static")
+    }
+
     @Test func rootPaddingAndMinimumHeightKeepTheirBoxModel() async throws {
         for (model, width, height) in [("content-box", 104, 264), ("border-box", 80, 240)] {
             let (web, watcher) = try await fixture(html: "<style>html{box-sizing:\(model);width:80px;min-height:240px;padding:10px;border:2px solid}body{margin:0}</style><body>Popup</body>")

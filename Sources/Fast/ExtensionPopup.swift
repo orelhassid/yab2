@@ -324,11 +324,20 @@ final class ExtensionPopup: NSObject, WKUIDelegate, WKNavigationDelegate, NSPopo
     () => {
       const d = document.documentElement;
       if (!d) return null;
+      const body = document.body;
+      const bodyPosition = body && getComputedStyle(body).position;
       const sheet = new CSSStyleSheet();
-      const rule = extra => ":root:root:root{position:absolute!important;left:0!important;right:auto!important" + extra + "}";
+      let bodyRule = "";
+      const rule = extra => ":root:root:root{position:absolute!important;left:0!important;right:auto!important" + extra + "}" + bodyRule;
       sheet.replaceSync(rule(""));
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
       try {
+        // A body that inherits position follows the temporary root out of
+        // flow, leaving the root empty. Keep its original position while measuring.
+        if (body && getComputedStyle(body).position !== bodyPosition) {
+          bodyRule = ":root:root:root>body{position:" + bodyPosition + "!important}";
+          sheet.replaceSync(rule(""));
+        }
         const w = Math.min(800, Math.max(25, Math.ceil(d.getBoundingClientRect().width)));
         const style = getComputedStyle(d);
         const inset = style.boxSizing === 'border-box' ? 0 :
