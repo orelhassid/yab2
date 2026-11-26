@@ -379,6 +379,14 @@ final class Chats: ObservableObject {
         save(all[index])
     }
 
+    func markUnread(_ id: String) {
+        guard let index = all.firstIndex(where: { $0.id == id }) else { return }
+        all[index].unread = true
+        all[index].unreadOverride = true
+        all[index].unreadGeneration = all[index].readGeneration
+        save(all[index])
+    }
+
     func rename(_ id: String, _ title: String) {
         guard let index = all.firstIndex(where: { $0.id == id }) else { return }
         all[index].title = title

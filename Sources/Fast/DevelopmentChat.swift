@@ -5,6 +5,8 @@ struct DevelopmentChatChoice: Identifiable {
     let selection: String?
     let provider: String
     var savedID: String?
+    var pinned = false
+    var unread = false
     var updated: Date = .distantPast
     var id: String { selection ?? "general-" + provider }
 
@@ -18,6 +20,7 @@ struct DevelopmentChatChoice: Identifiable {
         details.chatSelection = selection
         details.provider = provider
         directory.save(details, for: project)
+        if let savedID { Chats.shared.read(savedID) }
         browser.developmentProject = project
         browser.developmentContent.revealChat(only: selection == DevelopmentDetails.newChat)
     }
@@ -46,13 +49,13 @@ struct DevelopmentChatChoice: Identifiable {
 extension DevelopmentDetails {
     @MainActor func chatChoices(in history: Chats) -> [DevelopmentChatChoice] {
         let sessions = recentSessions(in: history).map {
-            DevelopmentChatChoice(title: $0.title, selection: $0.id, provider: $0.cli, savedID: $0.id, updated: $0.updated)
+            DevelopmentChatChoice(title: $0.title, selection: $0.id, provider: $0.cli, savedID: $0.id, pinned: $0.pinned, unread: $0.unread == true, updated: $0.updated)
         }
         var coordinators = providerChats ?? [:]
         coordinators["codex"] = chatID
         return (sessions + coordinators.compactMap { provider, id in
             guard let chat = developmentChat(id, in: history), chat.archived != true else { return nil }
-            return DevelopmentChatChoice(title: chat.title, selection: nil, provider: provider, savedID: chat.id, updated: chat.updated)
+            return DevelopmentChatChoice(title: chat.title, selection: nil, provider: provider, savedID: chat.id, pinned: chat.pinned, unread: chat.unread == true, updated: chat.updated)
         }).sorted { ($0.updated, $0.id) > ($1.updated, $1.id) }
     }
 
@@ -78,7 +81,10 @@ struct DevelopmentChatList: View {
         let details = directory.details(active)
         let chats = directory.projects.flatMap { project in
             directory.details(project).chatChoices(in: history).map { DevelopmentChatRow(project: project, chat: $0) }
-        }.sorted { ($0.chat.updated, $0.project.id, $0.chat.id) > ($1.chat.updated, $1.project.id, $1.chat.id) }
+        }.sorted {
+            if $0.chat.pinned != $1.chat.pinned { return $0.chat.pinned }
+            return ($0.chat.updated, $0.project.id, $0.chat.id) > ($1.chat.updated, $1.project.id, $1.chat.id)
+        }
         SidebarSectionDivider()
         SidebarSection(collapsed: collapsed) {
             SidebarSectionHeader(title: "Chat", paint: details.paint ?? SpacePaint(browser.prefs),
@@ -91,14 +97,15 @@ struct DevelopmentChatList: View {
                 SidebarTabButton(title: row.chat.title, selected: row.project == active && row.chat.isSelected(in: owner),
                                  prefs: browser.prefs, showsMark: false, trailingLabel: owner.name,
                                  action: { row.chat.open(project: row.project, in: browser) }) { EmptyView() }
+                    .overlay(alignment: .leading) {
+                        if row.chat.unread {
+                            Circle().fill(Color.accentColor).frame(width: 4, height: 4)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                    }
                     .steadyMenu(actions: true, tone: SpaceSurface.tone(in: browser)) {
                         if let chat = history.chat(row.chat.savedID) {
-                            Button(Command.developmentRenameChat.title, mark: "pencil") { ChatQuestions.rename(chat) }
-                            if Agents.shared.session(chat.id)?.state.live != true {
-                                Button(Command.developmentArchiveChat.title, mark: "archivebox") {
-                                    DevelopmentChatChoice.archive(chat, project: row.project)
-                                }
-                            }
+                            DevelopmentChatMenu(chat: chat, project: row.project, browser: browser)
                         }
                     }
             }

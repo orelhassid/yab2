@@ -56,6 +56,9 @@ struct DevelopmentDetails: Codable, Equatable {
     var toolTabs: [String]?
     var taskCompletion: [String: Bool]?
     var taskPlans: [String]?
+    var pinned: Bool?
+    var hiddenFromSidebar: Bool?
+    var modifiedAt: TimeInterval?
 
     var canWriteProject: Bool { workspaceWrite ?? true }
     static let unavailableSourceMessage = "Reconnect the source folder in Project settings."
@@ -127,7 +130,7 @@ final class DevelopmentDirectory {
     }
 
     var recentProjects: [DevelopmentProject] {
-        let available = projects
+        let available = projects.filter { details($0).hiddenFromSidebar != true }
         let recent = recentIDs.map(DevelopmentProject.init(rawValue:)).filter(available.contains)
         return Array((recent + available.filter { !recent.contains($0) }).prefix(4))
     }
@@ -138,9 +141,9 @@ final class DevelopmentDirectory {
         Store.settings.set(recentIDs, forKey: recentKey)
     }
 
-    func create(folder: URL) -> DevelopmentProject {
+    func create(folder: URL, name: String? = nil, icon: String = "") -> DevelopmentProject {
         let project = DevelopmentProject(rawValue: "project-" + UUID().uuidString.lowercased())
-        var details = DevelopmentDetails(name: folder.lastPathComponent, icon: "", folder: folder.path,
+        var details = DevelopmentDetails(name: name ?? folder.lastPathComponent, icon: icon, folder: folder.path,
                                          createdAt: Date().timeIntervalSince1970)
         details.record("Project created")
         save(details, for: project)
@@ -165,68 +168,6 @@ final class DevelopmentDirectory {
     func save(_ details: DevelopmentDetails, for project: DevelopmentProject) {
         entries[project.rawValue] = details
         Store.settings.set(try? JSONEncoder().encode(entries), forKey: key)
-    }
-}
-
-struct DevelopmentProjects: View {
-    let browser: Browser
-    @AppStorage("development.projects.collapsed", store: Store.settings) private var collapsed = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: SideBar.gap) {
-            SpaceName(space: .development, browser: browser)
-            SidebarSectionDivider()
-            Quiet(icon: "plus", title: "New Project", prefs: browser.prefs, browser: browser) {
-                guard let window = NSApp.keyWindow else { return }
-                let panel = NSOpenPanel()
-                panel.title = "Choose a project folder"
-                panel.prompt = "Create Project"
-                panel.canChooseFiles = false
-                panel.canChooseDirectories = true
-                panel.beginSheetModal(for: window) { result in
-                    guard result == .OK, let folder = panel.url else { return }
-                    browser.developmentContent.toolbar.environmentSelected = false
-                    browser.developmentProject = DevelopmentDirectory.shared.create(folder: folder)
-                }
-            }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: SideBar.gap) {
-                    SidebarSection(collapsed: collapsed) {
-                        SidebarSectionHeader(title: "Projects", paint: DevelopmentDirectory.shared.details(browser.developmentProject).paint ?? SpacePaint(browser.prefs),
-                                             collapsed: collapsed, toggle: { collapsed.toggle() }) {
-                            Symbol("folder", size: SideBar.mark)
-                        }
-                    } rows: {
-                        ForEach(DevelopmentDirectory.shared.projects, id: \.self) { project in
-                            let details = DevelopmentDirectory.shared.details(project)
-                            let selected = browser.developmentProject == project
-                            SidebarTabButton(title: details.name, selected: selected, prefs: browser.prefs, action: {
-                                browser.developmentContent.toolbar.environmentSelected = false
-                                browser.developmentProject = project
-                            }) {
-                                if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
-                                else { Text(details.icon) }
-                            }
-                            .steadyMenu(actions: true, tone: SpaceSurface.tone(in: browser)) {
-                                Button(Command.developmentNewChat.title, mark: "square.and.pencil") {
-                                    DevelopmentChatChoice.start(in: project, browser: browser)
-                                }
-                                Button(Command.developmentRenameProject.title, mark: "pencil") {
-                                    DevelopmentDirectory.shared.rename(project)
-                                }
-                                if let folder = details.availableSourceFolder {
-                                    Button(Command.developmentShowFolder.title, mark: "folder") {
-                                        NSWorkspace.shared.open(URL(fileURLWithPath: folder, isDirectory: true))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    DevelopmentChatList(browser: browser)
-                }
-            }
-            .scrollBounceBehavior(.basedOnSize)
-        }
     }
 }
 
@@ -273,6 +214,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     let terminals = DevelopmentTerminals()
 
     func revealChat(only: Bool = false) {
+        toolbar.projectsSelected = false
         toolbar.environmentSelected = false
         if only || toolbar.mode == "full" { open(.chat) }
     }
@@ -426,7 +368,16 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
     var toolFrame = CGRect.zero
     var reportedProject: String?
     var environmentOpen = false
-    var environmentSelected = false
+    var environmentSelected = false {
+        didSet { if environmentSelected { projectsSelected = false } }
+    }
+    var projectsSelected = false
+    var projectEditor: DevelopmentProjectEditorTarget?
+
+    func showProjects() {
+        environmentSelected = false
+        projectsSelected = true
+    }
     var environmentSection: DevelopmentSettingsSection = .providers
 
     fileprivate func destinations(for details: DevelopmentDetails) -> [DevelopmentDestination] {
@@ -520,6 +471,21 @@ struct DevelopmentPane: View {
     var pageMargins = EdgeInsets()
     var pageCorner: CGFloat = 0
     var body: some View {
+        let state = browser.developmentContent.toolbar
+        ZStack {
+            workspace
+                .opacity(state.projectsSelected ? 0 : 1)
+                .allowsHitTesting(!state.projectsSelected)
+                .accessibilityHidden(state.projectsSelected)
+            if state.projectsSelected { DevelopmentProjectIndex(browser: browser) }
+        }
+        .sheet(item: Bindable(state).projectEditor) { target in
+            DevelopmentProjectEditor(target: target)
+                .toned(SpaceSurface.tone(in: browser))
+        }
+    }
+
+    private var workspace: some View {
         let content = browser.developmentContent
         let state = content.toolbar
         let homeVisible = state.active == "overview" && state.mode != "chat"
