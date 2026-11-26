@@ -4,6 +4,7 @@ struct DevelopmentChatChoice: Identifiable {
     let title: String
     let selection: String?
     let provider: String
+    var savedID: String?
     var updated: Date = .distantPast
     var id: String { selection ?? "general-" + provider }
 
@@ -18,20 +19,40 @@ struct DevelopmentChatChoice: Identifiable {
         details.provider = provider
         directory.save(details, for: project)
         browser.developmentProject = project
-        browser.developmentContent.revealChat()
+        browser.developmentContent.revealChat(only: selection == DevelopmentDetails.newChat)
     }
+
+    @MainActor static func start(in project: DevelopmentProject, browser: Browser) {
+        let provider = DevelopmentDirectory.shared.details(project).cli
+        DevelopmentChatChoice(title: "New chat", selection: DevelopmentDetails.newChat, provider: provider)
+            .open(project: project, in: browser)
+    }
+
+    @MainActor static func archive(_ chat: Chat, project: DevelopmentProject) {
+        ChatQuestions.archive(chat) {
+            guard Agents.shared.session(chat.id)?.state.live != true else { return }
+            Chats.shared.archive(chat.id, true)
+            let directory = DevelopmentDirectory.shared
+            var details = directory.details(project)
+            if details.selectedChatID == chat.id {
+                details.chatSelection = DevelopmentDetails.newChat
+                directory.save(details, for: project)
+            }
+        }
+    }
+
 }
 
 extension DevelopmentDetails {
     @MainActor func chatChoices(in history: Chats) -> [DevelopmentChatChoice] {
         let sessions = recentSessions(in: history).map {
-            DevelopmentChatChoice(title: $0.title, selection: $0.id, provider: $0.cli, updated: $0.updated)
+            DevelopmentChatChoice(title: $0.title, selection: $0.id, provider: $0.cli, savedID: $0.id, updated: $0.updated)
         }
         var coordinators = providerChats ?? [:]
         coordinators["codex"] = chatID
         return (sessions + coordinators.compactMap { provider, id in
             guard let chat = developmentChat(id, in: history), chat.archived != true else { return nil }
-            return DevelopmentChatChoice(title: chat.title, selection: nil, provider: provider, updated: chat.updated)
+            return DevelopmentChatChoice(title: chat.title, selection: nil, provider: provider, savedID: chat.id, updated: chat.updated)
         }).sorted { ($0.updated, $0.id) > ($1.updated, $1.id) }
     }
 
@@ -70,10 +91,19 @@ struct DevelopmentChatList: View {
                 SidebarTabButton(title: row.chat.title, selected: row.project == active && row.chat.isSelected(in: owner),
                                  prefs: browser.prefs, showsMark: false, trailingLabel: owner.name,
                                  action: { row.chat.open(project: row.project, in: browser) }) { EmptyView() }
+                    .steadyMenu(actions: true, tone: SpaceSurface.tone(in: browser)) {
+                        if let chat = history.chat(row.chat.savedID) {
+                            Button(Command.developmentRenameChat.title, mark: "pencil") { ChatQuestions.rename(chat) }
+                            if Agents.shared.session(chat.id)?.state.live != true {
+                                Button(Command.developmentArchiveChat.title, mark: "archivebox") {
+                                    DevelopmentChatChoice.archive(chat, project: row.project)
+                                }
+                            }
+                        }
+                    }
             }
             Quiet(icon: "plus", title: "New chat", prefs: browser.prefs, browser: browser) {
-                DevelopmentChatChoice(title: "New chat", selection: DevelopmentDetails.newChat, provider: details.cli)
-                    .open(project: active, in: browser)
+                DevelopmentChatChoice.start(in: active, browser: browser)
             }
         }
         .onAppear { history.load() }
@@ -106,6 +136,7 @@ struct DevelopmentChat: View {
     let project: DevelopmentProject
     let attach: ChatAttach
     let compact: Bool
+    let chatOnly: Bool
     @StateObject private var feed = ChatFeed()
     @State private var away = false
     private var details: DevelopmentDetails { DevelopmentDirectory.shared.details(project) }
@@ -115,6 +146,8 @@ struct DevelopmentChat: View {
             if !compact {
                 if let chat = feed.chat {
                     ChatTranscript(browser: browser, chat: chat, live: feed.live, away: $away)
+                } else if chatOnly && details.chatSelection == DevelopmentDetails.newChat {
+                    newChatLanding
                 } else {
                     Spacer()
                     Text("Chat with " + AgentSetupModel.tool(details.cli)).foregroundStyle(.secondary)
@@ -135,6 +168,37 @@ struct DevelopmentChat: View {
         .onAppear { Chats.shared.load() }
         .onDisappear { feed.stop() }
     }
+
+    private var newChatLanding: some View {
+        let directory = DevelopmentDirectory.shared
+        return VStack(spacing: 16) {
+            Text("Start a chat in " + details.name)
+                .font(.title2.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { recentProjectButtons(directory) }.fixedSize()
+                VStack(spacing: 4) { recentProjectButtons(directory) }
+            }
+        }
+        .padding(.horizontal, ChatLook.fieldInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func recentProjectButtons(_ directory: DevelopmentDirectory) -> some View {
+        ForEach(directory.recentProjects) { recent in
+            let name = directory.details(recent).name
+            Button {
+                DevelopmentChatChoice.start(in: recent, browser: browser)
+            } label: {
+                Label(name, systemImage: "folder").lineLimit(1)
+            }
+            .buttonStyle(.yab(recent == project ? .secondary : .quiet, .small))
+            .accessibilityLabel("New chat in " + name)
+            .accessibilityAddTraits(recent == project ? .isSelected : [])
+        }
+    }
+
 }
 
 extension DevelopmentDetails {

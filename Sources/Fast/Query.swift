@@ -278,6 +278,7 @@ enum Command: String, CaseIterable {
     case newChatProject, openChatProject, askInChatProject, moveChatToProject, removeChatFromProject
     case inspectChatProject, pinChatProject, unpinChatProject, archiveChatProject, unarchiveChatProject
     case renameChatProject, deleteChatProject, showProjectFiles, addProjectFiles, newProjectRoutine
+    case developmentNewChat, developmentRenameProject, developmentShowFolder, developmentRenameChat, developmentArchiveChat
     case enableProjectMemory, disableProjectMemory
 
     var title: String {

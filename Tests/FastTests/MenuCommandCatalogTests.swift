@@ -48,6 +48,47 @@ struct MenuCommandCatalogTests {
         try body(browser, tab)
     }
 
+    @Test func developmentSidebarActionsLeadTheComposedOffers() {
+        withPage { browser, _ in
+            browser.prefs.menuCommands = false
+            #expect(!Command.developmentNewChat.available(in: browser))
+            browser.workspaceSpace = .development
+            let directory = DevelopmentDirectory.shared
+            let project = DevelopmentProject.yab
+            let original = directory.details(project)
+            let key = "development.projectDetails"
+            let previous = Store.settings.data(forKey: key)
+            defer {
+                directory.save(original, for: project)
+                Store.settings.set(previous, forKey: key)
+            }
+            browser.developmentProject = project
+            directory.save(DevelopmentDetails(name: "Catalog project", icon: "", folder: ""), for: project)
+            #expect(!Command.developmentShowFolder.available(in: browser))
+            #expect(!Command.developmentRenameChat.available(in: browser))
+            #expect(!Command.developmentArchiveChat.available(in: browser))
+
+            let chat = Chat(id: UUID().uuidString, title: "Catalog chat", began: .field, cli: "codex",
+                            items: [], state: "done", answer: "", started: Date(), updated: Date())
+            Chats.shared.keep(chat)
+            defer { Chats.shared.remove(chat.id) }
+            directory.save(DevelopmentDetails(name: "Catalog project", icon: "", folder: NSTemporaryDirectory(),
+                                             chatID: chat.id), for: project)
+
+            for (words, command) in [("New Chat in Project", Command.developmentNewChat),
+                                     ("Rename Project", .developmentRenameProject),
+                                     ("Show Project Folder", .developmentShowFolder),
+                                     ("Rename Chat", .developmentRenameChat), ("Archive Chat", .developmentArchiveChat)] {
+                browser.history = History([Visit(url: "https://chat.example/", key: "chat.example",
+                                                 title: words, count: 10, last: Date(), typed: 9)])
+                browser.replaceTyped(words)
+                #expect(browser.offers.first?.kind == .command(command))
+                let web = [Suggestion(key: words.lowercased(), title: "", url: nil, kind: .suggested)]
+                #expect(SearchSuggestions.merge(web, into: browser.offers, lead: browser.query.lead).list.first?.kind == .command(command))
+            }
+        }
+    }
+
     @Test func collectionActionsLeadTheComposedOffers() {
         withPage { browser, _ in
             browser.prefs.menuCommands = false

@@ -53,6 +53,7 @@ Check split, chat-only and full view when changing that boundary.
 Use horizontal project tool tabs in the Development header. Keep the Sidebar
 project list flat. A vertical layout may switch the Sidebar to the active
 project's context, with the tool list at the top level.
+Show project tool tabs only while the tools panel is visible.
 
 The Collections window header shows the collection switcher. Keep saved-view tabs inside `CollectionPage`, above active filters and the data grid. In `CollectionDataGrid`, size the selection and row-number columns to their contents.
 
@@ -149,6 +150,8 @@ dark project with the Trail visible when changing these surfaces.
 Show saved conversations across projects in the Chat section below Projects.
 The header breadcrumb uses `TabWindowSwitcher` for the project and its chat.
 Keep the transcript clear at the top in Development.
+Start a new chat with the tools panel hidden, using a centered, width-limited
+composer and up to four recent projects.
 
 Use Codex as the visual reference for Development chat: plain assistant
 replies, rounded user messages, and a two-row composer with controls below

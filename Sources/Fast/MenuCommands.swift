@@ -36,6 +36,7 @@ enum MenuCommands {
         .inspectElement, .inspectBrowserUI, .hideBrowserUIInspector, .measurePage, .hideRulers,
         .lightTheme, .darkTheme, .systemTheme, .shortcuts, .openCommandField, .addExtension, .importExtensions,
         .newChatProject, .openChatProject, .moveChatToProject,
+        .developmentNewChat, .developmentRenameProject, .developmentShowFolder, .developmentRenameChat, .developmentArchiveChat,
         .openBookmarks, .openHistory, .openExtensions,
     ]
 
@@ -451,6 +452,41 @@ enum MenuCommands {
         add(.disableProjectMemory, "Turn Off Project Memory", ["project memory", "remember from these chats"], symbol: "brain",
             when: { ChatProjectCommands.current(in: $0)?.memoryOn == true }) {
             if var project = ChatProjectCommands.current(in: $0) { project.memoryOn = false; $0.chatProjects.update(project) }
+        }
+        let developmentDetails: @MainActor (Browser) -> DevelopmentDetails = {
+            DevelopmentDirectory.shared.details($0.developmentProject)
+        }
+        let currentDevelopmentChat: @MainActor (Browser) -> Chat? = {
+            guard $0.inDevelopment, let chat = Chats.shared.chat(developmentDetails($0).selectedChatID),
+                  chat.archived != true else { return nil }
+            return chat
+        }
+        add(.developmentNewChat, "New Chat in Project", ["new chat", "new development chat"],
+            symbol: "square.and.pencil", opens: true, when: { $0.inDevelopment }) {
+            DevelopmentChatChoice.start(in: $0.developmentProject, browser: $0)
+        }
+        add(.developmentRenameProject, "Rename Project…", ["rename project", "rename development project"],
+            symbol: "pencil", opens: true, when: { $0.inDevelopment }) {
+            DevelopmentDirectory.shared.rename($0.developmentProject)
+        }
+        add(.developmentShowFolder, "Show Project Folder", ["open project folder", "reveal source folder"],
+            symbol: "folder", when: { $0.inDevelopment && developmentDetails($0).availableSourceFolder != nil }) {
+            if let folder = developmentDetails($0).availableSourceFolder {
+                NSWorkspace.shared.open(URL(fileURLWithPath: folder, isDirectory: true))
+            }
+        }
+        add(.developmentRenameChat, "Rename Chat…", ["rename chat"], symbol: "pencil", opens: true,
+            when: { currentDevelopmentChat($0) != nil }) {
+            if let chat = currentDevelopmentChat($0) { ChatQuestions.rename(chat) }
+        }
+        add(.developmentArchiveChat, "Archive Chat…", ["archive chat"], symbol: "archivebox", opens: true,
+            when: {
+                guard let chat = currentDevelopmentChat($0) else { return false }
+                return Agents.shared.session(chat.id)?.state.live != true
+            }) {
+            if let chat = currentDevelopmentChat($0) {
+                DevelopmentChatChoice.archive(chat, project: $0.developmentProject)
+            }
         }
         return out
     }

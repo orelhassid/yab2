@@ -32,6 +32,9 @@ struct DevelopmentHome: View {
             }
         }
         .foregroundStyle(Palette.strong(on: tone))
+        .onChange(of: details.name) { old, new in
+            if name == old { name = new }
+        }
     }
 
     @ViewBuilder private func cover(width: CGFloat) -> some View {

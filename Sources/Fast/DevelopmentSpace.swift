@@ -109,9 +109,12 @@ struct DevelopmentEvent: Codable, Equatable {
 final class DevelopmentDirectory {
     static let shared = DevelopmentDirectory()
     private let key = "development.projectDetails"
+    private let recentKey = "development.recentProjects"
+    private var recentIDs: [String]
     private(set) var entries: [String: DevelopmentDetails]
 
     init() {
+        recentIDs = Store.settings.stringArray(forKey: recentKey) ?? []
         entries = Store.settings.data(forKey: key).flatMap {
             try? JSONDecoder().decode([String: DevelopmentDetails].self, from: $0)
         } ?? [:]
@@ -121,6 +124,18 @@ final class DevelopmentDirectory {
         DevelopmentProject.defaults + entries.keys.filter { $0.hasPrefix("project-") }.sorted {
             (entries[$0]?.createdAt ?? 0, $0) < (entries[$1]?.createdAt ?? 0, $1)
         }.map(DevelopmentProject.init(rawValue:))
+    }
+
+    var recentProjects: [DevelopmentProject] {
+        let available = projects
+        let recent = recentIDs.map(DevelopmentProject.init(rawValue:)).filter(available.contains)
+        return Array((recent + available.filter { !recent.contains($0) }).prefix(4))
+    }
+
+    func visit(_ project: DevelopmentProject) {
+        guard recentIDs.first != project.id else { return }
+        recentIDs = Array(([project.id] + recentIDs.filter { $0 != project.id }).prefix(4))
+        Store.settings.set(recentIDs, forKey: recentKey)
     }
 
     func create(folder: URL) -> DevelopmentProject {
@@ -134,6 +149,17 @@ final class DevelopmentDirectory {
 
     func details(_ project: DevelopmentProject) -> DevelopmentDetails {
         entries[project.rawValue] ?? DevelopmentDetails(name: project.title, icon: "", folder: "")
+    }
+
+    func rename(_ project: DevelopmentProject) {
+        let field = Question.Field(details(project).name, prompt: "Name")
+        let question = Question(title: "Rename this project", glyph: "pencil", yes: "Rename", field: field)
+        Task { @MainActor in
+            guard await Questions.shared.ask(question), !field.trimmed.isEmpty else { return }
+            var updated = details(project)
+            updated.name = String(field.trimmed.prefix(80))
+            save(updated, for: project)
+        }
     }
 
     func save(_ details: DevelopmentDetails, for project: DevelopmentProject) {
@@ -180,6 +206,19 @@ struct DevelopmentProjects: View {
                             }) {
                                 if details.icon.isEmpty { Symbol("folder", size: SideBar.mark) }
                                 else { Text(details.icon) }
+                            }
+                            .steadyMenu(actions: true, tone: SpaceSurface.tone(in: browser)) {
+                                Button(Command.developmentNewChat.title, mark: "square.and.pencil") {
+                                    DevelopmentChatChoice.start(in: project, browser: browser)
+                                }
+                                Button(Command.developmentRenameProject.title, mark: "pencil") {
+                                    DevelopmentDirectory.shared.rename(project)
+                                }
+                                if let folder = details.availableSourceFolder {
+                                    Button(Command.developmentShowFolder.title, mark: "folder") {
+                                        NSWorkspace.shared.open(URL(fileURLWithPath: folder, isDirectory: true))
+                                    }
+                                }
                             }
                         }
                     }
@@ -233,9 +272,9 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     let toolbar = DevelopmentToolbarState()
     let terminals = DevelopmentTerminals()
 
-    func revealChat() {
+    func revealChat(only: Bool = false) {
         toolbar.environmentSelected = false
-        if toolbar.mode == "full" { open(.chat) }
+        if only || toolbar.mode == "full" { open(.chat) }
     }
 
     fileprivate func open(_ destination: DevelopmentDestination) {
@@ -321,6 +360,7 @@ final class DevelopmentContent: NSObject, WKNavigationDelegate, WKUIDelegate {
     func select(_ project: DevelopmentProject) {
         guard ready, project != selected else { return }
         selected = project
+        DevelopmentDirectory.shared.visit(project)
         view.callAsyncJavaScript("chooseProject(project)", arguments: ["project": project.rawValue],
                                  in: nil, in: .page, completionHandler: nil)
     }
@@ -391,12 +431,12 @@ final class DevelopmentToolbarState: NSObject, WKScriptMessageHandler {
 
     fileprivate func destinations(for details: DevelopmentDetails) -> [DevelopmentDestination] {
         let ids = DevelopmentDestination.defaults + (details.toolTabs ?? []).filter(DevelopmentDestination.optional.contains)
-        return (mode == "split" ? [] : [.chat]) + ids.compactMap { id in DevelopmentDestination.tools.first { $0.id == id } }
+        return ids.compactMap { id in DevelopmentDestination.tools.first { $0.id == id } }
     }
 
     fileprivate var destinationID: String {
         if environmentSelected { return DevelopmentDestination.environment.id }
-        return mode == "chat" ? DevelopmentDestination.chat.id : (homeNavigation ? "overview" : active)
+        return homeNavigation ? "overview" : active
     }
 
     func openEnvironment() {
@@ -472,6 +512,8 @@ struct DevelopmentPane: View {
     @Environment(\.workspaceTheme) private var workspaceTheme
     @Environment(\.tone) private var tone
     @State private var addTab = false
+    private static let chatMaxWidth: CGFloat = 760
+    private static let overlayComposerWidth: CGFloat = 680
     let browser: Browser
     let project: DevelopmentProject
     let entries: [String: DevelopmentDetails]
@@ -505,30 +547,9 @@ struct DevelopmentPane: View {
                 .frame(width: state.mode == "split" ? max(60, state.chatWidth - SideBar.margin - SideBar.markGap) : nil,
                        alignment: .leading)
             } tabs: {
-                ForEach(destinations) { destination in
-                    DevelopmentToolTab(title: destination.title, selected: destination.id == state.destinationID,
-                                       height: browser.prefs.density.tab) { content.open(destination) }
-                        .id(destination.id)
+                if state.mode != "chat" {
+                    projectTabs(destinations: destinations, more: more, content: content)
                 }
-                Button { addTab.toggle() } label: { Symbol("plus", size: 10) }
-                    .buttonStyle(.yab(.quiet, .small, icon: .square))
-                    .accessibilityLabel("Add tab").keyTip("Add tab")
-                    .disabled(more.isEmpty)
-                    .popover(isPresented: $addTab, arrowEdge: .bottom) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(DevelopmentDestination.tools.filter { more.contains($0.id) }) { item in
-                                TrailMenuRow(title: item.title, action: {
-                                    let directory = DevelopmentDirectory.shared
-                                    var next = directory.details(project)
-                                    next.toolTabs = (next.toolTabs ?? []) + [item.id]
-                                    directory.save(next, for: project)
-                                    addTab = false
-                                    content.open(item)
-                                }) { Symbol(item.icon, size: 14) }
-                            }
-                        }
-                        .padding(6).frame(width: 170).toned(tone)
-                    }
             } actions: {
                 if state.homeNavigation, state.mode != "chat", !state.environmentSelected {
                     Button { content.open(DevelopmentDestination.tools[0]) } label: { Label("Back to Home", systemImage: "chevron.left") }
@@ -537,6 +558,10 @@ struct DevelopmentPane: View {
                 if browser.prefs.sideShut && browser.trailFlank == nil {
                     ColumnDoor(browser: browser, prefs: browser.prefs)
                         .environment(\.doorSize, .header)
+                }
+                if state.environmentSelected && state.mode == "chat" {
+                    Button("Back to Chat") { content.revealChat() }
+                        .buttonStyle(.yab(.quiet, .small))
                 }
                 if !state.environmentSelected {
                     layoutAction("sidebar.right", state.mode == "chat" ? "Show tools panel" : "Hide tools panel", "panel")
@@ -571,9 +596,9 @@ struct DevelopmentPane: View {
                     .overlay(alignment: state.mode == "full" ? .bottom : .leading) {
                         if state.reportedProject == project.rawValue {
                             GeometryReader { room in
-                                DevelopmentChat(browser: browser, project: project, attach: content.draft(for: project), compact: state.mode == "full")
+                                DevelopmentChat(browser: browser, project: project, attach: content.draft(for: project), compact: state.mode == "full", chatOnly: state.mode == "chat")
                                     .id(project.rawValue + "/" + (DevelopmentDirectory.shared.details(project).chatSelection ?? ""))
-                                    .frame(width: state.mode == "split" ? max(0, min(room.size.width, state.chatWidth) - 5) : min(room.size.width, state.mode == "full" ? 680 : room.size.width))
+                                    .frame(width: state.mode == "split" ? max(0, min(room.size.width, state.chatWidth) - 5) : min(room.size.width, state.mode == "full" ? Self.overlayComposerWidth : Self.chatMaxWidth))
                                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: state.mode == "split" ? .leading : .bottom)
                             }
                         }
@@ -590,6 +615,34 @@ struct DevelopmentPane: View {
             .background { RadialMenuSurface { RadialMenuInput.shared.registerTabBody($0) } }
         }
         .toned(SpaceSurface.tone(for: paint.color))
+    }
+
+    @ViewBuilder private func projectTabs(destinations: [DevelopmentDestination], more: [String],
+                                          content: DevelopmentContent) -> some View {
+        ForEach(destinations) { destination in
+            DevelopmentToolTab(title: destination.title, selected: destination.id == content.toolbar.destinationID,
+                               height: browser.prefs.density.tab) { content.open(destination) }
+                .id(destination.id)
+        }
+        Button { addTab.toggle() } label: { Symbol("plus", size: 10) }
+            .buttonStyle(.yab(.quiet, .small, icon: .square))
+            .accessibilityLabel("Add tab").keyTip("Add tab")
+            .disabled(more.isEmpty)
+            .popover(isPresented: $addTab, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(DevelopmentDestination.tools.filter { more.contains($0.id) }) { item in
+                        TrailMenuRow(title: item.title, action: {
+                            let directory = DevelopmentDirectory.shared
+                            var next = directory.details(project)
+                            next.toolTabs = (next.toolTabs ?? []) + [item.id]
+                            directory.save(next, for: project)
+                            addTab = false
+                            content.open(item)
+                        }) { Symbol(item.icon, size: 14) }
+                    }
+                }
+                .padding(6).frame(width: 170).toned(tone)
+            }
     }
 
     @ViewBuilder private func projectIcon(_ item: DevelopmentProject) -> some View {
